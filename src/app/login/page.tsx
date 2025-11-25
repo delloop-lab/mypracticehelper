@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,16 @@ export default function LoginPage() {
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 sm:p-6">
             <Card className="w-full max-w-sm shadow-lg">
                 <CardHeader className="space-y-1.5 px-5 pt-5 pb-3">
+                    <div className="flex justify-center mb-3">
+                        <Image
+                            src="/logo.png"
+                            alt="My Practice Helper"
+                            width={200}
+                            height={44}
+                            className="h-10 w-auto"
+                            priority
+                        />
+                    </div>
                     <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
                     <CardDescription className="text-center text-sm">
                         Sign in to access your Algarve Therapy Centre account
