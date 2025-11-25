@@ -98,6 +98,9 @@ export function Scheduling() {
     });
 
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [bookingError, setBookingError] = useState<string | null>(null);
+    const [isEditingAppointment, setIsEditingAppointment] = useState(false);
+    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string } | null>(null);
 
     // Load data on mount
     useEffect(() => {
@@ -169,15 +172,57 @@ export function Scheduling() {
             paymentStatus: "unpaid",
             currency: "EUR",
         });
+        setBookingError(null);
+    };
+
+    // Check for time conflicts
+    const checkTimeConflict = (date: string, time: string, duration: number): { hasConflict: boolean; conflictingAppointment: Appointment | null } => {
+        const newTimeStr = time.length === 5 ? `${time}:00` : time;
+        const [newHour, newMinute] = newTimeStr.split(':').map(Number);
+        const newStartMinutes = newHour * 60 + newMinute;
+        const newEndMinutes = newStartMinutes + duration;
+
+        // Check all existing appointments on the same date
+        const sameDateAppointments = appointments.filter(apt => {
+            if (!apt.date) return false;
+            const aptDateStr = apt.date.split('T')[0];
+            return aptDateStr === date;
+        });
+
+        for (const apt of sameDateAppointments) {
+            const aptTimeStr = apt.time.length === 5 ? `${apt.time}:00` : apt.time;
+            const [aptHour, aptMinute] = aptTimeStr.split(':').map(Number);
+            const aptStartMinutes = aptHour * 60 + aptMinute;
+            const aptEndMinutes = aptStartMinutes + apt.duration;
+
+            // Check if time ranges overlap
+            // Two time ranges overlap if: newStart < aptEnd AND newEnd > aptStart
+            if (newStartMinutes < aptEndMinutes && newEndMinutes > aptStartMinutes) {
+                return { hasConflict: true, conflictingAppointment: apt };
+            }
+        }
+
+        return { hasConflict: false, conflictingAppointment: null };
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setBookingError(null);
 
         // Combine date and time into a full ISO timestamp for the date field
         // Keep time separate for display purposes
         const timeStr = formData.time.length === 5 ? `${formData.time}:00` : formData.time;
         const dateWithTime = `${formData.date}T${timeStr}`;
+
+        // Check for time conflicts
+        const conflictCheck = checkTimeConflict(formData.date, formData.time, formData.duration);
+        if (conflictCheck.hasConflict && conflictCheck.conflictingAppointment) {
+            const conflict = conflictCheck.conflictingAppointment;
+            setBookingError(
+                `Time slot conflicts with existing appointment: ${conflict.clientName} at ${conflict.time} (${conflict.duration} min). Please choose a different time.`
+            );
+            return;
+        }
 
         const newAppointment: Appointment = {
             id: `apt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More unique ID
@@ -206,9 +251,11 @@ export function Scheduling() {
                 setAppointments(updatedAppointments);
                 setIsDialogOpen(false);
                 resetForm();
+                setBookingError(null);
             }
         } catch (error) {
             console.error('Error saving appointment:', error);
+            setBookingError('Failed to save appointment. Please try again.');
         }
     };
 
@@ -283,6 +330,72 @@ export function Scheduling() {
     const handleViewAppointment = (appointment: Appointment) => {
         setSelectedAppointment(appointment);
         setIsDetailsOpen(true);
+        setIsEditingAppointment(false);
+        setEditedAppointment(null);
+        setBookingError(null);
+    };
+
+    const handleEditAppointmentTime = () => {
+        if (!selectedAppointment) return;
+        const dateStr = selectedAppointment.date.split('T')[0];
+        setEditedAppointment({
+            date: dateStr,
+            time: selectedAppointment.time
+        });
+        setIsEditingAppointment(true);
+        setBookingError(null);
+    };
+
+    const handleSaveAppointmentTime = async () => {
+        if (!selectedAppointment || !editedAppointment) return;
+        setBookingError(null);
+
+        // Check for time conflicts (excluding the current appointment)
+        const conflictCheck = checkTimeConflict(editedAppointment.date, editedAppointment.time, selectedAppointment.duration);
+        if (conflictCheck.hasConflict && conflictCheck.conflictingAppointment) {
+            // Allow if it's the same appointment (editing the same slot)
+            if (conflictCheck.conflictingAppointment.id !== selectedAppointment.id) {
+                const conflict = conflictCheck.conflictingAppointment;
+                setBookingError(
+                    `Time slot conflicts with existing appointment: ${conflict.clientName} at ${conflict.time} (${conflict.duration} min). Please choose a different time.`
+                );
+                return;
+            }
+        }
+
+        // Combine date and time into full ISO timestamp
+        const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
+        const dateWithTime = `${editedAppointment.date}T${timeStr}`;
+
+        const updated = appointments.map(apt =>
+            apt.id === selectedAppointment.id
+                ? { ...apt, date: dateWithTime, time: editedAppointment.time }
+                : apt
+        );
+
+        try {
+            const response = await fetch('/api/appointments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updated),
+            });
+
+            if (response.ok) {
+                setAppointments(updated);
+                setSelectedAppointment({ ...selectedAppointment, date: dateWithTime, time: editedAppointment.time });
+                setIsEditingAppointment(false);
+                setEditedAppointment(null);
+            }
+        } catch (error) {
+            console.error('Error updating appointment:', error);
+            setBookingError('Failed to update appointment. Please try again.');
+        }
+    };
+
+    const handleCancelEdit = () => {
+        setIsEditingAppointment(false);
+        setEditedAppointment(null);
+        setBookingError(null);
     };
 
     const getAppointmentDatesByType = (type: Appointment['type']) => {
@@ -790,7 +903,8 @@ export function Scheduling() {
                                             setFormData({
                                                 ...formData,
                                                 date: date.toISOString().split("T")[0],
-                                            })
+                                            });
+                                            setBookingError(null);
                                         }
                                     }}
                                 />
@@ -802,7 +916,10 @@ export function Scheduling() {
                                     id="time"
                                     type="time"
                                     value={formData.time}
-                                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                    onChange={(e) => {
+                                        setFormData({ ...formData, time: e.target.value });
+                                        setBookingError(null);
+                                    }}
                                     required
                                 />
                             </div>
@@ -924,8 +1041,19 @@ export function Scheduling() {
                                 </>
                             )}
                         </div>
+                        
+                        {bookingError && (
+                            <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
+                                {bookingError}
+                            </div>
+                        )}
+                        
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                            <Button type="button" variant="outline" onClick={() => {
+                                setIsDialogOpen(false);
+                                setBookingError(null);
+                                resetForm();
+                            }}>
                                 Cancel
                             </Button>
                             <Button type="submit" disabled={!formData.clientName}>
@@ -971,23 +1099,62 @@ export function Scheduling() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <Label className="text-xs text-muted-foreground uppercase">Date</Label>
-                                    <div className="flex items-center gap-2">
-                                        <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                                        <span className="font-medium">
-                                            {new Date(selectedAppointment.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                        </span>
-                                    </div>
+                                    {isEditingAppointment && editedAppointment ? (
+                                        <DatePicker
+                                            value={editedAppointment.date ? new Date(editedAppointment.date) : undefined}
+                                            onChange={(date) => {
+                                                if (date) {
+                                                    setEditedAppointment({
+                                                        ...editedAppointment,
+                                                        date: date.toISOString().split("T")[0]
+                                                    });
+                                                    setBookingError(null);
+                                                }
+                                            }}
+                                        />
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                                            <span className="font-medium">
+                                                {new Date(selectedAppointment.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="space-y-1">
                                     <Label className="text-xs text-muted-foreground uppercase">Time</Label>
-                                    <div className="flex items-center gap-2">
-                                        <Clock className="h-4 w-4 text-muted-foreground" />
-                                        <span className="font-medium">
-                                            {selectedAppointment.time} ({selectedAppointment.duration}m)
-                                        </span>
-                                    </div>
+                                    {isEditingAppointment && editedAppointment ? (
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                type="time"
+                                                value={editedAppointment.time}
+                                                onChange={(e) => {
+                                                    setEditedAppointment({
+                                                        ...editedAppointment,
+                                                        time: e.target.value
+                                                    });
+                                                    setBookingError(null);
+                                                }}
+                                                className="w-full"
+                                            />
+                                            <span className="text-sm text-muted-foreground">({selectedAppointment.duration}m)</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                            <span className="font-medium">
+                                                {selectedAppointment.time} ({selectedAppointment.duration}m)
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
+
+                            {isEditingAppointment && bookingError && (
+                                <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
+                                    {bookingError}
+                                </div>
+                            )}
 
                             {selectedAppointment.fee !== undefined && selectedAppointment.type !== "Discovery Session" && (
                                 <div className="border-t pt-4 space-y-3">
@@ -1055,17 +1222,50 @@ export function Scheduling() {
                             )}
 
                             <div className="flex justify-between items-center pt-4">
-                                {selectedAppointment.date >= new Date().toISOString().split('T')[0] ? (
-                                    <Button
-                                        variant="destructive"
-                                        onClick={() => setIsDeleteConfirmOpen(true)}
-                                    >
-                                        Delete Appointment
-                                    </Button>
-                                ) : <div />}
-                                <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
-                                    Close
-                                </Button>
+                                {isEditingAppointment ? (
+                                    <>
+                                        <Button
+                                            variant="outline"
+                                            onClick={handleCancelEdit}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={handleSaveAppointmentTime}
+                                            disabled={!editedAppointment || !editedAppointment.date || !editedAppointment.time}
+                                        >
+                                            Save Changes
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <>
+                                        {selectedAppointment.date >= new Date().toISOString().split('T')[0] ? (
+                                            <>
+                                                <Button
+                                                    variant="destructive"
+                                                    onClick={() => setIsDeleteConfirmOpen(true)}
+                                                >
+                                                    Delete Appointment
+                                                </Button>
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={handleEditAppointmentTime}
+                                                    >
+                                                        Edit Time
+                                                    </Button>
+                                                    <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                                                        Close
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                                                Close
+                                            </Button>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}
@@ -1095,3 +1295,4 @@ export function Scheduling() {
     );
 
 }
+
