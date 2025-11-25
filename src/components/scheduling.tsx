@@ -114,20 +114,28 @@ export function Scheduling() {
             const response = await fetch('/api/appointments');
             if (response.ok) {
                 const data = await response.json();
-                // Deduplicate appointments by creating a unique key from id, clientName, date, and time
-                const uniqueAppointments = data.reduce((acc: Appointment[], apt: Appointment) => {
-                    const key = `${apt.id}-${apt.clientName}-${apt.date}-${apt.time}`;
-                    const exists = acc.find(a => 
-                        a.id === apt.id && 
-                        a.clientName === apt.clientName && 
-                        a.date === apt.date && 
-                        a.time === apt.time
-                    );
-                    if (!exists) {
-                        acc.push(apt);
+                // Deduplicate appointments by ID only (ID should be unique)
+                const seenIds = new Set<string>();
+                const uniqueAppointments = data.filter((apt: Appointment) => {
+                    if (seenIds.has(apt.id)) {
+                        console.warn(`Duplicate appointment ID found: ${apt.id}`, apt);
+                        return false;
                     }
-                    return acc;
-                }, []);
+                    seenIds.add(apt.id);
+                    return true;
+                });
+                
+                // Debug: Log appointments for Nov 25th
+                const nov25Appointments = uniqueAppointments.filter((apt: Appointment) => {
+                    if (!apt.date) return false;
+                    const aptDateStr = apt.date.split('T')[0];
+                    return aptDateStr === '2025-11-25';
+                });
+                if (nov25Appointments.length > 0) {
+                    console.log(`[Load Appointments] Found ${nov25Appointments.length} appointments for Nov 25th:`, nov25Appointments.map(a => ({ id: a.id, client: a.clientName, time: a.time, date: a.date })));
+                }
+                
+                console.log(`[Load Appointments] Loaded ${data.length} appointments, ${uniqueAppointments.length} unique`);
                 setAppointments(uniqueAppointments);
             }
         } catch (error) {
@@ -489,6 +497,11 @@ export function Scheduling() {
                                         const timeB = b.time || '';
                                         return timeA.localeCompare(timeB);
                                     });
+                                    
+                                    // Debug logging for Nov 25th
+                                    if (dayStr === '2025-11-25') {
+                                        console.log(`[Calendar Render] Day: ${dayStr}, Found ${dayAppointments.length} appointments:`, dayAppointments.map(a => ({ id: a.id, client: a.clientName, time: a.time, date: a.date })));
+                                    }
                                     return (
                                         <div
                                             key={day.toString()}
