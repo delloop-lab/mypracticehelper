@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,7 @@ const DEFAULT_APPOINTMENT_TYPES: AppointmentType[] = [
 ];
 
 export function Scheduling() {
+    const router = useRouter();
     // State hooks
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
@@ -352,9 +354,10 @@ export function Scheduling() {
                                         <div
                                             key={day.toString()}
                                             className={cn(
-                                                "border-b border-r p-2 min-h-[100px] transition-colors hover:bg-muted/50 cursor-pointer relative group",
+                                                "border-b border-r p-1.5 min-h-[120px] transition-colors hover:bg-muted/50 cursor-pointer relative group",
                                                 !isSameMonth(day, currentMonth) && "bg-muted/20 text-muted-foreground",
-                                                isToday(day) && "bg-primary/5"
+                                                isToday(day) && "bg-primary/5",
+                                                dayAppointments.length > 0 && "bg-muted/30"
                                             )}
                                             onClick={() => {
                                                 const dateStr = format(day, 'yyyy-MM-dd');
@@ -377,27 +380,41 @@ export function Scheduling() {
                                                     {format(day, 'd')}
                                                 </span>
                                             </div>
-                                            <div className="space-y-1 overflow-y-auto max-h-[100px]">
-                                                {dayAppointments.map(apt => (
-                                                    <div
-                                                        key={apt.id}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleViewAppointment(apt);
-                                                        }}
-                                                        className={cn(
-                                                            "px-2 py-1 rounded text-xs font-medium truncate border shadow-sm cursor-pointer hover:opacity-80",
-                                                            apt.type === "Initial Consultation" && "bg-blue-100 text-blue-700 border-blue-200",
-                                                            apt.type === "Therapy Session" && "bg-green-100 text-green-700 border-green-200",
-                                                            apt.type === "Discovery Session" && "bg-purple-100 text-purple-700 border-purple-200",
-                                                            apt.type === "Couples Therapy Session" && "bg-pink-100 text-pink-700 border-pink-200",
-                                                            apt.type === "Family Therapy" && "bg-orange-100 text-orange-700 border-orange-200",
-                                                            apt.type === "Follow-up Session" && "bg-yellow-100 text-yellow-700 border-yellow-200"
-                                                        )}
-                                                    >
-                                                        {apt.time} {apt.clientName}
+                                            <div className="space-y-0.5 overflow-y-auto max-h-[90px] mt-1">
+                                                {dayAppointments.length > 2 ? (
+                                                    <div className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30">
+                                                        {dayAppointments.length} sessions
                                                     </div>
-                                                ))}
+                                                ) : (
+                                                    dayAppointments.slice(0, 3).map(apt => {
+                                                        // Format time properly - handle both HH:MM and other formats
+                                                        const displayTime = apt.time && apt.time.length > 0 
+                                                            ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
+                                                            : '--:--';
+                                                        return (
+                                                            <div
+                                                                key={apt.id}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleViewAppointment(apt);
+                                                                }}
+                                                                className={cn(
+                                                                    "px-1 py-0.5 rounded text-[10px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
+                                                                    apt.type === "Initial Consultation" && "bg-blue-100 text-blue-800 border-blue-300",
+                                                                    apt.type === "Therapy Session" && "bg-green-100 text-green-800 border-green-300",
+                                                                    apt.type === "Discovery Session" && "bg-purple-100 text-purple-800 border-purple-300",
+                                                                    apt.type === "Couples Therapy Session" && "bg-pink-100 text-pink-800 border-pink-300",
+                                                                    apt.type === "Family Therapy" && "bg-orange-100 text-orange-800 border-orange-300",
+                                                                    apt.type === "Follow-up Session" && "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                                                )}
+                                                                title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
+                                                            >
+                                                                <div className="font-bold text-[11px] leading-tight">{displayTime}</div>
+                                                                <div className="truncate text-[9px] leading-tight">{apt.clientName}</div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -477,7 +494,9 @@ export function Scheduling() {
                                         <Card 
                                             key={appointment.id}
                                             className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
-                                            onClick={() => handleViewAppointment(appointment)}
+                                            onClick={() => {
+                                                router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
+                                            }}
                                         >
                                             <CardContent className="p-4">
                                                 <div className="space-y-2">
@@ -680,7 +699,9 @@ export function Scheduling() {
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
-                                                        onClick={() => handleViewAppointment(appointment)}
+                                                        onClick={() => {
+                                                            router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
+                                                        }}
                                                     >
                                                         View
                                                     </Button>
