@@ -8,7 +8,7 @@ export function Footer() {
             <div className="container px-4 py-12 md:px-8 md:py-16 lg:py-20">
                 <div className="grid gap-8 lg:grid-cols-4">
                     <div className="space-y-4">
-                        <h3 className="text-2xl font-bold text-primary">Algarve Therapy Centre</h3>
+                        <h3 className="text-2xl font-bold text-primary">My Practice Helper</h3>
                         <p className="text-sm text-muted-foreground">
                             Empowering therapists with simple, beautiful tools to manage their practice.
                         </p>
@@ -43,7 +43,7 @@ export function Footer() {
                     </div>
                 </div>
                 <div className="mt-12 border-t pt-8 text-center text-sm text-muted-foreground">
-                    <p>&copy; {new Date().getFullYear()} Algarve Therapy Centre. All rights reserved.</p>
+                    <p>&copy; {new Date().getFullYear()} My Practice Helper. All rights reserved.</p>
                 </div>
             </div>
         </footer>
