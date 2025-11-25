@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { downloadDocumentFile } from '@/lib/storage';
 
 export async function GET(
     request: Request,
@@ -8,13 +7,14 @@ export async function GET(
 ) {
     const params = await props.params;
     const filename = params.filename;
-    const filePath = path.join(process.cwd(), 'data', 'documents', filename);
-
-    if (!fs.existsSync(filePath)) {
+    
+    let fileBuffer: Buffer;
+    try {
+        fileBuffer = await downloadDocumentFile(filename);
+    } catch (error) {
+        console.error('Error downloading document from Supabase:', error);
         return new NextResponse('File not found', { status: 404 });
     }
-
-    const fileBuffer = fs.readFileSync(filePath);
 
     // Determine content type with comprehensive file type support
     let contentType = 'application/octet-stream';
@@ -51,7 +51,6 @@ export async function GET(
     console.log('File extension:', ext);
     console.log('Content-Type:', contentType);
     console.log('Content-Disposition:', 'inline');
-    console.log('File exists:', fs.existsSync(filePath));
     console.log('File size:', fileBuffer.length, 'bytes');
     console.log('=============================');
 

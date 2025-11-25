@@ -10,36 +10,43 @@ const sidebarItems = [
         title: "Clients",
         href: "/clients",
         icon: Users,
+        color: "text-sky-500",
     },
     {
         title: "Voice Notes",
         href: "/recordings",
         icon: Mic,
+        color: "text-purple-500",
     },
     {
         title: "Schedule",
         href: "/schedule",
         icon: Calendar,
+        color: "text-blue-500",
     },
     {
         title: "Reminders",
         href: "/reminders",
         icon: Bell,
+        color: "text-orange-500",
     },
     {
         title: "Session Notes",
         href: "/session-notes",
         icon: FileText,
+        color: "text-green-500",
     },
     {
         title: "Revenue",
         href: "/payments",
         icon: DollarSign,
+        color: "text-pink-500",
     },
     {
         title: "Documents",
         href: "/documents",
         icon: FileText,
+        color: "text-amber-500",
     },
 ];
 
@@ -62,7 +69,14 @@ export function Sidebar() {
                                         : "text-muted-foreground"
                                 )}
                             >
-                                <item.icon className="h-4 w-4" />
+                                <item.icon
+                                    className={cn(
+                                        "h-4 w-4 transition-colors",
+                                        pathname === item.href
+                                            ? item.color
+                                            : `${item.color} opacity-80`
+                                    )}
+                                />
                                 {item.title}
                             </Link>
                         ))}

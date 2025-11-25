@@ -111,8 +111,15 @@ function DocumentsContent() {
                 d.type?.toLowerCase().includes(q)
             );
         }
+        // Filter by client (case-insensitive, trimmed)
         if (selectedClient !== "all") {
-            filtered = filtered.filter(d => d.clientName === selectedClient);
+            const normalizedSelected = selectedClient.trim().toLowerCase();
+            filtered = filtered.filter(d => {
+                if (d.clientName) {
+                    return d.clientName.trim().toLowerCase() === normalizedSelected;
+                }
+                return false;
+            });
         }
         const sorted = [...filtered].sort((a, b) => {
             switch (sortBy) {

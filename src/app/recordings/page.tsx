@@ -52,6 +52,7 @@ function RecordingsContent() {
     const [sortBy, setSortBy] = useState<SortOption>('date-desc');
     const [editingRecording, setEditingRecording] = useState<Recording | null>(null);
     const [editClientName, setEditClientName] = useState("");
+    const [editClientId, setEditClientId] = useState<string | undefined>(undefined);
     const [refreshKey, setRefreshKey] = useState(0);
     const [activeTab, setActiveTab] = useState("history");
 
@@ -151,9 +152,20 @@ function RecordingsContent() {
             );
         }
 
-        // Filter by client
+        // Filter by client (case-insensitive, trimmed)
         if (selectedClient !== "all") {
-            filtered = filtered.filter(r => r.clientName === selectedClient);
+            const normalizedSelected = selectedClient.trim().toLowerCase();
+            filtered = filtered.filter(r => {
+                // First try ID match if we have client_id
+                if (r.client_id || r.clientId) {
+                    // Would need client list to match by ID, so fall back to name
+                }
+                // Match by name (case-insensitive, trimmed)
+                if (r.clientName) {
+                    return r.clientName.trim().toLowerCase() === normalizedSelected;
+                }
+                return false;
+            });
         }
 
         // Sort
@@ -224,16 +236,36 @@ function RecordingsContent() {
     const handleEditClient = (recording: Recording) => {
         setEditingRecording(recording);
         setEditClientName(recording.clientName || "");
+        // Set clientId if available, otherwise find it by name
+        const clientId = recording.client_id || recording.clientId;
+        if (clientId) {
+            setEditClientId(clientId);
+        } else if (recording.clientName) {
+            // Find client ID by name
+            const client = clients.find(c => c.name === recording.clientName);
+            setEditClientId(client?.id);
+        } else {
+            setEditClientId(undefined);
+        }
     };
 
     const handleSaveClient = () => {
         if (!editingRecording) return;
 
+        // Find the selected client to get both name and ID
+        const selectedClient = clients.find(c => c.name === editClientName.trim());
+        
         const updatedRecordings = recordings.map(r =>
             r.id === editingRecording.id
-                ? { ...r, clientName: editClientName.trim() || undefined }
+                ? { 
+                    ...r, 
+                    clientName: editClientName.trim() || undefined,
+                    client_id: selectedClient?.id || editClientId || undefined,
+                    clientId: selectedClient?.id || editClientId || undefined
+                }
                 : r
         );
+        
         // Persist the changes
         saveRecordings(updatedRecordings);
         // Notify other components (e.g., Clients page) that recordings have changed
@@ -242,6 +274,7 @@ function RecordingsContent() {
         }
         setEditingRecording(null);
         setEditClientName("");
+        setEditClientId(undefined);
     };
 
     const highlightText = (text: string, query: string) => {

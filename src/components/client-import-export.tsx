@@ -26,15 +26,49 @@ export function ClientImportExport() {
         ['Jane Smith', 'jane@example.com', '555-0124', 100, 'USD', 'Another example']
     ];
 
-    const downloadTemplate = () => {
-        // Use server-side download endpoint
-        window.location.href = '/api/download/template';
+    const downloadFile = async (url: string, filename: string) => {
+        try {
+            const separator = url.includes("?") ? "&" : "?";
+            const finalUrl = `${url}${separator}ts=${Date.now()}`;
+
+            const response = await fetch(finalUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+            }
+
+            const contentDisposition = response.headers.get("content-disposition");
+            const contentType = response.headers.get("content-type");
+            console.log("Download response headers:", {
+                status: response.status,
+                contentDisposition,
+                contentType,
+                finalUrl: response.url,
+            });
+
+            const blob = await response.blob();
+            const objectUrl = window.URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            window.URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            console.error("Download failed:", error);
+        }
+    };
+
+    const downloadTemplate = async () => {
+        await downloadFile("/api/download/template", "client_import_template.xlsx");
         setShowPreview(true);
     };
 
     const exportClients = async () => {
-        // Use server-side download endpoint
-        window.location.href = '/api/download/export';
+        const date = new Date().toISOString().split("T")[0];
+        await downloadFile("/api/download/export", `clients_export_${date}.xlsx`);
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,9 +228,6 @@ export function ClientImportExport() {
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
                             <FolderOpen className="h-3 w-3" />
                             File will be saved as: <code className="bg-muted px-1 rounded">client_import_template.xlsx</code>
-                        </p>
-                        <p className="text-xs text-blue-600 font-mono">
-                            💡 Open browser console (F12) to see download logs
                         </p>
                     </div>
 

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Calendar as CalendarIcon, Clock, Video, MapPin, User, Plus, List, ChevronLeft, ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday } from "date-fns";
@@ -310,7 +311,11 @@ export function Scheduling() {
                                 <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
                                     <ChevronLeft className="h-4 w-4" />
                                 </Button>
-                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(new Date())}>
+                                <Button
+                                    variant="outline"
+                                    className="px-4"
+                                    onClick={() => setCurrentMonth(new Date())}
+                                >
                                     Today
                                 </Button>
                                 <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
@@ -623,12 +628,16 @@ export function Scheduling() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="date">Date</Label>
-                                <Input
-                                    id="date"
-                                    type="date"
-                                    value={formData.date}
-                                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                                    required
+                                <DatePicker
+                                    value={formData.date ? new Date(formData.date) : undefined}
+                                    onChange={(date) => {
+                                        if (date) {
+                                            setFormData({
+                                                ...formData,
+                                                date: date.toISOString().split("T")[0],
+                                            })
+                                        }
+                                    }}
                                 />
                             </div>
 
@@ -651,7 +660,7 @@ export function Scheduling() {
                                     min="15"
                                     step="1"
                                     value={formData.duration}
-                                    onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) })}
+                                    onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
                                     required
                                 />
                             </div>
@@ -716,7 +725,7 @@ export function Scheduling() {
                                                 min="0"
                                                 step="5"
                                                 value={formData.fee}
-                                                onChange={(e) => setFormData({ ...formData, fee: parseInt(e.target.value) })}
+                                                onChange={(e) => setFormData({ ...formData, fee: parseInt(e.target.value) || 0 })}
                                                 required
                                                 className="w-24"
                                             />

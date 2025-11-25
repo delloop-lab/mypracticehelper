@@ -67,32 +67,66 @@ export function VoiceNotes() {
             rec.interimResults = true;
             rec.lang = "en-US";
             rec.onresult = (ev: any) => {
-                let final = "";
-                for (let i = ev.resultIndex; i < ev.results.length; i++) {
+                // Build complete transcript from ALL results (not just new ones)
+                // This ensures we capture everything even if recognition restarts
+                let completeFinalTranscript = "";
+                let latestInterim = "";
+                
+                for (let i = 0; i < ev.results.length; i++) {
+                    const transcript = ev.results[i][0].transcript;
                     if (ev.results[i].isFinal) {
-                        final += ev.results[i][0].transcript + " ";
+                        completeFinalTranscript += transcript + " ";
+                    } else {
+                        // Only keep the latest interim result
+                        latestInterim = transcript;
                     }
                 }
-                setTranscript((p) => {
-                    const newTranscript = p + final;
-                    transcriptRef.current = newTranscript;
-                    return newTranscript;
-                });
+                
+                // Update the ref with all final results (this is what we'll save)
+                transcriptRef.current = completeFinalTranscript.trim();
+                
+                // Update display state with final + interim
+                const displayText = completeFinalTranscript.trim() + (latestInterim ? " " + latestInterim + "..." : "");
+                setTranscript(displayText);
+                
+                console.log("Speech recognition - Final results:", completeFinalTranscript.trim(), "Length:", transcriptRef.current.length);
+                if (latestInterim) {
+                    console.log("Interim result:", latestInterim);
+                }
             };
             rec.onerror = (ev: any) => {
-                console.error("Speech error", ev.error);
-                setError(`Recognition error: ${ev.error}`);
-                setIsRecording(false);
+                console.error("Speech recognition error:", ev.error);
+                if (ev.error === "no-speech") {
+                    console.warn("No speech detected - this is normal if you haven't spoken yet");
+                } else {
+                    setError(`Recognition error: ${ev.error}`);
+                    setIsRecording(false);
+                }
             };
             rec.onend = () => {
-                // handled by stopRecording
+                console.log("Speech recognition ended");
+                // If recording is still active, restart recognition to keep it continuous
+                if (isRecording && recognitionRef.current) {
+                    try {
+                        recognitionRef.current.start();
+                    } catch (e) {
+                        console.error("Failed to restart recognition:", e);
+                    }
+                }
+            };
+            rec.onstart = () => {
+                console.log("Speech recognition started");
             };
             recognitionRef.current = rec;
+        } else {
+            console.warn("WebKit Speech Recognition not available - transcription will not work");
         }
         return () => {
-            recognitionRef.current?.stop();
+            if (recognitionRef.current) {
+                recognitionRef.current.stop();
+            }
         };
-    }, []);
+    }, [isRecording]);
 
     const formatTime = (seconds: number): string => {
         const mins = Math.floor(seconds / 60);
@@ -134,42 +168,63 @@ export function VoiceNotes() {
         if (recognitionRef.current) {
             try {
                 recognitionRef.current.start();
-            } catch (e) {
-                console.error(e);
-                setError("Could not start speech recognition");
-                mediaRecorderRef.current?.stop();
-                setIsRecording(false);
-                if (timerRef.current) {
-                    clearInterval(timerRef.current);
-                    timerRef.current = null;
+                console.log("Speech recognition started successfully");
+            } catch (e: any) {
+                console.error("Failed to start speech recognition:", e);
+                // If it's already running, that's okay
+                if (e.message && e.message.includes("already started")) {
+                    console.log("Speech recognition already running, continuing...");
+                } else {
+                    setError("Could not start speech recognition. Audio will be recorded but not transcribed.");
+                    console.warn("Continuing with audio recording only");
                 }
             }
         } else {
             console.warn("Speech recognition not supported – recording audio only");
+            setError("Speech recognition not available in this browser. Audio will be recorded but not transcribed.");
         }
     };
 
     const stopRecording = () => {
-        recognitionRef.current?.stop();
+        // Stop the timer first
         if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
         }
+        
+        // Stop media recorder
         mediaRecorderRef.current?.stop();
+        
+        // Stop speech recognition and wait a bit for final results
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+        }
+        
         setIsRecording(false);
 
+        // Wait a bit longer to ensure final transcript is captured
         setTimeout(() => {
             const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
             const url = URL.createObjectURL(blob);
             setAudioBlob(blob);
             setAudioURL(url);
-            // Use transcriptRef.current which has the latest value
-            const currentTranscript = transcriptRef.current;
+            
+            // Get the final transcript - use transcriptRef which has final results only
+            let currentTranscript = transcriptRef.current.trim();
+            
+            // If transcriptRef is empty, try to get from state (might have interim results)
+            if (!currentTranscript && transcript) {
+                // Remove interim markers (...)
+                currentTranscript = transcript.replace(/\s*\.\.\.\s*$/, "").trim();
+            }
+            
             console.log("Stopping recording with transcript:", currentTranscript);
             console.log("Transcript length:", currentTranscript.length);
+            console.log("Transcript state:", transcript);
+            
             // Pass the transcript to processTranscript
             processTranscript(currentTranscript, blob);
-        }, 500);
+        }, 1000); // Increased timeout to allow final results to be captured
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,14 +343,17 @@ export function VoiceNotes() {
         setSaveStatus("idle");
     };
 
-    const assignRecordingToClient = async (clientName: string) => {
+    const assignRecordingToClient = async (clientId: string) => {
         try {
             const res = await fetch("/api/recordings");
             if (!res.ok) return;
             const recordings = await res.json();
-            const idx = recordings.findIndex((r: any) => !r.clientName);
+            // Find the most recent recording without a client assigned
+            const idx = recordings.findIndex((r: any) => !r.client_id && !r.clientId);
             if (idx === -1) return;
-            recordings[idx].clientName = clientName;
+            // Set the clientId
+            recordings[idx].clientId = clientId;
+            recordings[idx].client_id = clientId; // Also set snake_case for database
             await fetch("/api/recordings", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -316,7 +374,8 @@ export function VoiceNotes() {
             return;
         }
         try {
-            await assignRecordingToClient(client.name);
+            // Pass the client ID instead of name
+            await assignRecordingToClient(client.id);
             setSaveStatus("success");
             setTimeout(() => {
                 setIsSaveDialogOpen(false);

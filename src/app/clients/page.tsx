@@ -179,7 +179,30 @@ export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPagePr
     };
 
     const getRecordingCount = (clientName: string) => {
-        return recordings.filter(r => r.clientName === clientName).length;
+        // Find the client by name to get their ID
+        const client = clients.find(c => c.name === clientName);
+        if (!client) return 0;
+
+        // Normalize names for case-insensitive matching
+        const normalizedClientName = clientName.trim().toLowerCase();
+
+        // Filter recordings by:
+        // 1. client_id or clientId matching client.id (from database) - PRIMARY METHOD
+        // 2. clientName matching (case-insensitive, trimmed) - FALLBACK ONLY
+        const count = recordings.filter(r => {
+            // Primary: Match by ID (most reliable)
+            if (r.client_id === client.id || r.clientId === client.id) {
+                return true;
+            }
+            // Fallback: Match by name (case-insensitive, trimmed)
+            if (r.clientName) {
+                const normalizedRecordingName = r.clientName.trim().toLowerCase();
+                return normalizedRecordingName === normalizedClientName;
+            }
+            return false;
+        }).length;
+        
+        return count;
     };
 
     const getClientName = (id: string) => {
@@ -1024,7 +1047,7 @@ export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPagePr
                                         id="session-duration"
                                         type="number"
                                         value={logSessionData.duration}
-                                        onChange={(e) => setLogSessionData({ ...logSessionData, duration: parseInt(e.target.value) })}
+                                        onChange={(e) => setLogSessionData({ ...logSessionData, duration: parseInt(e.target.value) || 0 })}
                                         required
                                     />
                                 </div>
@@ -1227,18 +1250,66 @@ export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPagePr
                                             </div>
                                             {/* Stats Row */}
                                             <div className="mt-2 pt-2 border-t flex items-center justify-between text-[10px] text-muted-foreground">
-                                                <div className="flex items-center gap-1" title="Sessions">
-                                                    <Calendar className="h-3 w-3" />
-                                                    <span>{getClientAppointments(client.name).length}</span>
-                                                </div>
-                                                <div className="flex items-center gap-1" title="Recordings">
-                                                    <Mic className="h-3 w-3" />
-                                                    <span>{getRecordingCount(client.name)}</span>
-                                                </div>
-                                                <div className="flex items-center gap-1" title="Documents">
-                                                    <FileText className="h-3 w-3" />
-                                                    <span>{(client.documents || []).length}</span>
-                                                </div>
+                                                {(getClientAppointments(client.name).length > 0) ? (
+                                                    <Link
+                                                        href={`/schedule?client=${encodeURIComponent(client.name)}`}
+                                                        className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                                                        title="View Sessions"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Calendar className="h-3 w-3 text-blue-500" />
+                                                        <span>{getClientAppointments(client.name).length}</span>
+                                                    </Link>
+                                                ) : (
+                                                    <div
+                                                        className="flex items-center gap-1 text-blue-300/80 cursor-default"
+                                                        title="No Sessions"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Calendar className="h-3 w-3 text-blue-300/80" />
+                                                        <span>0</span>
+                                                    </div>
+                                                )}
+                                                {(getRecordingCount(client.name) > 0) ? (
+                                                    <Link
+                                                        href={`/recordings?client=${encodeURIComponent(client.name)}`}
+                                                        className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                                                        title="View Recordings"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Mic className="h-3 w-3 text-purple-500" />
+                                                        <span>{getRecordingCount(client.name)}</span>
+                                                    </Link>
+                                                ) : (
+                                                    <div
+                                                        className="flex items-center gap-1 text-purple-300/80 cursor-default"
+                                                        title="No Recordings"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <Mic className="h-3 w-3 text-purple-300/80" />
+                                                        <span>0</span>
+                                                    </div>
+                                                )}
+                                                {((client.documents || []).length > 0) ? (
+                                                    <Link
+                                                        href={`/documents?client=${encodeURIComponent(client.name)}`}
+                                                        className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                                                        title="View Documents"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <FileText className="h-3 w-3 text-orange-500" />
+                                                        <span>{(client.documents || []).length}</span>
+                                                    </Link>
+                                                ) : (
+                                                    <div
+                                                        className="flex items-center gap-1 text-orange-300/80 cursor-default"
+                                                        title="No Documents"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <FileText className="h-3 w-3 text-orange-300/80" />
+                                                        <span>0</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </CardContent>

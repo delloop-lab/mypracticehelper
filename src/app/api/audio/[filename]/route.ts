@@ -1,30 +1,16 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { supabase } from '@/lib/supabase';
 
 export async function GET(
     request: Request,
-    props: { params: Promise<{ filename: string }> }
+    { params }: { params: Promise<{ filename: string }> }
 ) {
-    const params = await props.params;
-    const filename = params.filename;
-    const filePath = path.join(process.cwd(), 'data', 'recordings', filename);
-
-    if (!fs.existsSync(filePath)) {
+    const filename = (await params).filename;
+    // Get public URL from Supabase Storage 'audio' bucket
+    const { data } = supabase.storage.from('audio').getPublicUrl(filename);
+    if (!data?.publicUrl) {
         return new NextResponse('File not found', { status: 404 });
     }
-
-    const fileBuffer = fs.readFileSync(filePath);
-
-    // Determine content type
-    let contentType = 'audio/webm';
-    if (filename.endsWith('.mp3')) contentType = 'audio/mpeg';
-    if (filename.endsWith('.wav')) contentType = 'audio/wav';
-
-    return new NextResponse(fileBuffer, {
-        headers: {
-            'Content-Type': contentType,
-            'Content-Length': fileBuffer.length.toString(),
-        },
-    });
+    // Redirect client to the public URL
+    return NextResponse.redirect(data.publicUrl);
 }

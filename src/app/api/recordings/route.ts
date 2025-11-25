@@ -16,15 +16,24 @@ export async function POST(request: Request) {
         const file = formData.get('file') as File;
         const metadataString = formData.get('data') as string;
 
+        console.log('Received recording request');
+        console.log('File:', file ? `${file.name} (${file.size} bytes)` : 'NO FILE');
+        console.log('Metadata string:', metadataString);
+
         if (!file || !metadataString) {
+            console.error('Missing file or metadata');
             return NextResponse.json({ error: 'Missing file or metadata' }, { status: 400 });
         }
 
         const metadata = JSON.parse(metadataString);
+        console.log('Parsed metadata:', metadata);
+
         const buffer = Buffer.from(await file.arrayBuffer());
         const fileName = `${metadata.id}.webm`; // Assuming webm from MediaRecorder
 
+        console.log('Uploading audio file:', fileName);
         await saveAudioFile(fileName, buffer);
+        console.log('Audio file uploaded successfully');
 
         // Update metadata with file path/url
         // We'll serve it via an API route
@@ -34,14 +43,25 @@ export async function POST(request: Request) {
             fileName: fileName
         };
 
+        console.log('Fetching existing recordings...');
         const recordings = await getRecordings();
+        console.log('Existing recordings count:', recordings.length);
+
         recordings.unshift(newRecording);
+
+        console.log('Saving updated recordings...');
         await saveRecordings(recordings);
+        console.log('Recordings saved successfully');
 
         return NextResponse.json(newRecording);
     } catch (error) {
         console.error('Error saving recording:', error);
-        return NextResponse.json({ error: 'Failed to save recording' }, { status: 500 });
+        console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+        console.error('Error message:', error instanceof Error ? error.message : String(error));
+        return NextResponse.json({
+            error: 'Failed to save recording',
+            details: error instanceof Error ? error.message : String(error)
+        }, { status: 500 });
     }
 }
 

@@ -301,7 +301,7 @@ export default function SettingsPage() {
                                                     min="15"
                                                     step="5"
                                                     value={type.duration}
-                                                    onChange={(e) => updateAppointmentType(index, 'duration', parseInt(e.target.value))}
+                                                    onChange={(e) => updateAppointmentType(index, 'duration', parseInt(e.target.value) || 0)}
                                                     className="w-24"
                                                 />
                                             </div>
@@ -318,7 +318,7 @@ export default function SettingsPage() {
                                                     min="0"
                                                     step="5"
                                                     value={type.fee}
-                                                    onChange={(e) => updateAppointmentType(index, 'fee', parseInt(e.target.value))}
+                                                    onChange={(e) => updateAppointmentType(index, 'fee', parseInt(e.target.value) || 0)}
                                                     className="w-24"
                                                 />
                                             </div>
@@ -401,7 +401,7 @@ export default function SettingsPage() {
                                         min="15"
                                         step="5"
                                         value={settings.defaultDuration}
-                                        onChange={(e) => setSettings({ ...settings, defaultDuration: parseInt(e.target.value) })}
+                                        onChange={(e) => setSettings({ ...settings, defaultDuration: parseInt(e.target.value) || 0 })}
                                         className="w-32"
                                     />
                                 </div>
@@ -420,7 +420,7 @@ export default function SettingsPage() {
                                         min="0"
                                         step="5"
                                         value={settings.defaultFee}
-                                        onChange={(e) => setSettings({ ...settings, defaultFee: parseInt(e.target.value) })}
+                                        onChange={(e) => setSettings({ ...settings, defaultFee: parseInt(e.target.value) || 0 })}
                                         className="w-32"
                                     />
                                 </div>
@@ -457,8 +457,8 @@ export default function SettingsPage() {
                             initial={{ opacity: 0, y: -10 }}
                             animate={{ opacity: 1, y: 0 }}
                             className={`p-4 rounded-lg flex items-center gap-2 ${backupMessage.type === 'success'
-                                    ? 'bg-green-50 dark:bg-green-950/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-900'
-                                    : 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900'
+                                ? 'bg-green-50 dark:bg-green-950/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-900'
+                                : 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900'
                                 }`}
                         >
                             {backupMessage.type === 'success' ? (
