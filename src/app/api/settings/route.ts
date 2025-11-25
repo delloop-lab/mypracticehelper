@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
-
-const SETTINGS_FILE = path.join(process.cwd(), 'data', 'settings.json');
+import { supabase } from '@/lib/supabase';
 
 const DEFAULT_SETTINGS = {
     calendlyUrl: "",
@@ -19,26 +16,20 @@ const DEFAULT_SETTINGS = {
     currency: "EUR",
 };
 
-async function ensureDataDirectory() {
-    const dataDir = path.join(process.cwd(), 'data');
-    try {
-        await fs.access(dataDir);
-    } catch {
-        await fs.mkdir(dataDir, { recursive: true });
-    }
-}
-
 export async function GET() {
     try {
-        await ensureDataDirectory();
+        const { data, error } = await supabase
+            .from('settings')
+            .select('config')
+            .eq('id', 'default')
+            .single();
 
-        try {
-            const data = await fs.readFile(SETTINGS_FILE, 'utf-8');
-            return NextResponse.json(JSON.parse(data));
-        } catch {
-            // If file doesn't exist, return defaults
+        if (error || !data) {
+            console.warn('Settings not found or error, returning defaults:', error);
             return NextResponse.json(DEFAULT_SETTINGS);
         }
+
+        return NextResponse.json(data.config);
     } catch (error) {
         console.error('Error reading settings:', error);
         return NextResponse.json(DEFAULT_SETTINGS);
@@ -47,12 +38,25 @@ export async function GET() {
 
 export async function POST(request: Request) {
     try {
-        await ensureDataDirectory();
         const settings = await request.json();
-        await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+
+        const { error } = await supabase
+            .from('settings')
+            .upsert({
+                id: 'default',
+                config: settings,
+                updated_at: new Date().toISOString()
+            });
+
+        if (error) {
+            console.error('Supabase error saving settings:', error);
+            throw error;
+        }
+
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error saving settings:', error);
         return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
     }
 }
+
