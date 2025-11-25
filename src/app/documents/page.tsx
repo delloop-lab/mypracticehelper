@@ -55,9 +55,14 @@ function DocumentsContent() {
             if (response.ok) {
                 const clients = await response.json();
                 const allDocs: ClientDocument[] = [];
+                const fileUrls: string[] = [];
+                
                 clients.forEach((client: any) => {
                     if (client.documents && client.documents.length > 0) {
                         client.documents.forEach((doc: any) => {
+                            if (doc.url) {
+                                fileUrls.push(doc.url);
+                            }
                             allDocs.push({
                                 id: doc.url || `${client.id}-${doc.name}`,
                                 name: doc.name,
@@ -74,7 +79,33 @@ function DocumentsContent() {
                         });
                     }
                 });
+                
                 setDocuments(allDocs);
+                
+                // Fetch file sizes if we have URLs
+                if (fileUrls.length > 0) {
+                    try {
+                        const sizesResponse = await fetch('/api/documents/metadata', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ filenames: fileUrls }),
+                        });
+                        
+                        if (sizesResponse.ok) {
+                            const { sizes } = await sizesResponse.json();
+                            // Update documents with actual sizes
+                            setDocuments(prevDocs => 
+                                prevDocs.map(doc => ({
+                                    ...doc,
+                                    size: sizes[doc.url || ''] || doc.size
+                                }))
+                            );
+                        }
+                    } catch (sizeError) {
+                        console.error('Error fetching file sizes:', sizeError);
+                        // Continue with 'Unknown' sizes if fetch fails
+                    }
+                }
             }
         } catch (error) {
             console.error('Error loading documents:', error);

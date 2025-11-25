@@ -305,6 +305,84 @@ export async function downloadDocumentFile(fileName: string) {
     return Buffer.from(arrayBuffer);
 }
 
+export async function getDocumentFileSize(fileName: string): Promise<number | null> {
+    try {
+        // Extract the filename from various URL formats
+        let path = fileName;
+        
+        if (fileName.includes('/')) {
+            // Handle different URL formats:
+            // 1. /api/documents/1234567890-filename.txt -> 1234567890-filename.txt
+            // 2. https://...supabase.co/storage/v1/object/public/documents/1234567890-filename.txt -> 1234567890-filename.txt
+            // 3. documents/1234567890-filename.txt -> 1234567890-filename.txt
+            
+            const urlParts = fileName.split('/');
+            // Get the last part which should be the filename
+            path = urlParts[urlParts.length - 1];
+            
+            // If it's an API route, the filename is after /documents/
+            if (fileName.includes('/api/documents/')) {
+                const apiIndex = fileName.indexOf('/api/documents/');
+                path = fileName.substring(apiIndex + '/api/documents/'.length);
+            }
+            // If it's a Supabase storage URL, extract from the path
+            else if (fileName.includes('/storage/v1/object/public/documents/')) {
+                const storageIndex = fileName.indexOf('/storage/v1/object/public/documents/');
+                path = fileName.substring(storageIndex + '/storage/v1/object/public/documents/'.length);
+            }
+        }
+
+        // Try to get file info directly by listing the parent directory
+        // First, try to extract directory path if any
+        const pathParts = path.split('/');
+        const filename = pathParts[pathParts.length - 1];
+        const directory = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+
+        // List files in the directory to find the matching file
+        const { data, error } = await supabase.storage
+            .from('documents')
+            .list(directory || '', {
+                limit: 1000,
+                offset: 0,
+            });
+
+        if (error) {
+            console.error('Error getting document metadata:', error);
+            return null;
+        }
+
+        // Find the matching file by name
+        const file = data?.find(f => {
+            const fullPath = directory ? `${directory}/${f.name}` : f.name;
+            return f.name === filename || fullPath === path || fileName.includes(f.name);
+        });
+
+        if (file) {
+            // Supabase storage file objects have metadata with size
+            if (file.metadata && file.metadata.size) {
+                return parseInt(file.metadata.size);
+            }
+            // Some Supabase versions return size directly
+            if ((file as any).size) {
+                return (file as any).size;
+            }
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Error getting document file size:', error);
+        return null;
+    }
+}
+
+export function formatFileSize(bytes: number | null): string {
+    if (!bytes || bytes === 0) return 'Unknown';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 export async function getDocuments() {
     // Fetch documents metadata from DB if we had a table, 
     // or list from storage bucket (less detailed)
