@@ -407,6 +407,16 @@ export function Scheduling() {
         setBookingError(null);
     };
 
+    // Convert full name to initials (e.g., "Lilly Schillaci" -> "LS")
+    const getInitials = (name: string): string => {
+        if (!name) return '';
+        const parts = name.trim().split(/\s+/);
+        if (parts.length === 1) {
+            return parts[0].substring(0, 2).toUpperCase();
+        }
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    };
+
     const getAppointmentDatesByType = (type: Appointment['type']) => {
         return appointments
             .filter(apt => apt.type === type)
@@ -638,6 +648,7 @@ export function Scheduling() {
                                                         const displayTime = apt.time && apt.time.length > 0 
                                                             ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
                                                             : '--:--';
+                                                        const initials = getInitials(apt.clientName);
                                                         return (
                                                             <div
                                                                 key={`${apt.id}-${apt.clientName}-${apt.time}-${idx}`}
@@ -658,7 +669,7 @@ export function Scheduling() {
                                                                 title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
                                                             >
                                                                 <div className="font-bold text-[10px] leading-tight">{displayTime}</div>
-                                                                <div className="truncate text-[8px] leading-tight">{apt.clientName}</div>
+                                                                <div className="truncate text-[8px] leading-tight font-semibold">{initials}</div>
                                                             </div>
                                                         );
                                                     })
