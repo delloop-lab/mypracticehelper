@@ -473,8 +473,8 @@ export function Scheduling() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-2">
-                            {appointments
+                        {(() => {
+                            const dayApps = appointments
                                 .filter(apt => {
                                     if (!apt.date) return false;
                                     const aptDateStr = apt.date.split('T')[0];
@@ -484,33 +484,57 @@ export function Scheduling() {
                                     const timeA = a.time || '';
                                     const timeB = b.time || '';
                                     return timeA.localeCompare(timeB);
-                                })
-                                .map((appointment) => (
-                                    <Card 
-                                        key={appointment.id}
-                                        className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
-                                        onClick={() => handleViewAppointment(appointment)}
-                                    >
-                                        <CardContent className="p-4">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-primary/10 text-primary">
-                                                        <span className="text-xs font-bold">{appointment.time}</span>
-                                                        <span className="text-xs text-muted-foreground">{appointment.duration}m</span>
+                                });
+                            
+                            if (dayApps.length === 0) {
+                                return (
+                                    <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                                        <CalendarIcon className="h-12 w-12 mb-4 opacity-50" />
+                                        <p className="text-sm text-center mb-4">No appointments scheduled for this day</p>
+                                        <Button 
+                                            onClick={() => {
+                                                setFormData({ ...formData, date: singleDayView || new Date().toISOString().split('T')[0] });
+                                                setIsDialogOpen(true);
+                                                setSingleDayView(null);
+                                            }}
+                                        >
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Add Appointment
+                                        </Button>
+                                    </div>
+                                );
+                            }
+                            
+                            return (
+                                <div className="space-y-2">
+                                    {dayApps.map((appointment) => (
+                                        <Card 
+                                            key={appointment.id}
+                                            className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
+                                            onClick={() => handleViewAppointment(appointment)}
+                                        >
+                                            <CardContent className="p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-primary/10 text-primary">
+                                                            <span className="text-xs font-bold">{appointment.time}</span>
+                                                            <span className="text-xs text-muted-foreground">{appointment.duration}m</span>
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold">{appointment.clientName}</h4>
+                                                            <p className="text-sm text-muted-foreground">{appointment.type}</p>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <h4 className="font-semibold">{appointment.clientName}</h4>
-                                                        <p className="text-sm text-muted-foreground">{appointment.type}</p>
-                                                    </div>
+                                                    <Button variant="outline" size="sm">
+                                                        View Details
+                                                    </Button>
                                                 </div>
-                                                <Button variant="outline" size="sm">
-                                                    View Details
-                                                </Button>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                        </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            );
+                        })()}
                     </CardContent>
                 </Card>
             )}
@@ -588,14 +612,8 @@ export function Scheduling() {
                                                 setSelectedDate(dateStr);
                                                 setViewRange("today"); // Ensure viewRange is set to show selected date
                                                 setFormData({ ...formData, date: dateStr });
-                                                // If there are many appointments (5+), show single day view; otherwise switch to list or open dialog
-                                                if (dayAppointments.length >= 5) {
-                                                    setSingleDayView(dateStr);
-                                                } else if (dayAppointments.length > 0) {
-                                                    setViewMode('list');
-                                                } else {
-                                                    setIsDialogOpen(true);
-                                                }
+                                                // Always show single day view when clicking on any day
+                                                setSingleDayView(dateStr);
                                             }}
                                         >
                                             <div className="flex justify-between items-start mb-1 flex-shrink-0">
@@ -609,13 +627,8 @@ export function Scheduling() {
                                             <div className="space-y-0.5 overflow-y-auto flex-1 mt-1 min-h-0">
                                                 {dayAppointments.length > 5 ? (
                                                     <div 
-                                                        className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30 cursor-pointer hover:bg-primary/30 transition-colors"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSingleDayView(dayStr);
-                                                            setSelectedDate(dayStr);
-                                                        }}
-                                                        title={`Click to view all ${dayAppointments.length} appointments`}
+                                                        className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30"
+                                                        title={`${dayAppointments.length} appointments - Click day to view all`}
                                                     >
                                                         {dayAppointments.length} sessions
                                                     </div>
