@@ -294,8 +294,8 @@ function RecordingsContent() {
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
             <div className="mb-8">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">Voice Notes</h1>
-                <p className="text-base sm:text-lg text-muted-foreground">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Voice Notes</h1>
+                <p className="text-sm sm:text-base text-muted-foreground">
                     Record new sessions or manage your past recordings
                 </p>
             </div>
@@ -318,7 +318,7 @@ function RecordingsContent() {
 
                 <TabsContent value="history" className="space-y-6">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">Recording History</h2>
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight">Recording History</h2>
                         <Button onClick={loadRecordings} variant="outline" size="sm">
                             Refresh List
                         </Button>

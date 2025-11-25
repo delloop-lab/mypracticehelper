@@ -59,7 +59,7 @@ const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => {
     return (
         <>
             <div className="flex-1 overflow-auto py-2">
-                <nav className="grid items-start px-4 text-base lg:text-lg font-medium">
+                <nav className="grid items-start px-4 text-sm lg:text-base font-medium">
                     {sidebarItems.map((item) => (
                         <Link
                             key={item.href}
