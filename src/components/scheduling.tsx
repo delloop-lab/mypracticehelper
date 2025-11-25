@@ -159,11 +159,16 @@ export function Scheduling() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // Combine date and time into a full ISO timestamp for the date field
+        // Keep time separate for display purposes
+        const timeStr = formData.time.length === 5 ? `${formData.time}:00` : formData.time;
+        const dateWithTime = `${formData.date}T${timeStr}`;
+
         const newAppointment: Appointment = {
-            id: `apt-${Date.now()}`,
+            id: `apt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More unique ID
             clientName: formData.clientName,
-            date: formData.date,
-            time: formData.time,
+            date: dateWithTime, // Full ISO timestamp
+            time: formData.time, // Keep time for display
             duration: formData.duration,
             type: formData.type,
             status: "confirmed",
@@ -349,6 +354,11 @@ export function Scheduling() {
                                         // Normalize appointment date to YYYY-MM-DD format for comparison
                                         const aptDateStr = apt.date.split('T')[0];
                                         return aptDateStr === dayStr;
+                                    }).sort((a, b) => {
+                                        // Sort by time to ensure consistent display order
+                                        const timeA = a.time || '';
+                                        const timeB = b.time || '';
+                                        return timeA.localeCompare(timeB);
                                     });
                                     return (
                                         <div

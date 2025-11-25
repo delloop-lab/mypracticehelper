@@ -72,10 +72,21 @@ export async function POST(request: Request) {
 
         const records = appointments.map((apt: any) => {
             const client = clients?.find(c => c.name === apt.clientName);
+            
+            // Combine date and time into a full ISO timestamp
+            // If date already includes time (has 'T'), use it as-is
+            // Otherwise, combine date (YYYY-MM-DD) with time (HH:MM)
+            let dateValue = apt.date;
+            if (apt.time && !apt.date.includes('T')) {
+                // Combine date and time: "2025-11-25" + "T" + "12:00:00"
+                const timeStr = apt.time.length === 5 ? `${apt.time}:00` : apt.time; // Ensure HH:MM:SS format
+                dateValue = `${apt.date}T${timeStr}`;
+            }
+            
             return {
                 id: apt.id,
                 client_id: client?.id || null, // If we can't find client, it might be orphaned
-                date: apt.date, // Assuming ISO string
+                date: dateValue, // Full ISO timestamp with time component
                 duration: apt.duration,
                 type: apt.type,
                 notes: apt.notes,
