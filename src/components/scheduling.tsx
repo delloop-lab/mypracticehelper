@@ -101,7 +101,7 @@ export function Scheduling() {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [isEditingAppointment, setIsEditingAppointment] = useState(false);
-    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string } | null>(null);
+    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string } | null>(null);
 
     // Load data on mount
     useEffect(() => {
@@ -349,7 +349,8 @@ export function Scheduling() {
         const dateStr = selectedAppointment.date.split('T')[0];
         setEditedAppointment({
             date: dateStr,
-            time: selectedAppointment.time
+            time: selectedAppointment.time,
+            type: selectedAppointment.type
         });
         setIsEditingAppointment(true);
         setBookingError(null);
@@ -378,7 +379,7 @@ export function Scheduling() {
 
         const updated = appointments.map(apt =>
             apt.id === selectedAppointment.id
-                ? { ...apt, date: dateWithTime, time: editedAppointment.time }
+                ? { ...apt, date: dateWithTime, time: editedAppointment.time, type: editedAppointment.type }
                 : apt
         );
 
@@ -391,7 +392,7 @@ export function Scheduling() {
 
             if (response.ok) {
                 setAppointments(updated);
-                setSelectedAppointment({ ...selectedAppointment, date: dateWithTime, time: editedAppointment.time });
+                setSelectedAppointment({ ...selectedAppointment, date: dateWithTime, time: editedAppointment.time, type: editedAppointment.type });
                 setIsEditingAppointment(false);
                 setEditedAppointment(null);
             }
@@ -753,7 +754,7 @@ export function Scheduling() {
                                     </Button>
                                 </div>
                             ) : (
-                                <div className="space-y-3">
+                                <div className="space-y-1.5">
                                     {selectedDateAppointments.sort((a, b) => a.time.localeCompare(b.time)).map((appointment) => (
                                         <Card 
                                             key={appointment.id}
@@ -762,12 +763,12 @@ export function Scheduling() {
                                                 router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
                                             }}
                                         >
-                                            <CardContent className="p-4">
-                                                <div className="space-y-2">
+                                            <CardContent className="p-2.5">
+                                                <div className="space-y-1">
                                                     <div className="flex items-center justify-between">
-                                                        <h4 className="font-semibold">{appointment.clientName}</h4>
+                                                        <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
                                                         <span className={cn(
-                                                            "text-xs px-2 py-1 rounded",
+                                                            "text-[10px] px-1.5 py-0.5 rounded leading-tight",
                                                             appointment.type === "Initial Consultation" && "bg-blue-100 text-blue-700",
                                                             appointment.type === "Therapy Session" && "bg-green-100 text-green-700",
                                                             appointment.type === "Discovery Session" && "bg-purple-100 text-purple-700",
@@ -778,7 +779,7 @@ export function Scheduling() {
                                                             {appointment.type}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                                         <span className="flex items-center gap-1">
                                                             <Clock className="h-3 w-3" />
                                                             {appointment.time}
@@ -786,7 +787,7 @@ export function Scheduling() {
                                                         <span>{appointment.duration}m</span>
                                                     </div>
                                                     {appointment.fee && (
-                                                        <div className="text-xs text-muted-foreground">
+                                                        <div className="text-[10px] text-muted-foreground">
                                                             €{appointment.fee} - {appointment.paymentStatus || "unpaid"}
                                                         </div>
                                                     )}
@@ -1273,6 +1274,36 @@ export function Scheduling() {
                                         </div>
                                     )}
                                 </div>
+                                <div className="space-y-1 col-span-2">
+                                    <Label className="text-xs text-muted-foreground uppercase">Session Type</Label>
+                                    {isEditingAppointment && editedAppointment ? (
+                                        <Select
+                                            value={editedAppointment.type}
+                                            onValueChange={(value) => {
+                                                setEditedAppointment({
+                                                    ...editedAppointment,
+                                                    type: value
+                                                });
+                                                setBookingError(null);
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {appointmentTypes.filter(type => type.enabled).map((type) => (
+                                                    <SelectItem key={type.name} value={type.name}>
+                                                        {type.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium">{selectedAppointment.type}</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {isEditingAppointment && bookingError && (
@@ -1377,7 +1408,7 @@ export function Scheduling() {
                                                         variant="outline"
                                                         onClick={handleEditAppointmentTime}
                                                     >
-                                                        Edit Time
+                                                        Edit
                                                     </Button>
                                                     <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
                                                         Close
