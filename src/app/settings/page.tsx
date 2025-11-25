@@ -255,12 +255,20 @@ export default function SettingsPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {settings.appointmentTypes.map((type, index) => (
+                            {settings.appointmentTypes
+                                .map((type, originalIndex) => ({ type, originalIndex }))
+                                .sort((a, b) => {
+                                    // Move Discovery Session to the top
+                                    if (a.type.name === "Discovery Session") return -1;
+                                    if (b.type.name === "Discovery Session") return 1;
+                                    return 0;
+                                })
+                                .map(({ type, originalIndex }, displayIndex) => (
                                 <motion.div
-                                    key={`${index}-${type.name}`}
+                                    key={`${displayIndex}-${type.name}`}
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: index * 0.05 }}
+                                    transition={{ delay: displayIndex * 0.05 }}
                                     className="p-4 rounded-lg border bg-card"
                                 >
                                     <div className="flex items-center justify-between mb-3">
@@ -270,7 +278,7 @@ export default function SettingsPage() {
                                                 <input
                                                     type="checkbox"
                                                     checked={type.enabled}
-                                                    onChange={(e) => updateAppointmentType(index, 'enabled', e.target.checked)}
+                                                    onChange={(e) => updateAppointmentType(originalIndex, 'enabled', e.target.checked)}
                                                     className="w-4 h-4 rounded"
                                                 />
                                                 <span className="text-sm text-muted-foreground">Enabled</span>
@@ -279,7 +287,7 @@ export default function SettingsPage() {
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => {
-                                                    const updated = settings.appointmentTypes.filter((_, i) => i !== index);
+                                                    const updated = settings.appointmentTypes.filter((_, i) => i !== originalIndex);
                                                     setSettings({ ...settings, appointmentTypes: updated });
                                                 }}
                                                 className="h-8 w-8 p-0 text-destructive hover:text-destructive"
@@ -290,35 +298,35 @@ export default function SettingsPage() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
-                                            <Label htmlFor={`duration-${index}`} className="text-xs">
+                                            <Label htmlFor={`duration-${displayIndex}`} className="text-xs">
                                                 Duration (minutes)
                                             </Label>
                                             <div className="flex items-center gap-2">
                                                 <Clock className="h-4 w-4 text-muted-foreground" />
                                                 <Input
-                                                    id={`duration-${index}`}
+                                                    id={`duration-${displayIndex}`}
                                                     type="number"
                                                     min="15"
                                                     step="5"
                                                     value={type.duration}
-                                                    onChange={(e) => updateAppointmentType(index, 'duration', parseInt(e.target.value) || 0)}
+                                                    onChange={(e) => updateAppointmentType(originalIndex, 'duration', parseInt(e.target.value) || 0)}
                                                     className="w-24"
                                                 />
                                             </div>
                                         </div>
                                         <div className="space-y-2">
-                                            <Label htmlFor={`fee-${index}`} className="text-xs">
+                                            <Label htmlFor={`fee-${displayIndex}`} className="text-xs">
                                                 Fee ({settings.currency})
                                             </Label>
                                             <div className="flex items-center gap-2">
                                                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                                                 <Input
-                                                    id={`fee-${index}`}
+                                                    id={`fee-${displayIndex}`}
                                                     type="number"
                                                     min="0"
                                                     step="5"
                                                     value={type.fee}
-                                                    onChange={(e) => updateAppointmentType(index, 'fee', parseInt(e.target.value) || 0)}
+                                                    onChange={(e) => updateAppointmentType(originalIndex, 'fee', parseInt(e.target.value) || 0)}
                                                     className="w-24"
                                                 />
                                             </div>
