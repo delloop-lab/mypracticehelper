@@ -82,6 +82,7 @@ export function Scheduling() {
     const [viewRange, setViewRange] = useState<'today' | '7days' | '30days' | 'all'>('today');
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
     const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [singleDayView, setSingleDayView] = useState<string | null>(null);
 
     // Form data for new appointment, includes currency
     const [formData, setFormData] = useState({
@@ -448,6 +449,72 @@ export function Scheduling() {
                 </div>
             </div>
 
+            {/* Single Day Detail View */}
+            {singleDayView && (
+                <Card className="mb-4">
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle>{format(new Date(singleDayView), 'EEEE, MMMM d, yyyy')}</CardTitle>
+                                <CardDescription>
+                                    {(() => {
+                                        const dayApps = appointments.filter(apt => {
+                                            if (!apt.date) return false;
+                                            const aptDateStr = apt.date.split('T')[0];
+                                            return aptDateStr === singleDayView;
+                                        });
+                                        return `${dayApps.length} appointment${dayApps.length !== 1 ? 's' : ''}`;
+                                    })()}
+                                </CardDescription>
+                            </div>
+                            <Button variant="outline" onClick={() => setSingleDayView(null)}>
+                                Close
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-2">
+                            {appointments
+                                .filter(apt => {
+                                    if (!apt.date) return false;
+                                    const aptDateStr = apt.date.split('T')[0];
+                                    return aptDateStr === singleDayView;
+                                })
+                                .sort((a, b) => {
+                                    const timeA = a.time || '';
+                                    const timeB = b.time || '';
+                                    return timeA.localeCompare(timeB);
+                                })
+                                .map((appointment) => (
+                                    <Card 
+                                        key={appointment.id}
+                                        className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
+                                        onClick={() => handleViewAppointment(appointment)}
+                                    >
+                                        <CardContent className="p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-primary/10 text-primary">
+                                                        <span className="text-xs font-bold">{appointment.time}</span>
+                                                        <span className="text-xs text-muted-foreground">{appointment.duration}m</span>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-semibold">{appointment.clientName}</h4>
+                                                        <p className="text-sm text-muted-foreground">{appointment.type}</p>
+                                                    </div>
+                                                </div>
+                                                <Button variant="outline" size="sm">
+                                                    View Details
+                                                </Button>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {viewMode === 'calendar' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
                     <Card className="lg:col-span-3 h-[800px] flex flex-col overflow-hidden relative">
@@ -516,8 +583,10 @@ export function Scheduling() {
                                                 setSelectedDate(dateStr);
                                                 setViewRange("today"); // Ensure viewRange is set to show selected date
                                                 setFormData({ ...formData, date: dateStr });
-                                                // If there are appointments, switch to list view to show them; otherwise open dialog to create new
-                                                if (dayAppointments.length > 0) {
+                                                // If there are many appointments (5+), show single day view; otherwise switch to list or open dialog
+                                                if (dayAppointments.length >= 5) {
+                                                    setSingleDayView(dateStr);
+                                                } else if (dayAppointments.length > 0) {
                                                     setViewMode('list');
                                                 } else {
                                                     setIsDialogOpen(true);
@@ -533,8 +602,16 @@ export function Scheduling() {
                                                 </span>
                                             </div>
                                             <div className="space-y-0.5 overflow-y-auto flex-1 mt-1 min-h-0">
-                                                {dayAppointments.length > 2 ? (
-                                                    <div className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30">
+                                                {dayAppointments.length > 5 ? (
+                                                    <div 
+                                                        className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30 cursor-pointer hover:bg-primary/30 transition-colors"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSingleDayView(dayStr);
+                                                            setSelectedDate(dayStr);
+                                                        }}
+                                                        title={`Click to view all ${dayAppointments.length} appointments`}
+                                                    >
                                                         {dayAppointments.length} sessions
                                                     </div>
                                                 ) : (
