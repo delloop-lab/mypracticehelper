@@ -52,7 +52,7 @@ export default function LoginPage() {
                     </div>
                     <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
                     <CardDescription className="text-center text-sm">
-                        Sign in to access your Algarve Therapy Centre account
+                        Sign in to access My Practice Helper account
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="px-5 pb-5">
