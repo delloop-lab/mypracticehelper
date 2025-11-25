@@ -1,0 +1,75 @@
+[
+  {
+    "id": "1763811467031",
+    "name": "Gary Dog",
+    "email": "gary@yopmail.com",
+    "phone": "937596679",
+    "nextAppointment": "",
+    "notes": "Nice woofer",
+    "recordings": 0,
+    "sessions": 0,
+    "documents": [
+      {
+        "name": "Session Notes (demo).txt",
+        "url": "/api/documents/1763982182942-Session_Notes__demo_.txt",
+        "date": "2025-11-24T11:03:02.947Z"
+      },
+      {
+        "name": "schillaci prevod dopisa.odt",
+        "url": "/api/documents/1763984677242-schillaci_prevod_dopisa.odt",
+        "date": "2025-11-24T11:44:37.246Z"
+      }
+    ],
+    "relationships": [
+      {
+        "relatedClientId": "1763812549944",
+        "type": "Sister"
+      }
+    ],
+    "firstName": "Gary",
+    "lastName": "Dog",
+    "preferredName": "Gazza"
+  },
+  {
+    "id": "1763812549944",
+    "name": "Lilly Schillaci",
+    "email": "lili@yopmail.com",
+    "phone": "937596665",
+    "nextAppointment": "",
+    "notes": "Our Doggie",
+    "recordings": 0,
+    "sessions": 0,
+    "documents": [],
+    "relationships": [
+      {
+        "relatedClientId": "1763811467031",
+        "type": "Brother"
+      }
+    ],
+    "firstName": "Lilly",
+    "lastName": "Schillaci",
+    "preferredName": "Dorggy"
+  },
+  {
+    "id": "1763830617510",
+    "name": "Arni",
+    "email": "arni@example.com",
+    "phone": "937596679",
+    "nextAppointment": "2025-11-27T14:42",
+    "notes": "Arni was a participant of the 2024 Retreat",
+    "recordings": 0,
+    "sessions": 13,
+    "documents": [
+      {
+        "name": "Intake Form (demo).txt",
+        "url": "/api/documents/1763830962639-Intake_Form__demo_.txt",
+        "date": "2025-11-22T17:02:42.644Z"
+      }
+    ],
+    "relationships": [],
+    "currency": "USD",
+    "sessionFee": 150,
+    "firstName": "Arni",
+    "lastName": "."
+  }
+]

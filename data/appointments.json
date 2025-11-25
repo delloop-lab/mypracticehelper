@@ -1,0 +1,29 @@
+[
+  {
+    "id": "apt-1763907294622",
+    "clientName": "Arni",
+    "date": "2025-11-25",
+    "time": "09:00",
+    "duration": 50,
+    "type": "Therapy Session",
+    "status": "confirmed",
+    "notes": "",
+    "fee": 150,
+    "paymentMethod": "Bank Deposit",
+    "paymentStatus": "paid",
+    "clinicalNotes": "I met with her and she told me stuff. I said STOP IT."
+  },
+  {
+    "id": "apt-1763910192064",
+    "clientName": "Lilli D Schillaci",
+    "date": "2025-11-23",
+    "time": "09:00",
+    "duration": 60,
+    "type": "Follow-up Session",
+    "status": "confirmed",
+    "notes": "",
+    "fee": 80,
+    "paymentMethod": "Cash",
+    "paymentStatus": "pending"
+  }
+]

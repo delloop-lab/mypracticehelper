@@ -1,0 +1,46 @@
+[
+  {
+    "id": "1763981007484",
+    "name": "Session Notes (demo).txt",
+    "type": "txt",
+    "size": "13 Bytes",
+    "uploadedBy": "Dr. Smith",
+    "uploadedDate": "2025-11-24T10:43:27.484Z",
+    "clientName": "General",
+    "category": "other",
+    "isEncrypted": true
+  },
+  {
+    "id": "1763982008767",
+    "name": "Session Notes (demo).txt",
+    "type": "txt",
+    "size": "13 Bytes",
+    "uploadedBy": "Dr. Smith",
+    "uploadedDate": "2025-11-24T11:00:08.768Z",
+    "clientName": "General",
+    "category": "other",
+    "isEncrypted": true
+  },
+  {
+    "id": "1763982182942",
+    "name": "Session Notes (demo).txt",
+    "type": "txt",
+    "size": "13 Bytes",
+    "uploadedBy": "Dr. Smith",
+    "uploadedDate": "2025-11-24T11:03:02.943Z",
+    "clientName": "General",
+    "category": "other",
+    "isEncrypted": true
+  },
+  {
+    "id": "1763984677242",
+    "name": "schillaci prevod dopisa.odt",
+    "type": "odt",
+    "size": "20.72 KB",
+    "uploadedBy": "Dr. Smith",
+    "uploadedDate": "2025-11-24T11:44:37.243Z",
+    "clientName": "General",
+    "category": "other",
+    "isEncrypted": true
+  }
+]

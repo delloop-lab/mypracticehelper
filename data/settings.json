@@ -1,0 +1,38 @@
+{
+  "calendlyUrl": "",
+  "appointmentTypes": [
+    {
+      "name": "Initial Consultation",
+      "duration": 60,
+      "fee": 80,
+      "enabled": true
+    },
+    {
+      "name": "Therapy Session",
+      "duration": 60,
+      "fee": 80,
+      "enabled": true
+    },
+    {
+      "name": "Couples Therapy Session",
+      "duration": 60,
+      "fee": 100,
+      "enabled": true
+    },
+    {
+      "name": "Discovery Session",
+      "duration": 30,
+      "fee": 0,
+      "enabled": true
+    },
+    {
+      "name": "Animal Therapy Sessions",
+      "duration": 30,
+      "fee": 45,
+      "enabled": true
+    }
+  ],
+  "defaultDuration": 60,
+  "defaultFee": 80,
+  "currency": "EUR"
+}

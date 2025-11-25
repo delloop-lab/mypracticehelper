@@ -1,0 +1,759 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Calendar as CalendarIcon, Clock, Video, MapPin, User, Plus } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { motion } from "framer-motion";
+
+interface Appointment {
+    id: string;
+    clientName: string;
+    date: string;
+    time: string;
+    duration: number;
+    type: "Initial Consultation" | "Follow-up Session" | "Therapy Session" | "Family Therapy";
+    status: "confirmed" | "pending" | "cancelled";
+    notes: string;
+    fee?: number;
+    paymentMethod?: "Cash" | "PayPal" | "Multibanco";
+    paymentStatus?: "paid" | "pending" | "unpaid";
+}
+
+interface Client {
+    id: string;
+    name: string;
+}
+
+export function Scheduling() {
+    const [appointments, setAppointments] = useState<Appointment[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [formData, setFormData] = useState({
+        clientName: "",
+        date: new Date().toISOString().split('T')[0],
+        time: "09:00",
+        duration: 50,
+        type: "Therapy Session" as Appointment['type'],
+        notes: "",
+        fee: 50,
+        paymentMethod: "Cash" as "Cash" | "PayPal" | "Multibanco",
+        paymentStatus: "unpaid" as "paid" | "pending" | "unpaid",
+    });
+
+    // Load appointments and clients
+    useEffect(() => {
+        loadAppointments();
+        loadClients();
+    }, []);
+
+    const loadAppointments = async () => {
+        try {
+            const response = await fetch('/api/appointments');
+            if (response.ok) {
+                const data = await response.json();
+                setAppointments(data);
+            }
+        } catch (error) {
+            console.error('Error loading appointments:', error);
+        }
+    };
+
+    const loadClients = async () => {
+        try {
+            const response = await fetch('/api/clients');
+            if (response.ok) {
+                const data = await response.json();
+                setClients(data);
+            }
+        } catch (error) {
+            console.error('Error loading clients:', error);
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        const newAppointment: Appointment = {
+            id: `apt-${Date.now()}`,
+            clientName: formData.clientName,
+            date: formData.date,
+            time: formData.time,
+            duration: formData.duration,
+            type: formData.type,
+            status: "confirmed",
+            notes: formData.notes,
+            fee: formData.fee,
+            paymentMethod: formData.paymentMethod,
+            paymentStatus: formData.paymentStatus,
+        };
+
+        const updatedAppointments = [...appointments, newAppointment];
+
+        try {
+            const response = await fetch('/api/appointments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updatedAppointments),
+            });
+
+            if (response.ok) {
+                setAppointments(updatedAppointments);
+                setIsDialogOpen(false);
+                resetForm();
+            }
+        } catch (error) {
+            console.error('Error saving appointment:', error);
+        }
+    };
+
+    const resetForm = () => {
+        setFormData({
+            clientName: "",
+            date: new Date().toISOString().split('T')[0],
+            time: "09:00",
+            duration: 50,
+            type: "Therapy Session",
+            notes: "",
+            fee: 50,
+            paymentMethod: "Cash",
+            paymentStatus: "unpaid",
+        });
+    };
+
+    const [viewRange, setViewRange] = useState<"today" | "7days" | "30days" | "all">("today");
+
+    // Create a set of dates that have appointments for highlighting
+    const appointmentDates = appointments.map(apt => new Date(apt.date));
+
+    const handleDateSelect = (date: Date | undefined) => {
+        if (date) {
+            // Adjust for timezone offset to ensure correct date string
+            const offset = date.getTimezoneOffset();
+            const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+            setSelectedDate(adjustedDate.toISOString().split('T')[0]);
+            setViewRange("today");
+        }
+    };
+
+    const getFilteredAppointments = () => {
+        const today = new Date().toISOString().split('T')[0];
+        const todayDate = new Date(today);
+
+        return appointments.filter(apt => {
+            if (viewRange === "today") {
+                return apt.date === selectedDate;
+            }
+
+            const aptDate = new Date(apt.date);
+            const diffTime = aptDate.getTime() - todayDate.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            if (viewRange === "7days") {
+                return diffDays >= 0 && diffDays <= 7;
+            }
+            if (viewRange === "30days") {
+                return diffDays >= 0 && diffDays <= 30;
+            }
+            if (viewRange === "all") {
+                return diffDays >= 0;
+            }
+            return false;
+        }).sort((a, b) => {
+            if (a.date !== b.date) return a.date.localeCompare(b.date);
+            return a.time.localeCompare(b.time);
+        });
+    };
+
+    const filteredAppointments = getFilteredAppointments();
+
+    const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+    const handleViewAppointment = (appointment: Appointment) => {
+        setSelectedAppointment(appointment);
+        setIsDetailsOpen(true);
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-3xl font-bold tracking-tight">Schedule</h2>
+                    <p className="text-muted-foreground">Manage your appointments and availability</p>
+                </div>
+                <Button className="gap-2" onClick={() => setIsDialogOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    New Appointment
+                </Button>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-3">
+                {/* Calendar Picker & View Selector */}
+                <Card className="md:col-span-1 h-fit">
+                    <CardHeader>
+                        <CardTitle className="text-lg">View Options</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Date Range</Label>
+                            <Select value={viewRange} onValueChange={(v: any) => setViewRange(v)}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="today">Selected Date</SelectItem>
+                                    <SelectItem value="7days">Next 7 Days</SelectItem>
+                                    <SelectItem value="30days">Next 30 Days</SelectItem>
+                                    <SelectItem value="all">All Upcoming</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="flex flex-col space-y-2">
+                            <Label>Select Date</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant={"outline"}
+                                        className={cn(
+                                            "w-full justify-start text-left font-normal",
+                                            !selectedDate && "text-muted-foreground"
+                                        )}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {selectedDate ? format(new Date(selectedDate), "PPP") : <span>Pick a date</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        selected={new Date(selectedDate)}
+                                        onSelect={handleDateSelect}
+                                        initialFocus
+                                        modifiers={{
+                                            hasAppointment: appointmentDates
+                                        }}
+                                        modifiersStyles={{
+                                            hasAppointment: {
+                                                fontWeight: 'bold',
+                                                textDecoration: 'underline',
+                                                color: 'var(--primary)'
+                                            }
+                                        }}
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Appointments List */}
+                <Card className="md:col-span-2">
+                    <CardHeader>
+                        <CardTitle className="text-lg">
+                            {viewRange === "today" ? "Daily Schedule" : "Upcoming Appointments"}
+                        </CardTitle>
+                        <CardDescription>
+                            {viewRange === "today"
+                                ? new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+                                : "Viewing upcoming sessions"}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        {filteredAppointments.length === 0 ? (
+                            <div className="flex items-center justify-center py-12 text-muted-foreground">
+                                <p className="text-sm">No appointments found for this period</p>
+                            </div>
+                        ) : (
+                            filteredAppointments.map((appointment, index) => (
+                                <motion.div
+                                    key={appointment.id}
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: index * 0.1 }}
+                                >
+                                    <Card className="border-l-4 border-l-primary hover:shadow-md transition-shadow">
+                                        <CardContent className="p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-primary/10 text-primary">
+                                                        <span className="text-xs font-bold uppercase">
+                                                            {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short' })}
+                                                        </span>
+                                                        <span className="text-xl font-bold">
+                                                            {new Date(appointment.date).getDate()}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-semibold text-lg">{appointment.clientName}</h4>
+                                                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                                            <span className="flex items-center gap-1">
+                                                                <Clock className="h-3 w-3" />
+                                                                {appointment.time} ({appointment.duration}m)
+                                                            </span>
+                                                            <span className="flex items-center gap-1">
+                                                                <Video className="h-3 w-3" />
+                                                                {appointment.type}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => handleViewAppointment(appointment)}
+                                                >
+                                                    View
+                                                </Button>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </motion.div>
+                            ))
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+
+            {/* New Appointment Dialog */}
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>New Appointment</DialogTitle>
+                        <DialogDescription>
+                            Schedule a new appointment manually. Calendly integration coming soon.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmit}>
+                        <div className="space-y-4 py-4">
+                            {/* Client Selection */}
+                            <div className="space-y-2">
+                                <Label htmlFor="client">Client</Label>
+                                <Select
+                                    value={formData.clientName}
+                                    onValueChange={(value) => setFormData({ ...formData, clientName: value })}
+                                >
+                                    <SelectTrigger id="client">
+                                        <SelectValue placeholder="Select a client..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {clients.map((client) => (
+                                            <SelectItem key={client.id} value={client.name}>
+                                                {client.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Date */}
+                            <div className="space-y-2">
+                                <Label htmlFor="date">Date</Label>
+                                <Input
+                                    id="date"
+                                    type="date"
+                                    value={formData.date}
+                                    onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                    required
+                                />
+                            </div>
+
+                            {/* Time */}
+                            <div className="space-y-2">
+                                <Label htmlFor="time">Time</Label>
+                                <Input
+                                    id="time"
+                                    type="time"
+                                    value={formData.time}
+                                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                    required
+                                />
+                            </div>
+
+                            {/* Duration */}
+                            <div className="space-y-2">
+                                <Label htmlFor="duration">Duration (minutes)</Label>
+                                <Input
+                                    id="duration"
+                                    type="number"
+                                    min="15"
+                                    step="1"
+                                    value={formData.duration}
+                                    onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) })}
+                                    required
+                                />
+                            </div>
+
+                            {/* Type */}
+                            <div className="space-y-2">
+                                <Label htmlFor="type">Appointment Type</Label>
+                                <Select
+                                    value={formData.type}
+                                    onValueChange={(value: Appointment['type']) => setFormData({ ...formData, type: value })}
+                                >
+                                    <SelectTrigger id="type">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Initial Consultation">Initial Consultation</SelectItem>
+                                        <SelectItem value="Follow-up Session">Follow-up Session</SelectItem>
+                                        <SelectItem value="Therapy Session">Therapy Session</SelectItem>
+                                        <SelectItem value="Family Therapy">Family Therapy</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Notes */}
+                            <div className="space-y-2">
+                                <Label htmlFor="notes">Notes (Optional)</Label>
+                                <Textarea
+                                    id="notes"
+                                    placeholder="Add any notes about this appointment..."
+                                    rows={3}
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Fee */}
+                            <div className="space-y-2">
+                                <Label htmlFor="fee">Session Fee (€)</Label>
+                                <Input
+                                    id="fee"
+                                    type="number"
+                                    min="0"
+                                    step="5"
+                                    value={formData.fee}
+                                    onChange={(e) => setFormData({ ...formData, fee: parseInt(e.target.value) })}
+                                    required
+                                />
+                            </div>
+
+                            {/* Payment Method */}
+                            <div className="space-y-2">
+                                <Label htmlFor="paymentMethod">Payment Method</Label>
+                                <Select
+                                    value={formData.paymentMethod}
+                                    onValueChange={(value: "Cash" | "PayPal" | "Multibanco") => setFormData({ ...formData, paymentMethod: value })}
+                                >
+                                    <SelectTrigger id="paymentMethod">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Cash">Cash</SelectItem>
+                                        <SelectItem value="PayPal">PayPal</SelectItem>
+                                        <SelectItem value="Multibanco">Multibanco</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Payment Status */}
+                            <div className="space-y-2">
+                                <Label htmlFor="paymentStatus">Payment Status</Label>
+                                <Select
+                                    value={formData.paymentStatus}
+                                    onValueChange={(value: "paid" | "pending" | "unpaid") => setFormData({ ...formData, paymentStatus: value })}
+                                >
+                                    <SelectTrigger id="paymentStatus">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="unpaid">Unpaid</SelectItem>
+                                        <SelectItem value="pending">Pending</SelectItem>
+                                        <SelectItem value="paid">Paid</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={!formData.clientName}>
+                                Create Appointment
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* View Appointment Details Dialog */}
+            <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Appointment Details</DialogTitle>
+                    </DialogHeader>
+                    {selectedAppointment && (
+                        <div className="space-y-6 py-4">
+                            <div className="flex items-center gap-4">
+                                <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                                    <User className="h-8 w-8 text-primary" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold">{selectedAppointment.clientName}</h3>
+                                    <p className="text-muted-foreground">{selectedAppointment.type}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                                >
+                                    View
+                                </Button>
+                            </div>
+                        </CardContent>
+                                    </Card>
+            </motion.div>
+            ))
+                        )}
+        </CardContent>
+                </Card >
+            </div >
+
+        {/* New Appointment Dialog */ }
+        < Dialog open = { isDialogOpen } onOpenChange = { setIsDialogOpen } >
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>New Appointment</DialogTitle>
+                    <DialogDescription>
+                        Schedule a new appointment manually. Calendly integration coming soon.
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleSubmit}>
+                    <div className="space-y-4 py-4">
+                        {/* Client Selection */}
+                        <div className="space-y-2">
+                            <Label htmlFor="client">Client</Label>
+                            <Select
+                                value={formData.clientName}
+                                onValueChange={(value) => setFormData({ ...formData, clientName: value })}
+                            >
+                                <SelectTrigger id="client">
+                                    <SelectValue placeholder="Select a client..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {clients.map((client) => (
+                                        <SelectItem key={client.id} value={client.name}>
+                                            {client.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Date */}
+                        <div className="space-y-2">
+                            <Label htmlFor="date">Date</Label>
+                            <Input
+                                id="date"
+                                type="date"
+                                value={formData.date}
+                                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                                required
+                            />
+                        </div>
+
+                        {/* Time */}
+                        <div className="space-y-2">
+                            <Label htmlFor="time">Time</Label>
+                            <Input
+                                id="time"
+                                type="time"
+                                value={formData.time}
+                                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                                required
+                            />
+                        </div>
+
+                        {/* Duration */}
+                        <div className="space-y-2">
+                            <Label htmlFor="duration">Duration (minutes)</Label>
+                            <Input
+                                id="duration"
+                                type="number"
+                                min="15"
+                                step="1"
+                                value={formData.duration}
+                                onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) })}
+                                required
+                            />
+                        </div>
+
+                        {/* Type */}
+                        <div className="space-y-2">
+                            <Label htmlFor="type">Appointment Type</Label>
+                            <Select
+                                value={formData.type}
+                                onValueChange={(value: Appointment['type']) => setFormData({ ...formData, type: value })}
+                            >
+                                <SelectTrigger id="type">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Initial Consultation">Initial Consultation</SelectItem>
+                                    <SelectItem value="Follow-up Session">Follow-up Session</SelectItem>
+                                    <SelectItem value="Therapy Session">Therapy Session</SelectItem>
+                                    <SelectItem value="Family Therapy">Family Therapy</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Notes */}
+                        <div className="space-y-2">
+                            <Label htmlFor="notes">Notes (Optional)</Label>
+                            <Textarea
+                                id="notes"
+                                placeholder="Add any notes about this appointment..."
+                                rows={3}
+                                value={formData.notes}
+                                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                            />
+                        </div>
+
+                        {/* Fee */}
+                        <div className="space-y-2">
+                            <Label htmlFor="fee">Session Fee (€)</Label>
+                            <Input
+                                id="fee"
+                                type="number"
+                                min="0"
+                                step="5"
+                                value={formData.fee}
+                                onChange={(e) => setFormData({ ...formData, fee: parseInt(e.target.value) })}
+                                required
+                            />
+                        </div>
+
+                        {/* Payment Method */}
+                        <div className="space-y-2">
+                            <Label htmlFor="paymentMethod">Payment Method</Label>
+                            <Select
+                                value={formData.paymentMethod}
+                                onValueChange={(value: "Cash" | "PayPal" | "Multibanco") => setFormData({ ...formData, paymentMethod: value })}
+                            >
+                                <SelectTrigger id="paymentMethod">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Cash">Cash</SelectItem>
+                                    <SelectItem value="PayPal">PayPal</SelectItem>
+                                    <SelectItem value="Multibanco">Multibanco</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Payment Status */}
+                        <div className="space-y-2">
+                            <Label htmlFor="paymentStatus">Payment Status</Label>
+                            <Select
+                                value={formData.paymentStatus}
+                                onValueChange={(value: "paid" | "pending" | "unpaid") => setFormData({ ...formData, paymentStatus: value })}
+                            >
+                                <SelectTrigger id="paymentStatus">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                    <SelectItem value="paid">Paid</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={!formData.clientName}>
+                            Create Appointment
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+            </Dialog >
+
+        {/* View Appointment Details Dialog */ }
+        < Dialog open = { isDetailsOpen } onOpenChange = { setIsDetailsOpen } >
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Appointment Details</DialogTitle>
+                </DialogHeader>
+                {selectedAppointment && (
+                    <div className="space-y-6 py-4">
+                        <div className="flex items-center gap-4">
+                            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+                                <User className="h-8 w-8 text-primary" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold">{selectedAppointment.clientName}</h3>
+                                <p className="text-muted-foreground">{selectedAppointment.type}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground uppercase">Date</Label>
+                                <div className="flex items-center gap-2">
+                                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">
+                                        {new Date(selectedAppointment.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground uppercase">Time</Label>
+                                <div className="flex items-center gap-2">
+                                    <Clock className="h-4 w-4 text-muted-foreground" />
+                                    <span className="font-medium">
+                                        {selectedAppointment.time} ({selectedAppointment.duration}m)
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {selectedAppointment.notes && (
+                            <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground uppercase">Notes</Label>
+                                <div className="p-3 bg-muted/50 rounded-md text-sm">
+                                    {selectedAppointment.notes}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-4">
+                            <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                                Close
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </DialogContent>
+            </Dialog >
+        </div >
+    );
+
+}
