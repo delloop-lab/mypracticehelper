@@ -763,12 +763,12 @@ export function Scheduling() {
                                                 router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
                                             }}
                                         >
-                                            <CardContent className="p-2.5">
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center justify-between">
+                                            <CardContent className="p-2">
+                                                <div className="space-y-0.5">
+                                                    <div className="flex items-center justify-between gap-2">
                                                         <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
                                                         <span className={cn(
-                                                            "text-[10px] px-1.5 py-0.5 rounded leading-tight",
+                                                            "text-[10px] px-1.5 py-0.5 rounded leading-tight whitespace-nowrap",
                                                             appointment.type === "Initial Consultation" && "bg-blue-100 text-blue-700",
                                                             appointment.type === "Therapy Session" && "bg-green-100 text-green-700",
                                                             appointment.type === "Discovery Session" && "bg-purple-100 text-purple-700",
@@ -779,7 +779,7 @@ export function Scheduling() {
                                                             {appointment.type}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground leading-tight">
                                                         <span className="flex items-center gap-1">
                                                             <Clock className="h-3 w-3" />
                                                             {appointment.time}
@@ -787,7 +787,7 @@ export function Scheduling() {
                                                         <span>{appointment.duration}m</span>
                                                     </div>
                                                     {appointment.fee && (
-                                                        <div className="text-[10px] text-muted-foreground">
+                                                        <div className="text-[10px] text-muted-foreground leading-tight">
                                                             €{appointment.fee} - {appointment.paymentStatus || "unpaid"}
                                                         </div>
                                                     )}
