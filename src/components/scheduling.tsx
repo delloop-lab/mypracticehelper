@@ -309,8 +309,8 @@ export function Scheduling() {
 
             {viewMode === 'calendar' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                    <Card className="lg:col-span-3 h-[800px] flex flex-col">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                    <Card className="lg:col-span-3 h-[800px] flex flex-col overflow-hidden relative">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 flex-shrink-0">
                             <div className="flex items-center gap-4">
                                 <h2 className="text-2xl font-bold">{format(currentMonth, 'MMMM yyyy')}</h2>
                                 <div className="flex items-center gap-1">
@@ -330,16 +330,16 @@ export function Scheduling() {
                                 </div>
                             </div>
                         </CardHeader>
-                        <CardContent className="flex-1 p-0">
-                        <div className="h-full flex flex-col">
-                            <div className="grid grid-cols-7 border-b">
+                        <CardContent className="flex-1 p-0 overflow-hidden">
+                        <div className="h-full flex flex-col overflow-hidden">
+                            <div className="grid grid-cols-7 border-b flex-shrink-0">
                                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                                     <div key={day} className="p-4 text-center font-semibold text-sm text-muted-foreground">
                                         {day}
                                     </div>
                                 ))}
                             </div>
-                            <div className="flex-1 grid grid-cols-7 grid-rows-5">
+                            <div className="flex-1 grid grid-cols-7 overflow-hidden" style={{ gridTemplateRows: 'repeat(6, minmax(0, 1fr))' }}>
                                 {eachDayOfInterval({
                                     start: startOfWeek(startOfMonth(currentMonth)),
                                     end: endOfWeek(endOfMonth(currentMonth))
@@ -354,7 +354,7 @@ export function Scheduling() {
                                         <div
                                             key={day.toString()}
                                             className={cn(
-                                                "border-b border-r p-1.5 min-h-[120px] transition-colors hover:bg-muted/50 cursor-pointer relative group",
+                                                "border-b border-r p-1.5 transition-colors hover:bg-muted/50 cursor-pointer relative group overflow-hidden",
                                                 !isSameMonth(day, currentMonth) && "bg-muted/20 text-muted-foreground",
                                                 isToday(day) && "bg-primary/5",
                                                 dayAppointments.length > 0 && "bg-muted/30"
@@ -421,38 +421,37 @@ export function Scheduling() {
                                 })}
                             </div>
                         </div>
-
-                        {/* Calendar Legend */}
-                        <div className="mt-6 pt-4 border-t">
-                            <h3 className="text-sm font-semibold mb-3">Appointment Types</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                    <span>Initial Consultation</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                    <span>Therapy Session</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                                    <span>Discovery Session</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-pink-500"></div>
-                                    <span>Couples Therapy</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                                    <span>Family Therapy</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                    <span>Follow-up Session</span>
-                                </div>
+                    </CardContent>
+                    {/* Calendar Legend - moved outside scrollable area */}
+                    <div className="px-6 pb-4 pt-4 border-t flex-shrink-0">
+                        <h3 className="text-sm font-semibold mb-3">Appointment Types</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                <span>Initial Consultation</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                <span>Therapy Session</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                                <span>Discovery Session</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-pink-500"></div>
+                                <span>Couples Therapy</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                                <span>Family Therapy</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                <span>Follow-up Session</span>
                             </div>
                         </div>
-                    </CardContent>
+                    </div>
                 </Card>
                 
                 {/* Side panel showing appointments for selected date */}

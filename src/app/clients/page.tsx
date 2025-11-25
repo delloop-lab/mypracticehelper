@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -87,7 +88,8 @@ interface ClientsPageProps {
     autoOpenAddDialog?: boolean;
 }
 
-export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPageProps) {
+function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
+    const searchParams = useSearchParams();
     const [clients, setClients] = useState<Client[]>([]);
     const [recordings, setRecordings] = useState<any[]>([]);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(autoOpenAddDialog);
@@ -132,6 +134,17 @@ export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPagePr
         loadClients();
         loadRecordings();
     }, []);
+
+    // Open client details if client query parameter is present
+    useEffect(() => {
+        const clientName = searchParams.get('client');
+        if (clientName && clients.length > 0) {
+            const client = clients.find(c => c.name === clientName || c.name.toLowerCase() === clientName.toLowerCase());
+            if (client && !editingClient) {
+                handleEdit(client);
+            }
+        }
+    }, [searchParams, clients]);
 
     // Listen for updates from the recordings page
     useEffect(() => {
@@ -1320,5 +1333,13 @@ export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPagePr
                 )
             }
         </div >
+    );
+}
+
+export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPageProps) {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <ClientsPageContent autoOpenAddDialog={autoOpenAddDialog} />
+        </Suspense>
     );
 }
