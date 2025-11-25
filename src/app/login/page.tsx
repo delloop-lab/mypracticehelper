@@ -40,18 +40,18 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
-            <Card className="w-full max-w-md">
-                <CardHeader className="space-y-1">
-                    <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
-                    <CardDescription className="text-center">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 sm:p-6 md:p-8">
+            <Card className="w-full max-w-md shadow-lg">
+                <CardHeader className="space-y-2 px-6 pt-6 pb-4">
+                    <CardTitle className="text-3xl md:text-4xl font-bold text-center">Welcome Back</CardTitle>
+                    <CardDescription className="text-center text-base md:text-lg">
                         Sign in to access your Algarve Therapy Centre account
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleSubmit} className="space-y-4">
+                <CardContent className="px-6 pb-6">
+                    <form onSubmit={handleSubmit} className="space-y-5">
                         <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
+                            <Label htmlFor="email" className="text-base font-medium">Email</Label>
                             <Input
                                 id="email"
                                 type="email"
@@ -60,10 +60,11 @@ export default function LoginPage() {
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
                                 disabled={isLoading}
+                                className="h-11 text-base"
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="password">Password</Label>
+                            <Label htmlFor="password" className="text-base font-medium">Password</Label>
                             <Input
                                 id="password"
                                 type="password"
@@ -71,17 +72,18 @@ export default function LoginPage() {
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
                                 disabled={isLoading}
+                                className="h-11 text-base"
                             />
                         </div>
 
                         {error && (
-                            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
-                                <AlertCircle className="h-4 w-4" />
+                            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 p-3 text-base text-red-500">
+                                <AlertCircle className="h-5 w-5" />
                                 {error}
                             </div>
                         )}
 
-                        <Button type="submit" className="w-full" disabled={isLoading}>
+                        <Button type="submit" className="w-full h-11 text-base font-semibold" disabled={isLoading}>
                             {isLoading ? "Signing in..." : "Sign In"}
                         </Button>
                     </form>

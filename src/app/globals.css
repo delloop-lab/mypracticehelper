@@ -77,7 +77,18 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground text-base;
+  }
+
+  html {
+    @apply text-base;
+  }
+
+  /* Improve readability with better base font size */
+  @media (min-width: 1024px) {
+    html {
+      font-size: 16px;
+    }
   }
 }
 

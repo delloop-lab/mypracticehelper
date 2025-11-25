@@ -592,11 +592,11 @@ export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPagePr
     };
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
-            <div className="mb-8 flex items-center justify-between">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
+            <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-4xl font-bold mb-2">Clients</h1>
-                    <p className="text-muted-foreground">
+                    <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-2">Clients</h1>
+                    <p className="text-base sm:text-lg text-muted-foreground">
                         Manage your client information and appointments
                     </p>
                 </div>
