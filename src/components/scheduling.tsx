@@ -668,8 +668,10 @@ export function Scheduling() {
                                                                 )}
                                                                 title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
                                                             >
-                                                                <div className="font-bold text-[10px] leading-tight">{displayTime}</div>
-                                                                <div className="truncate text-[8px] leading-tight font-semibold">{initials}</div>
+                                                                <div className="font-bold text-[10px] leading-tight flex items-center gap-1">
+                                                                    <span>{displayTime}</span>
+                                                                    <span className="font-semibold">{initials}</span>
+                                                                </div>
                                                             </div>
                                                         );
                                                     })
