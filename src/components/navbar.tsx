@@ -50,7 +50,7 @@ export function Navbar() {
             <img
               src="/logo.png"
               alt="My Practice Helper"
-              className="h-8 w-auto"
+              className="h-16 w-auto"
             />
           </Link>
         </div>

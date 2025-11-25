@@ -47,7 +47,7 @@ export default function LoginPage() {
                         <img
                             src="/logo.png"
                             alt="My Practice Helper"
-                            className="h-10 w-auto"
+                            className="h-20 w-auto"
                         />
                     </div>
                     <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
