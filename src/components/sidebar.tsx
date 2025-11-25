@@ -22,7 +22,7 @@ const sidebarItems = [
         color: "text-purple-500",
     },
     {
-        title: "Schedule",
+        title: "Calendar",
         href: "/schedule",
         icon: Calendar,
         color: "text-blue-500",
