@@ -540,13 +540,14 @@ export function Scheduling() {
                         </CardHeader>
                         <CardContent className="flex-1 p-0 overflow-hidden">
                         <div className="h-full flex flex-col overflow-hidden">
-                            <div className="grid grid-cols-7 border-b flex-shrink-0">
+                            <div className="grid grid-cols-7 border-b flex-shrink-0 bg-background sticky top-0 z-10">
                                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
                                     <div key={day} className="p-4 text-center font-semibold text-sm text-muted-foreground">
                                         {day}
                                     </div>
                                 ))}
                             </div>
+                            <div className="flex-1 overflow-y-auto">
                             {(() => {
                                 const daysInView = eachDayOfInterval({
                                     start: startOfWeek(startOfMonth(currentMonth)),
@@ -554,7 +555,7 @@ export function Scheduling() {
                                 });
                                 const numberOfWeeks = Math.ceil(daysInView.length / 7);
                                 return (
-                                    <div className="flex-1 grid grid-cols-7 overflow-hidden" style={{ gridTemplateRows: `repeat(${numberOfWeeks}, minmax(120px, 1fr))` }}>
+                                    <div className="grid grid-cols-7" style={{ gridTemplateRows: `repeat(${numberOfWeeks}, minmax(120px, auto))` }}>
                                         {daysInView.map((day, dayIdx) => {
                                     const dayStr = format(day, 'yyyy-MM-dd');
                                     const dayAppointments = appointments.filter(apt => {
@@ -656,6 +657,7 @@ export function Scheduling() {
                                     </div>
                                 );
                             })()}
+                            </div>
                         </div>
                     </CardContent>
                     {/* Calendar Legend - moved outside scrollable area */}
