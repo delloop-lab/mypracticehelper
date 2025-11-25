@@ -111,7 +111,21 @@ export function Scheduling() {
             const response = await fetch('/api/appointments');
             if (response.ok) {
                 const data = await response.json();
-                setAppointments(data);
+                // Deduplicate appointments by creating a unique key from id, clientName, date, and time
+                const uniqueAppointments = data.reduce((acc: Appointment[], apt: Appointment) => {
+                    const key = `${apt.id}-${apt.clientName}-${apt.date}-${apt.time}`;
+                    const exists = acc.find(a => 
+                        a.id === apt.id && 
+                        a.clientName === apt.clientName && 
+                        a.date === apt.date && 
+                        a.time === apt.time
+                    );
+                    if (!exists) {
+                        acc.push(apt);
+                    }
+                    return acc;
+                }, []);
+                setAppointments(uniqueAppointments);
             }
         } catch (error) {
             console.error('Error loading appointments:', error);
@@ -392,26 +406,27 @@ export function Scheduling() {
                                                     {format(day, 'd')}
                                                 </span>
                                             </div>
-                                            <div className="space-y-0.5 overflow-y-auto max-h-[90px] mt-1">
+                                            <div className="space-y-0.5 overflow-y-auto max-h-[120px] mt-1 min-h-[40px]">
                                                 {dayAppointments.length > 2 ? (
                                                     <div className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30">
                                                         {dayAppointments.length} sessions
                                                     </div>
                                                 ) : (
-                                                    dayAppointments.map(apt => {
+                                                    dayAppointments.map((apt, idx) => {
                                                         // Format time properly - handle both HH:MM and other formats
                                                         const displayTime = apt.time && apt.time.length > 0 
                                                             ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
                                                             : '--:--';
                                                         return (
                                                             <div
-                                                                key={`${apt.id}-${apt.clientName}-${apt.time}`}
+                                                                key={`${apt.id}-${apt.clientName}-${apt.time}-${idx}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     handleViewAppointment(apt);
                                                                 }}
                                                                 className={cn(
-                                                                    "px-1 py-0.5 rounded text-[10px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight mb-0.5",
+                                                                    "px-1 py-0.5 rounded text-[10px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
+                                                                    idx < dayAppointments.length - 1 && "mb-0.5",
                                                                     apt.type === "Initial Consultation" && "bg-blue-100 text-blue-800 border-blue-300",
                                                                     apt.type === "Therapy Session" && "bg-green-100 text-green-800 border-green-300",
                                                                     apt.type === "Discovery Session" && "bg-purple-100 text-purple-800 border-purple-300",
