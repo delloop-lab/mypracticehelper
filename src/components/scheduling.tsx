@@ -194,9 +194,9 @@ export function Scheduling() {
 
     const handleDateSelect = (date: Date | undefined) => {
         if (date) {
-            const offset = date.getTimezoneOffset();
-            const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
-            setSelectedDate(adjustedDate.toISOString().split('T')[0]);
+            // Format date as YYYY-MM-DD to ensure consistent format
+            const dateStr = format(date, 'yyyy-MM-dd');
+            setSelectedDate(dateStr);
             setViewRange("today");
         }
     };
@@ -207,7 +207,10 @@ export function Scheduling() {
 
         return appointments.filter(apt => {
             if (viewRange === "today") {
-                return apt.date === selectedDate;
+                // Normalize both dates to YYYY-MM-DD format for comparison
+                const aptDateStr = apt.date.split('T')[0];
+                const selectedDateStr = selectedDate.split('T')[0];
+                return aptDateStr === selectedDateStr;
             }
 
             const aptDate = new Date(apt.date);
@@ -356,9 +359,12 @@ export function Scheduling() {
                                             onClick={() => {
                                                 const dateStr = format(day, 'yyyy-MM-dd');
                                                 setSelectedDate(dateStr);
+                                                setViewRange("today"); // Ensure viewRange is set to show selected date
                                                 setFormData({ ...formData, date: dateStr });
-                                                // If there are appointments, show them; otherwise open dialog to create new
-                                                if (dayAppointments.length === 0) {
+                                                // If there are appointments, switch to list view to show them; otherwise open dialog to create new
+                                                if (dayAppointments.length > 0) {
+                                                    setViewMode('list');
+                                                } else {
                                                     setIsDialogOpen(true);
                                                 }
                                             }}
