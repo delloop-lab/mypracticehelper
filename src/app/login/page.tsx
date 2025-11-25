@@ -40,18 +40,18 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 sm:p-6 md:p-8">
-            <Card className="w-full max-w-md shadow-lg">
-                <CardHeader className="space-y-2 px-6 pt-6 pb-4">
-                    <CardTitle className="text-3xl md:text-4xl font-bold text-center">Welcome Back</CardTitle>
-                    <CardDescription className="text-center text-base md:text-lg">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 sm:p-6">
+            <Card className="w-full max-w-sm shadow-lg">
+                <CardHeader className="space-y-1.5 px-5 pt-5 pb-3">
+                    <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
+                    <CardDescription className="text-center text-sm">
                         Sign in to access your Algarve Therapy Centre account
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="px-6 pb-6">
-                    <form onSubmit={handleSubmit} className="space-y-5">
-                        <div className="space-y-2">
-                            <Label htmlFor="email" className="text-base font-medium">Email</Label>
+                <CardContent className="px-5 pb-5">
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div className="space-y-1.5">
+                            <Label htmlFor="email" className="text-sm font-medium">Email</Label>
                             <Input
                                 id="email"
                                 type="email"
@@ -60,11 +60,11 @@ export default function LoginPage() {
                                 onChange={(e) => setEmail(e.target.value)}
                                 required
                                 disabled={isLoading}
-                                className="h-11 text-base"
+                                className="h-10"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="password" className="text-base font-medium">Password</Label>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="password" className="text-sm font-medium">Password</Label>
                             <Input
                                 id="password"
                                 type="password"
@@ -72,18 +72,18 @@ export default function LoginPage() {
                                 onChange={(e) => setPassword(e.target.value)}
                                 required
                                 disabled={isLoading}
-                                className="h-11 text-base"
+                                className="h-10"
                             />
                         </div>
 
                         {error && (
-                            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 p-3 text-base text-red-500">
-                                <AlertCircle className="h-5 w-5" />
+                            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 p-2.5 text-sm text-red-500">
+                                <AlertCircle className="h-4 w-4" />
                                 {error}
                             </div>
                         )}
 
-                        <Button type="submit" className="w-full h-11 text-base font-semibold" disabled={isLoading}>
+                        <Button type="submit" className="w-full h-10 font-semibold" disabled={isLoading}>
                             {isLoading ? "Signing in..." : "Sign In"}
                         </Button>
                     </form>
