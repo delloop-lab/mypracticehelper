@@ -516,28 +516,29 @@ export function Scheduling() {
                             }
                             
                             return (
-                                <div className="space-y-2">
+                                <div className="space-y-1.5">
                                     {dayApps.map((appointment) => (
                                         <Card 
                                             key={appointment.id}
                                             className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
                                             onClick={() => handleViewAppointment(appointment)}
                                         >
-                                            <CardContent className="p-4">
+                                            <CardContent className="p-2.5">
                                                 <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="flex flex-col items-center justify-center w-16 h-16 rounded-lg bg-primary/10 text-primary">
-                                                            <span className="text-xs font-bold">{appointment.time}</span>
-                                                            <span className="text-xs text-muted-foreground">{appointment.duration}m</span>
+                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                        <div className="flex flex-col items-center justify-center w-12 h-12 rounded-lg bg-primary/10 text-primary flex-shrink-0">
+                                                            <span className="text-[10px] font-bold leading-tight">{appointment.time}</span>
+                                                            <span className="text-[9px] text-muted-foreground leading-tight">{appointment.duration}m</span>
                                                         </div>
-                                                        <div>
-                                                            <h4 className="font-semibold">{appointment.clientName}</h4>
-                                                            <p className="text-sm text-muted-foreground">{appointment.type}</p>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2 mb-0.5">
+                                                                <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium leading-tight whitespace-nowrap">
+                                                                    {appointment.type}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                    <Button variant="outline" size="sm">
-                                                        View Details
-                                                    </Button>
                                                 </div>
                                             </CardContent>
                                         </Card>
