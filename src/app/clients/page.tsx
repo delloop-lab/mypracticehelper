@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,6 +90,7 @@ interface ClientsPageProps {
 
 function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [clients, setClients] = useState<Client[]>([]);
     const [recordings, setRecordings] = useState<any[]>([]);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(autoOpenAddDialog);
@@ -138,13 +139,15 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     // Open client details if client query parameter is present
     useEffect(() => {
         const clientName = searchParams.get('client');
-        if (clientName && clients.length > 0) {
+        if (clientName && clients.length > 0 && !editingClient) {
             const client = clients.find(c => c.name === clientName || c.name.toLowerCase() === clientName.toLowerCase());
-            if (client && !editingClient) {
-                handleEdit(client);
+            if (client) {
+                setEditingClient(client);
+                setFormData(client);
+                setIsAddDialogOpen(true);
             }
         }
-    }, [searchParams, clients]);
+    }, [searchParams, clients, editingClient]);
 
     // Listen for updates from the recordings page
     useEffect(() => {
@@ -602,6 +605,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             currentMedications: "",
             doctorInfo: { name: "", phone: "" },
         });
+        // Remove client query parameter from URL to prevent dialog from reopening
+        if (searchParams.get('client')) {
+            router.replace('/clients');
+        }
     };
 
     return (
