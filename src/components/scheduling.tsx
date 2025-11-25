@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -352,6 +353,7 @@ export function Scheduling() {
                                     const dayStr = format(day, 'yyyy-MM-dd');
                                     const dayAppointments = appointments.filter(apt => {
                                         // Normalize appointment date to YYYY-MM-DD format for comparison
+                                        if (!apt.date) return false;
                                         const aptDateStr = apt.date.split('T')[0];
                                         return aptDateStr === dayStr;
                                     }).sort((a, b) => {
@@ -396,20 +398,20 @@ export function Scheduling() {
                                                         {dayAppointments.length} sessions
                                                     </div>
                                                 ) : (
-                                                    dayAppointments.slice(0, 3).map(apt => {
+                                                    dayAppointments.map(apt => {
                                                         // Format time properly - handle both HH:MM and other formats
                                                         const displayTime = apt.time && apt.time.length > 0 
                                                             ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
                                                             : '--:--';
                                                         return (
                                                             <div
-                                                                key={apt.id}
+                                                                key={`${apt.id}-${apt.clientName}-${apt.time}`}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     handleViewAppointment(apt);
                                                                 }}
                                                                 className={cn(
-                                                                    "px-1 py-0.5 rounded text-[10px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
+                                                                    "px-1 py-0.5 rounded text-[10px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight mb-0.5",
                                                                     apt.type === "Initial Consultation" && "bg-blue-100 text-blue-800 border-blue-300",
                                                                     apt.type === "Therapy Session" && "bg-green-100 text-green-800 border-green-300",
                                                                     apt.type === "Discovery Session" && "bg-purple-100 text-purple-800 border-purple-300",
@@ -935,7 +937,18 @@ export function Scheduling() {
                                     <User className="h-8 w-8 text-primary" />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold">{selectedAppointment.clientName}</h3>
+                                    <h3 className="text-xl font-bold">
+                                        <Link 
+                                            href={`/clients?client=${encodeURIComponent(selectedAppointment.clientName)}`}
+                                            className="text-primary hover:underline"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsDetailsOpen(false);
+                                            }}
+                                        >
+                                            {selectedAppointment.clientName}
+                                        </Link>
+                                    </h3>
                                     <p className="text-muted-foreground">{selectedAppointment.type}</p>
                                 </div>
                             </div>
