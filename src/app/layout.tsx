@@ -15,7 +15,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Algarve Therapy Centre",
+  title: "My Practice Helper",
   description: "The all-in-one platform for modern therapy practices. Scheduling, billing, notes, and more.",
 };
 

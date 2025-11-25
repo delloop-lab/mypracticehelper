@@ -48,7 +48,7 @@ export function Navbar() {
         <div className="mr-4 hidden md:flex">
           <Link href="/" className="mr-6 flex items-center space-x-2">
             <span className="hidden font-bold sm:inline-block text-xl text-primary">
-              Algarve Therapy Centre
+              My Practice Helper
             </span>
           </Link>
           <NavigationMenu>
@@ -81,7 +81,7 @@ export function Navbar() {
           </SheetTrigger>
           <SheetContent side="left" className="pr-0">
             <Link href="/" className="flex items-center" onClick={() => setIsOpen(false)}>
-              <span className="font-bold text-xl text-primary">Algarve Therapy Centre</span>
+              <span className="font-bold text-xl text-primary">My Practice Helper</span>
             </Link>
             <div className="my-4 h-[calc(100vh-8rem)] pb-10 pl-6">
               <div className="flex flex-col space-y-3">

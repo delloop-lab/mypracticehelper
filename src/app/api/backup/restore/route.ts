@@ -29,7 +29,7 @@ export async function POST(request: Request) {
             metadata: {
                 timestamp: new Date().toISOString(),
                 version: '1.0',
-                appName: 'Therapist Practice Manager (Pre-Restore Backup)',
+                appName: 'My Practice Helper (Pre-Restore Backup)',
             },
             clients: await fs.readFile(path.join(dataDir, 'clients.json'), 'utf-8').catch(() => '[]'),
             appointments: await fs.readFile(path.join(dataDir, 'appointments.json'), 'utf-8').catch(() => '[]'),

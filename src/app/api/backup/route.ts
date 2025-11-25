@@ -68,7 +68,7 @@ export async function POST() {
             metadata: {
                 timestamp: new Date().toISOString(),
                 version: '1.0',
-                appName: 'Therapist Practice Manager',
+                appName: 'My Practice Helper',
             },
             clients: JSON.parse(clients),
             appointments: JSON.parse(appointments),
