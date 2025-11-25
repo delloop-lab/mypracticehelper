@@ -1085,11 +1085,19 @@ export function Scheduling() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {appointmentTypes.filter(t => t.enabled).map(type => (
-                                            <SelectItem key={type.name} value={type.name}>
-                                                {type.name}
-                                            </SelectItem>
-                                        ))}
+                                        {appointmentTypes
+                                            .filter(t => t.enabled)
+                                            .sort((a, b) => {
+                                                // Move Discovery Session to the top
+                                                if (a.name === "Discovery Session") return -1;
+                                                if (b.name === "Discovery Session") return 1;
+                                                return 0;
+                                            })
+                                            .map(type => (
+                                                <SelectItem key={type.name} value={type.name}>
+                                                    {type.name}
+                                                </SelectItem>
+                                            ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -1291,11 +1299,19 @@ export function Scheduling() {
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {appointmentTypes.filter(type => type.enabled).map((type) => (
-                                                    <SelectItem key={type.name} value={type.name}>
-                                                        {type.name}
-                                                    </SelectItem>
-                                                ))}
+                                                {appointmentTypes
+                                                    .filter(type => type.enabled)
+                                                    .sort((a, b) => {
+                                                        // Move Discovery Session to the top
+                                                        if (a.name === "Discovery Session") return -1;
+                                                        if (b.name === "Discovery Session") return 1;
+                                                        return 0;
+                                                    })
+                                                    .map((type) => (
+                                                        <SelectItem key={type.name} value={type.name}>
+                                                            {type.name}
+                                                        </SelectItem>
+                                                    ))}
                                             </SelectContent>
                                         </Select>
                                     ) : (
