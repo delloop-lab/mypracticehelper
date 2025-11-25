@@ -53,24 +53,6 @@ export function Navbar() {
               className="h-8 w-auto"
             />
           </Link>
-          <NavigationMenu className="hidden md:block">
-            <NavigationMenuList>
-              <NavigationMenuItem>
-                <NavigationMenuLink asChild>
-                  <Link href="/dashboard" className={navigationMenuTriggerStyle()}>
-                    Dashboard
-                  </Link>
-                </NavigationMenuLink>
-              </NavigationMenuItem>
-              <NavigationMenuItem>
-                <NavigationMenuLink asChild>
-                  <Link href="/settings" className={navigationMenuTriggerStyle()}>
-                    Settings
-                  </Link>
-                </NavigationMenuLink>
-              </NavigationMenuItem>
-            </NavigationMenuList>
-          </NavigationMenu>
         </div>
 
         {/* Mobile Menu Trigger */}
@@ -146,6 +128,24 @@ export function Navbar() {
             {/* Add search or other items here if needed */}
           </div>
           <nav className="flex items-center space-x-2">
+            <NavigationMenu className="hidden md:block">
+              <NavigationMenuList>
+                <NavigationMenuItem>
+                  <NavigationMenuLink asChild>
+                    <Link href="/dashboard" className={navigationMenuTriggerStyle()}>
+                      Dashboard
+                    </Link>
+                  </NavigationMenuLink>
+                </NavigationMenuItem>
+                <NavigationMenuItem>
+                  <NavigationMenuLink asChild>
+                    <Link href="/settings" className={navigationMenuTriggerStyle()}>
+                      Settings
+                    </Link>
+                  </NavigationMenuLink>
+                </NavigationMenuItem>
+              </NavigationMenuList>
+            </NavigationMenu>
             <Button
               variant="outline"
               onClick={() => {
