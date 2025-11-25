@@ -82,6 +82,11 @@ export function Sidebar() {
                         ))}
                     </nav>
                 </div>
+                <div className="mt-auto border-t px-4 py-3">
+                    <div className="text-xs text-muted-foreground text-center">
+                        Version 0.9.1
+                    </div>
+                </div>
             </div>
         </div>
     );
