@@ -59,14 +59,14 @@ const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => {
     return (
         <>
             <div className="flex-1 overflow-auto py-2">
-                <nav className="grid items-start px-4 text-sm font-medium">
+                <nav className="grid items-start px-4 text-base lg:text-lg font-medium">
                     {sidebarItems.map((item) => (
                         <Link
                             key={item.href}
                             href={item.href}
                             onClick={onNavigate}
                             className={cn(
-                                "flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all hover:text-primary text-base",
+                                "flex items-center gap-3 rounded-lg px-3 py-2.5 lg:py-3 transition-all hover:text-primary",
                                 pathname === item.href
                                     ? "bg-muted text-primary font-semibold"
                                     : "text-muted-foreground"

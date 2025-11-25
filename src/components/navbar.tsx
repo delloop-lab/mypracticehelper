@@ -47,7 +47,7 @@ export function Navbar() {
       <div className="container flex h-16 items-center justify-between px-4 md:px-8">
         <div className="mr-4 hidden md:flex">
           <Link href="/" className="mr-6 flex items-center space-x-2">
-            <span className="hidden font-bold sm:inline-block text-xl text-primary">
+            <span className="hidden font-bold sm:inline-block text-xl lg:text-2xl text-primary">
               My Practice Helper
             </span>
           </Link>

@@ -77,17 +77,23 @@
   }
 
   body {
-    @apply bg-background text-foreground text-base;
+    @apply bg-background text-foreground;
   }
 
   html {
-    @apply text-base;
+    font-size: 16px;
   }
 
-  /* Improve readability with better base font size */
+  /* Increase base font size for desktop */
   @media (min-width: 1024px) {
     html {
-      font-size: 16px;
+      font-size: 18px;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    html {
+      font-size: 19px;
     }
   }
 }
