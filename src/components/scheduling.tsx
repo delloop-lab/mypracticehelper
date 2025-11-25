@@ -303,28 +303,29 @@ export function Scheduling() {
             </div>
 
             {viewMode === 'calendar' ? (
-                <Card className="h-[800px] flex flex-col">
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                        <div className="flex items-center gap-4">
-                            <h2 className="text-2xl font-bold">{format(currentMonth, 'MMMM yyyy')}</h2>
-                            <div className="flex items-center gap-1">
-                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    className="px-4"
-                                    onClick={() => setCurrentMonth(new Date())}
-                                >
-                                    Today
-                                </Button>
-                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                    <Card className="lg:col-span-3 h-[800px] flex flex-col">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-2xl font-bold">{format(currentMonth, 'MMMM yyyy')}</h2>
+                                <div className="flex items-center gap-1">
+                                    <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="px-4"
+                                        onClick={() => setCurrentMonth(new Date())}
+                                    >
+                                        Today
+                                    </Button>
+                                    <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
                             </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="flex-1 p-0">
+                        </CardHeader>
+                        <CardContent className="flex-1 p-0">
                         <div className="h-full flex flex-col">
                             <div className="grid grid-cols-7 border-b">
                                 {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
@@ -338,7 +339,12 @@ export function Scheduling() {
                                     start: startOfWeek(startOfMonth(currentMonth)),
                                     end: endOfWeek(endOfMonth(currentMonth))
                                 }).map((day, dayIdx) => {
-                                    const dayAppointments = appointments.filter(apt => isSameDay(new Date(apt.date), day));
+                                    const dayStr = format(day, 'yyyy-MM-dd');
+                                    const dayAppointments = appointments.filter(apt => {
+                                        // Normalize appointment date to YYYY-MM-DD format for comparison
+                                        const aptDateStr = apt.date.split('T')[0];
+                                        return aptDateStr === dayStr;
+                                    });
                                     return (
                                         <div
                                             key={day.toString()}
@@ -348,8 +354,13 @@ export function Scheduling() {
                                                 isToday(day) && "bg-primary/5"
                                             )}
                                             onClick={() => {
-                                                setFormData({ ...formData, date: format(day, 'yyyy-MM-dd') });
-                                                setIsDialogOpen(true);
+                                                const dateStr = format(day, 'yyyy-MM-dd');
+                                                setSelectedDate(dateStr);
+                                                setFormData({ ...formData, date: dateStr });
+                                                // If there are appointments, show them; otherwise open dialog to create new
+                                                if (dayAppointments.length === 0) {
+                                                    setIsDialogOpen(true);
+                                                }
                                             }}
                                         >
                                             <div className="flex justify-between items-start mb-1">
@@ -420,6 +431,97 @@ export function Scheduling() {
                         </div>
                     </CardContent>
                 </Card>
+                
+                {/* Side panel showing appointments for selected date */}
+                <Card className="lg:col-span-1 h-[800px] flex flex-col">
+                    <CardHeader>
+                        <CardTitle className="text-lg">
+                            {format(new Date(selectedDate), 'EEEE, MMMM d')}
+                        </CardTitle>
+                        <CardDescription>
+                            Appointments for selected date
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex-1 overflow-y-auto">
+                        {(() => {
+                            const selectedDateAppointments = appointments.filter(apt => {
+                                // Normalize appointment date to YYYY-MM-DD format for comparison
+                                const aptDateStr = apt.date.split('T')[0];
+                                return aptDateStr === selectedDate;
+                            });
+                            return selectedDateAppointments.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                                    <CalendarIcon className="h-12 w-12 mb-4 opacity-50" />
+                                    <p className="text-sm text-center">No appointments scheduled</p>
+                                    <Button 
+                                        size="sm" 
+                                        className="mt-4" 
+                                        onClick={() => {
+                                            setFormData({ ...formData, date: selectedDate });
+                                            setIsDialogOpen(true);
+                                        }}
+                                    >
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Add Appointment
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {selectedDateAppointments.sort((a, b) => a.time.localeCompare(b.time)).map((appointment) => (
+                                        <Card 
+                                            key={appointment.id}
+                                            className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
+                                            onClick={() => handleViewAppointment(appointment)}
+                                        >
+                                            <CardContent className="p-4">
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <h4 className="font-semibold">{appointment.clientName}</h4>
+                                                        <span className={cn(
+                                                            "text-xs px-2 py-1 rounded",
+                                                            appointment.type === "Initial Consultation" && "bg-blue-100 text-blue-700",
+                                                            appointment.type === "Therapy Session" && "bg-green-100 text-green-700",
+                                                            appointment.type === "Discovery Session" && "bg-purple-100 text-purple-700",
+                                                            appointment.type === "Couples Therapy Session" && "bg-pink-100 text-pink-700",
+                                                            appointment.type === "Family Therapy" && "bg-orange-100 text-orange-700",
+                                                            appointment.type === "Follow-up Session" && "bg-yellow-100 text-yellow-700"
+                                                        )}>
+                                                            {appointment.type}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                                        <span className="flex items-center gap-1">
+                                                            <Clock className="h-3 w-3" />
+                                                            {appointment.time}
+                                                        </span>
+                                                        <span>{appointment.duration}m</span>
+                                                    </div>
+                                                    {appointment.fee && (
+                                                        <div className="text-xs text-muted-foreground">
+                                                            €{appointment.fee} - {appointment.paymentStatus || "unpaid"}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                    <Button 
+                                        variant="outline" 
+                                        className="w-full mt-4" 
+                                        onClick={() => {
+                                            setFormData({ ...formData, date: selectedDate });
+                                            setIsDialogOpen(true);
+                                        }}
+                                    >
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Add Another
+                                    </Button>
+                                </div>
+                            );
+                        })()}
+                    </CardContent>
+                </Card>
+            </div>
             ) : (
                 <div className="grid gap-6 md:grid-cols-3">
                     <Card className="md:col-span-1 h-fit">
