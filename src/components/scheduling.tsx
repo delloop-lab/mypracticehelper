@@ -480,7 +480,7 @@ export function Scheduling() {
                                     </div>
                                 ))}
                             </div>
-                            <div className="flex-1 grid grid-cols-7 overflow-hidden" style={{ gridTemplateRows: 'repeat(6, minmax(0, 1fr))' }}>
+                            <div className="flex-1 grid grid-cols-7 overflow-hidden" style={{ gridTemplateRows: 'repeat(6, minmax(120px, 1fr))' }}>
                                 {eachDayOfInterval({
                                     start: startOfWeek(startOfMonth(currentMonth)),
                                     end: endOfWeek(endOfMonth(currentMonth))
@@ -506,7 +506,7 @@ export function Scheduling() {
                                         <div
                                             key={day.toString()}
                                             className={cn(
-                                                "border-b border-r p-1.5 transition-colors hover:bg-muted/50 cursor-pointer relative group overflow-hidden",
+                                                "border-b border-r p-1.5 transition-colors hover:bg-muted/50 cursor-pointer relative group overflow-hidden flex flex-col",
                                                 !isSameMonth(day, currentMonth) && "bg-muted/20 text-muted-foreground",
                                                 isToday(day) && "bg-primary/5",
                                                 dayAppointments.length > 0 && "bg-muted/30"
@@ -524,7 +524,7 @@ export function Scheduling() {
                                                 }
                                             }}
                                         >
-                                            <div className="flex justify-between items-start mb-1">
+                                            <div className="flex justify-between items-start mb-1 flex-shrink-0">
                                                 <span className={cn(
                                                     "text-sm font-medium h-7 w-7 flex items-center justify-center rounded-full",
                                                     isToday(day) && "bg-primary text-primary-foreground"
@@ -532,7 +532,7 @@ export function Scheduling() {
                                                     {format(day, 'd')}
                                                 </span>
                                             </div>
-                                            <div className="space-y-0.5 overflow-y-auto max-h-[120px] mt-1 min-h-[40px]">
+                                            <div className="space-y-0.5 overflow-y-auto flex-1 mt-1 min-h-0">
                                                 {dayAppointments.length > 2 ? (
                                                     <div className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30">
                                                         {dayAppointments.length} sessions
@@ -551,7 +551,7 @@ export function Scheduling() {
                                                                     handleViewAppointment(apt);
                                                                 }}
                                                                 className={cn(
-                                                                    "px-1 py-0.5 rounded text-[10px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
+                                                                    "px-1 py-0.5 rounded text-[9px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
                                                                     idx < dayAppointments.length - 1 && "mb-0.5",
                                                                     apt.type === "Initial Consultation" && "bg-blue-100 text-blue-800 border-blue-300",
                                                                     apt.type === "Therapy Session" && "bg-green-100 text-green-800 border-green-300",
@@ -562,8 +562,8 @@ export function Scheduling() {
                                                                 )}
                                                                 title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
                                                             >
-                                                                <div className="font-bold text-[11px] leading-tight">{displayTime}</div>
-                                                                <div className="truncate text-[9px] leading-tight">{apt.clientName}</div>
+                                                                <div className="font-bold text-[10px] leading-tight">{displayTime}</div>
+                                                                <div className="truncate text-[8px] leading-tight">{apt.clientName}</div>
                                                             </div>
                                                         );
                                                     })
