@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -48,13 +47,10 @@ export function Navbar() {
       <div className="container flex h-16 items-center justify-between px-4 md:px-8">
         <div className="mr-4 flex items-center">
           <Link href="/" className="mr-6 flex items-center">
-            <Image
+            <img
               src="/logo.png"
               alt="My Practice Helper"
-              width={180}
-              height={40}
               className="h-8 w-auto"
-              priority
             />
           </Link>
           <NavigationMenu className="hidden md:block">
@@ -87,13 +83,10 @@ export function Navbar() {
           </SheetTrigger>
           <SheetContent side="left" className="pr-0">
             <Link href="/" className="flex items-center" onClick={() => setIsOpen(false)}>
-              <Image
+              <img
                 src="/logo.png"
                 alt="My Practice Helper"
-                width={180}
-                height={40}
                 className="h-8 w-auto"
-                priority
               />
             </Link>
             <div className="my-4 h-[calc(100vh-8rem)] pb-10 pl-6">
