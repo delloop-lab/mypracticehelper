@@ -38,6 +38,8 @@ interface Recording {
     audioURL: string;
     transcript: string;
     clientName?: string;
+    clientId?: string;
+    client_id?: string;
     notes?: NoteSection[];
 }
 

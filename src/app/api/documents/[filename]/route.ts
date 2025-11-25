@@ -54,7 +54,7 @@ export async function GET(
     console.log('File size:', fileBuffer.length, 'bytes');
     console.log('=============================');
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(new Uint8Array(fileBuffer), {
         headers: {
             'Content-Type': contentType,
             'Content-Disposition': `inline; filename="${filename}"`,
