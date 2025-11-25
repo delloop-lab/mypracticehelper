@@ -547,11 +547,15 @@ export function Scheduling() {
                                     </div>
                                 ))}
                             </div>
-                            <div className="flex-1 grid grid-cols-7 overflow-hidden" style={{ gridTemplateRows: 'repeat(6, minmax(120px, 1fr))' }}>
-                                {eachDayOfInterval({
+                            {(() => {
+                                const daysInView = eachDayOfInterval({
                                     start: startOfWeek(startOfMonth(currentMonth)),
                                     end: endOfWeek(endOfMonth(currentMonth))
-                                }).map((day, dayIdx) => {
+                                });
+                                const numberOfWeeks = Math.ceil(daysInView.length / 7);
+                                return (
+                                    <div className="flex-1 grid grid-cols-7 overflow-hidden" style={{ gridTemplateRows: `repeat(${numberOfWeeks}, minmax(120px, 1fr))` }}>
+                                        {daysInView.map((day, dayIdx) => {
                                     const dayStr = format(day, 'yyyy-MM-dd');
                                     const dayAppointments = appointments.filter(apt => {
                                         // Normalize appointment date to YYYY-MM-DD format for comparison
@@ -649,7 +653,9 @@ export function Scheduling() {
                                         </div>
                                     );
                                 })}
-                            </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </CardContent>
                     {/* Calendar Legend - moved outside scrollable area */}
