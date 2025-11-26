@@ -189,29 +189,55 @@ export async function sendReminderEmail(
         customTemplate
     );
 
-    // Replace logo placeholder with public URL
-    let finalHtml = html;
-    const baseUrl = getBaseUrl();
-    const logoUrl = `${baseUrl}/logo.png`;
+    // Prepare attachments with logo embedded using CID
+    const attachments: any[] = [];
+    let logoCid = null;
     
-    // Replace logo placeholder with public URL
-    finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoUrl);
-    
-    if (process.env.NODE_ENV === 'development') {
-        console.log('[Email] Logo URL:', logoUrl);
+    try {
+        const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+        if (fs.existsSync(logoPath)) {
+            logoCid = 'logo@algarve-therapy';
+            attachments.push({
+                filename: 'logo.png',
+                path: logoPath,
+                cid: logoCid, // Content-ID for inline image
+            });
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[Email] Logo attached with CID:', logoCid);
+            }
+        } else {
+            console.warn('[Email] Logo file not found at:', logoPath);
+        }
+    } catch (error) {
+        console.error('[Email] Error reading logo file:', error);
     }
 
-    const mailOptions = {
+    // Replace logo placeholder with CID reference
+    let finalHtml = html;
+    if (logoCid) {
+        finalHtml = html.replace(/\{\{logoUrl\}\}/g, `cid:${logoCid}`);
+    } else {
+        // Remove logo div if logo not found
+        finalHtml = html.replace(/<div[^>]*>\s*<img[^>]*src="\{\{logoUrl\}\}"[^>]*>\s*<\/div>/gi, '');
+    }
+
+    const mailOptions: any = {
         from: `"${smtpFromName}" <${smtpFrom}>`,
         to: to,
         subject: subject || 'Appointment Reminder', // Ensure subject is always set
         html: finalHtml, // HTML email body only - no plain text
     };
 
+    // Add attachments if we have them
+    if (attachments.length > 0) {
+        mailOptions.attachments = attachments;
+    }
+
     // Log for debugging (only in development)
     if (process.env.NODE_ENV === 'development') {
         console.log('[Email] Sending HTML email');
         console.log('[Email] HTML length:', finalHtml.length, 'characters');
+        console.log('[Email] Attachments:', attachments.length);
     }
 
     await transporter.sendMail(mailOptions);
