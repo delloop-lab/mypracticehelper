@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendly Webhook Setup</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #0069ff;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #0069ff;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background: #0069ff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0052cc;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .note {
+            background: #fff3cd;
+            padding: 10px;
+            border-left: 4px solid #ffc107;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 Calendly Webhook Setup</h1>
+        <p>This tool will help you create a webhook in Calendly that automatically creates sessions in your app.</p>
+
+        <div class="step">
+            <h2>Step 1: Get Your Personal Access Token</h2>
+            <ol>
+                <li>Go to: <a href="https://calendly.com/integrations/api_webhooks/personal_access_tokens" target="_blank">Calendly Personal Access Tokens</a></li>
+                <li>Click <strong>"Create Token"</strong></li>
+                <li>Name it: "My Practice Helper"</li>
+                <li>Copy the token (you'll only see it once!)</li>
+            </ol>
+            <input type="text" id="accessToken" placeholder="Paste your Personal Access Token here">
+        </div>
+
+        <div class="step">
+            <h2>Step 2: Get Your Organization URI</h2>
+            <p>Click the button below to get your organization info:</p>
+            <button onclick="getOrganization()">Get My Organization URI</button>
+            <div id="orgResult" style="margin-top: 10px;"></div>
+            <input type="text" id="organizationUri" placeholder="Organization URI will appear here" style="margin-top: 10px;">
+        </div>
+
+        <div class="step">
+            <h2>Step 3: Enter Your Webhook URL</h2>
+            <p>This is your production app URL + <code>/api/calendly/webhook</code></p>
+            <input type="text" id="webhookUrl" placeholder="https://your-app.vercel.app/api/calendly/webhook" value="https://your-app.vercel.app/api/calendly/webhook">
+            <div class="note">
+                <strong>Note:</strong> Replace <code>your-app.vercel.app</code> with your actual Vercel domain.
+            </div>
+        </div>
+
+        <div class="step">
+            <h2>Step 4: Create the Webhook</h2>
+            <button onclick="createWebhook()">Create Webhook Subscription</button>
+            <div id="result" class="result"></div>
+        </div>
+
+        <div class="step" id="signingKeyStep" style="display: none;">
+            <h2>Step 5: Add Signing Key to Vercel</h2>
+            <p>Copy this signing key and add it to Vercel environment variables:</p>
+            <textarea id="signingKey" readonly rows="3"></textarea>
+            <div class="note">
+                <strong>Vercel Steps:</strong>
+                <ol>
+                    <li>Go to Vercel Dashboard → Your Project → Settings → Environment Variables</li>
+                    <li>Add: <code>CALENDLY_WEBHOOK_SIGNING_KEY</code> = (paste the key above)</li>
+                    <li>Save and redeploy</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function getOrganization() {
+            const token = document.getElementById('accessToken').value;
+            if (!token) {
+                alert('Please enter your Personal Access Token first!');
+                return;
+            }
+
+            const resultDiv = document.getElementById('orgResult');
+            resultDiv.innerHTML = '<p>Loading...</p>';
+
+            try {
+                const response = await fetch('https://api.calendly.com/users/me', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.resource) {
+                    const orgUri = data.resource.current_organization || data.resource.uri;
+                    document.getElementById('organizationUri').value = orgUri;
+                    resultDiv.innerHTML = `<p style="color: green;">✅ Found organization!</p>`;
+                } else {
+                    resultDiv.innerHTML = `<p style="color: red;">❌ Error: ${JSON.stringify(data)}</p>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p style="color: red;">❌ Error: ${error.message}</p>`;
+            }
+        }
+
+        async function createWebhook() {
+            const token = document.getElementById('accessToken').value;
+            const orgUri = document.getElementById('organizationUri').value;
+            const webhookUrl = document.getElementById('webhookUrl').value;
+
+            if (!token || !orgUri || !webhookUrl) {
+                alert('Please fill in all fields!');
+                return;
+            }
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '<p>Creating webhook...</p>';
+
+            try {
+                const response = await fetch('https://api.calendly.com/webhook_subscriptions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: webhookUrl,
+                        events: ['invitee.created', 'invitee.canceled'],
+                        organization: orgUri,
+                        scope: 'organization'
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.resource) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h3>✅ Webhook Created Successfully!</h3>
+                        <p><strong>Webhook ID:</strong> ${data.resource.id}</p>
+                        <p><strong>URL:</strong> ${data.resource.callback_url}</p>
+                        <p><strong>Status:</strong> ${data.resource.state}</p>
+                    `;
+                    
+                    // Show signing key step
+                    if (data.resource.signing_key) {
+                        document.getElementById('signingKeyStep').style.display = 'block';
+                        document.getElementById('signingKey').value = data.resource.signing_key;
+                    }
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ Error Creating Webhook</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `<h3>❌ Error: ${error.message}</h3>`;
+            }
+        }
+    </script>
+</body>
+</html>
+
