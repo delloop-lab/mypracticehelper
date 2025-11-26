@@ -52,11 +52,37 @@ export async function GET(request: Request) {
             .select('*')
             .order('date', { ascending: true });
 
-        if (sessionsError || !sessions) {
+        console.log('[Calendar ICS] Fetched sessions:', sessions?.length || 0);
+        
+        if (sessionsError) {
             console.error('[Calendar ICS] Error fetching sessions:', sessionsError);
-            return new NextResponse('No sessions available', {
-                status: 200,
+            return new NextResponse('Error fetching sessions', {
+                status: 500,
                 headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+            });
+        }
+
+        if (!sessions || sessions.length === 0) {
+            console.log('[Calendar ICS] No sessions found');
+            // Return empty calendar instead of error
+            const emptyCalendar = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//My Practice Helper//Therapy Sessions//EN',
+                'CALSCALE:GREGORIAN',
+                'METHOD:PUBLISH',
+                'X-WR-CALNAME:Therapy Sessions',
+                'X-WR-TIMEZONE:UTC',
+                'END:VCALENDAR',
+                '',
+            ].join('\r\n');
+            
+            return new NextResponse(emptyCalendar, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'text/calendar',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                },
             });
         }
 
@@ -69,45 +95,95 @@ export async function GET(request: Request) {
         const now = new Date();
         const dtStamp = formatDateToICS(now);
 
-        const events = sessions.map((session: any) => {
-            const start = new Date(session.date);
-            const durationMinutes = session.duration || 60;
-            const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+        const events = sessions
+            .filter((session: any) => {
+                // Filter out sessions without valid dates
+                if (!session.date) {
+                    console.warn('[Calendar ICS] Session missing date:', session.id);
+                    return false;
+                }
+                return true;
+            })
+            .map((session: any) => {
+                try {
+                    const start = new Date(session.date);
+                    
+                    // Validate date
+                    if (isNaN(start.getTime())) {
+                        console.warn('[Calendar ICS] Invalid date for session:', session.id, session.date);
+                        return null;
+                    }
+                    
+                    const durationMinutes = session.duration || 60;
+                    const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
 
-            const dtStart = formatDateToICS(start);
-            const dtEnd = formatDateToICS(end);
+                    const dtStart = formatDateToICS(start);
+                    const dtEnd = formatDateToICS(end);
 
-            const clientName = session.client_id
-                ? clientMap.get(session.client_id) || 'Client Session'
-                : 'Client Session';
+                    const clientName = session.client_id
+                        ? clientMap.get(session.client_id) || 'Client Session'
+                        : 'Client Session';
 
-            const summary = `${clientName} – Therapy Session`;
-            const uid = `${session.id}@mypracticehelper`;
+                    const summary = `${clientName} – Therapy Session`;
+                    const uid = `${session.id}@mypracticehelper`;
 
-            const descriptionLines: string[] = [];
-            descriptionLines.push(`Session type: ${session.type || 'Session'}`);
-            if (session.notes) {
-                descriptionLines.push('');
-                descriptionLines.push(session.notes);
-            }
+                    const descriptionLines: string[] = [];
+                    descriptionLines.push(`Session type: ${session.type || 'Session'}`);
+                    if (session.notes) {
+                        descriptionLines.push('');
+                        descriptionLines.push(session.notes);
+                    }
 
-            const description = descriptionLines.join('\n');
+                    const description = descriptionLines.join('\n');
 
-            // Build event lines with proper formatting
-            const eventLines: string[] = [
-                'BEGIN:VEVENT',
-                `UID:${uid}`,
-                `DTSTAMP:${dtStamp}`,
-                `DTSTART:${dtStart}`,
-                `DTEND:${dtEnd}`,
-                `SUMMARY:${escapeICS(summary)}`,
-                `DESCRIPTION:${escapeICS(description)}`,
-                'END:VEVENT',
-            ];
+                    // Build event lines with proper formatting
+                    const eventLines: string[] = [
+                        'BEGIN:VEVENT',
+                        `UID:${uid}`,
+                        `DTSTAMP:${dtStamp}`,
+                        `DTSTART:${dtStart}`,
+                        `DTEND:${dtEnd}`,
+                        `SUMMARY:${escapeICS(summary)}`,
+                        `DESCRIPTION:${escapeICS(description)}`,
+                        'END:VEVENT',
+                    ];
 
-            // Fold long lines and join with CRLF
-            return eventLines.map(foldLine).join('\r\n');
-        }).join('\r\n');
+                    // Fold long lines and join with CRLF
+                    return eventLines.map(foldLine).join('\r\n');
+                } catch (error) {
+                    console.error('[Calendar ICS] Error processing session:', session.id, error);
+                    return null;
+                }
+            })
+            .filter((event: string | null) => event !== null)
+            .join('\r\n');
+        
+        const eventCount = events ? events.split('BEGIN:VEVENT').length - 1 : 0;
+        console.log('[Calendar ICS] Generated events:', eventCount);
+
+        if (!events || events.trim().length === 0) {
+            console.log('[Calendar ICS] No valid events to include');
+            // Return empty calendar
+            const emptyCalendar = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//My Practice Helper//Therapy Sessions//EN',
+                'CALSCALE:GREGORIAN',
+                'METHOD:PUBLISH',
+                'X-WR-CALNAME:Therapy Sessions',
+                'X-WR-TIMEZONE:UTC',
+                'END:VCALENDAR',
+                '',
+            ].join('\r\n');
+            
+            return new NextResponse(emptyCalendar, {
+                status: 200,
+                headers: {
+                    'Content-Type': 'text/calendar; charset=utf-8',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                },
+            });
+        }
 
         const calendarLines = [
             'BEGIN:VCALENDAR',
@@ -123,11 +199,12 @@ export async function GET(request: Request) {
 
         const ical = calendarLines.map(foldLine).join('\r\n') + '\r\n';
 
+        console.log('[Calendar ICS] Returning ICS file, length:', ical.length);
+        
         return new NextResponse(ical, {
             status: 200,
             headers: {
-                'Content-Type': 'text/calendar',
-                'Content-Disposition': 'attachment; filename="sessions.ics"',
+                'Content-Type': 'text/calendar; charset=utf-8',
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache',
                 'Expires': '0',
