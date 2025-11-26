@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AppointmentTypeSettings {
@@ -54,11 +54,30 @@ export default function SettingsPage() {
     const [isRestoring, setIsRestoring] = useState(false);
     const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [baseUrl, setBaseUrl] = useState<string>("");
+    const [userEmail, setUserEmail] = useState<string>("");
+    const [userName, setUserName] = useState<string>("");
 
     useEffect(() => {
         loadSettings();
         if (typeof window !== "undefined") {
             setBaseUrl(window.location.origin);
+            // Get user email from localStorage or cookie
+            const email = localStorage.getItem("userEmail") || 
+                         document.cookie.split('; ').find(row => row.startsWith('userEmail='))?.split('=')[1] || 
+                         "";
+            setUserEmail(email);
+            
+            // Extract name from email or use default
+            if (email === "claire@claireschillaci.com") {
+                setUserName("Claire Schillaci");
+            } else if (email) {
+                // Extract name from email (e.g., "john.doe@example.com" -> "John Doe")
+                const namePart = email.split('@')[0];
+                const name = namePart.split('.').map(part => 
+                    part.charAt(0).toUpperCase() + part.slice(1)
+                ).join(' ');
+                setUserName(name);
+            }
         }
     }, []);
 
@@ -192,13 +211,90 @@ export default function SettingsPage() {
                 </p>
             </div>
 
-            <Tabs defaultValue="general" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-4 max-w-2xl">
+            <Tabs defaultValue="profile" className="space-y-6">
+                <TabsList className="grid w-full grid-cols-5 max-w-3xl">
+                    <TabsTrigger value="profile">Profile</TabsTrigger>
                     <TabsTrigger value="general">General</TabsTrigger>
                     <TabsTrigger value="appointments">Appointments</TabsTrigger>
                     <TabsTrigger value="defaults">Defaults</TabsTrigger>
                     <TabsTrigger value="backup">Backup & Data</TabsTrigger>
                 </TabsList>
+
+                {/* Profile Tab */}
+                <TabsContent value="profile" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <User className="h-5 w-5" />
+                                Profile Information
+                            </CardTitle>
+                            <CardDescription>
+                                Your account information and preferences
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="userName">Name</Label>
+                                <Input
+                                    id="userName"
+                                    readOnly
+                                    value={userName}
+                                    className="bg-muted"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Your name as displayed in the application
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="userEmail">Email</Label>
+                                <Input
+                                    id="userEmail"
+                                    type="email"
+                                    readOnly
+                                    value={userEmail}
+                                    className="bg-muted"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Your email address used for login
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="timezone">Timezone</Label>
+                                <Select
+                                    value={settings.timezone || "UTC"}
+                                    onValueChange={(value) => setSettings({ ...settings, timezone: value })}
+                                >
+                                    <SelectTrigger id="timezone">
+                                        <SelectValue placeholder="Select timezone" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="UTC">UTC</SelectItem>
+                                        <SelectItem value="Europe/Lisbon">Europe/Lisbon (Portugal)</SelectItem>
+                                        <SelectItem value="Europe/London">Europe/London (UK)</SelectItem>
+                                        <SelectItem value="Europe/Paris">Europe/Paris (France)</SelectItem>
+                                        <SelectItem value="Europe/Berlin">Europe/Berlin (Germany)</SelectItem>
+                                        <SelectItem value="Europe/Madrid">Europe/Madrid (Spain)</SelectItem>
+                                        <SelectItem value="Europe/Rome">Europe/Rome (Italy)</SelectItem>
+                                        <SelectItem value="America/New_York">America/New_York (US Eastern)</SelectItem>
+                                        <SelectItem value="America/Chicago">America/Chicago (US Central)</SelectItem>
+                                        <SelectItem value="America/Denver">America/Denver (US Mountain)</SelectItem>
+                                        <SelectItem value="America/Los_Angeles">America/Los_Angeles (US Pacific)</SelectItem>
+                                        <SelectItem value="America/Toronto">America/Toronto (Canada Eastern)</SelectItem>
+                                        <SelectItem value="America/Vancouver">America/Vancouver (Canada Pacific)</SelectItem>
+                                        <SelectItem value="Australia/Sydney">Australia/Sydney</SelectItem>
+                                        <SelectItem value="Australia/Melbourne">Australia/Melbourne</SelectItem>
+                                        <SelectItem value="Asia/Tokyo">Asia/Tokyo (Japan)</SelectItem>
+                                        <SelectItem value="Asia/Shanghai">Asia/Shanghai (China)</SelectItem>
+                                        <SelectItem value="Asia/Dubai">Asia/Dubai (UAE)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Your timezone is used for calendar feeds and appointment times. This ensures appointments appear at the correct time in Google Calendar.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
 
                 {/* General Settings Tab */}
                 <TabsContent value="general" className="space-y-4">
@@ -268,40 +364,6 @@ export default function SettingsPage() {
                                 </div>
                                 <p className="text-xs text-muted-foreground">
                                     Paste this URL into Google Calendar under <strong>Settings &gt; Add calendar &gt; From URL</strong> to subscribe to your session calendar.
-                                </p>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="timezone">Timezone</Label>
-                                <Select
-                                    value={settings.timezone || "UTC"}
-                                    onValueChange={(value) => setSettings({ ...settings, timezone: value })}
-                                >
-                                    <SelectTrigger id="timezone">
-                                        <SelectValue placeholder="Select timezone" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="UTC">UTC</SelectItem>
-                                        <SelectItem value="Europe/Lisbon">Europe/Lisbon (Portugal)</SelectItem>
-                                        <SelectItem value="Europe/London">Europe/London (UK)</SelectItem>
-                                        <SelectItem value="Europe/Paris">Europe/Paris (France)</SelectItem>
-                                        <SelectItem value="Europe/Berlin">Europe/Berlin (Germany)</SelectItem>
-                                        <SelectItem value="Europe/Madrid">Europe/Madrid (Spain)</SelectItem>
-                                        <SelectItem value="Europe/Rome">Europe/Rome (Italy)</SelectItem>
-                                        <SelectItem value="America/New_York">America/New_York (US Eastern)</SelectItem>
-                                        <SelectItem value="America/Chicago">America/Chicago (US Central)</SelectItem>
-                                        <SelectItem value="America/Denver">America/Denver (US Mountain)</SelectItem>
-                                        <SelectItem value="America/Los_Angeles">America/Los_Angeles (US Pacific)</SelectItem>
-                                        <SelectItem value="America/Toronto">America/Toronto (Canada Eastern)</SelectItem>
-                                        <SelectItem value="America/Vancouver">America/Vancouver (Canada Pacific)</SelectItem>
-                                        <SelectItem value="Australia/Sydney">Australia/Sydney</SelectItem>
-                                        <SelectItem value="Australia/Melbourne">Australia/Melbourne</SelectItem>
-                                        <SelectItem value="Asia/Tokyo">Asia/Tokyo (Japan)</SelectItem>
-                                        <SelectItem value="Asia/Shanghai">Asia/Shanghai (China)</SelectItem>
-                                        <SelectItem value="Asia/Dubai">Asia/Dubai (UAE)</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs text-muted-foreground">
-                                    Your timezone is used for calendar feeds and appointment times. This ensures appointments appear at the correct time in Google Calendar.
                                 </p>
                             </div>
                         </CardContent>
