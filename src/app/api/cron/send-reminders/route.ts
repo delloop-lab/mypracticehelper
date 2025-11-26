@@ -53,6 +53,36 @@ export async function GET(request: Request) {
     try {
         console.log('[Reminders Cron] Starting reminder check...');
 
+        // Get settings (timezone, email template, company logo, and reminder hours)
+        let timezone = 'UTC';
+        let emailTemplate: any = undefined;
+        let companyLogo: string | undefined = undefined;
+        let reminderHoursBefore = 24; // Default to 24 hours
+        try {
+            const { data: settingsData } = await supabase
+                .from('settings')
+                .select('config')
+                .eq('id', 'default')
+                .single();
+            
+            if (settingsData?.config) {
+                if (settingsData.config.timezone) {
+                    timezone = settingsData.config.timezone;
+                }
+                if (settingsData.config.reminderEmailTemplate) {
+                    emailTemplate = settingsData.config.reminderEmailTemplate;
+                }
+                if (settingsData.config.companyLogo) {
+                    companyLogo = settingsData.config.companyLogo;
+                }
+                if (settingsData.config.reminderHoursBefore) {
+                    reminderHoursBefore = settingsData.config.reminderHoursBefore;
+                }
+            }
+        } catch (e) {
+            console.warn('[Reminders Cron] Could not load settings, using defaults');
+        }
+
         // Calculate time range: appointments X hours from now (±1 hour window)
         // Use reminderHoursBefore from settings (default: 24 hours)
         const now = new Date();
@@ -108,36 +138,6 @@ export async function GET(request: Request) {
         }
 
         const clientMap = new Map((clients || []).map((c: any) => [c.id, c]));
-
-        // Get settings (timezone, email template, company logo, and reminder hours)
-        let timezone = 'UTC';
-        let emailTemplate: any = undefined;
-        let companyLogo: string | undefined = undefined;
-        let reminderHoursBefore = 24; // Default to 24 hours
-        try {
-            const { data: settingsData } = await supabase
-                .from('settings')
-                .select('config')
-                .eq('id', 'default')
-                .single();
-            
-            if (settingsData?.config) {
-                if (settingsData.config.timezone) {
-                    timezone = settingsData.config.timezone;
-                }
-                if (settingsData.config.reminderEmailTemplate) {
-                    emailTemplate = settingsData.config.reminderEmailTemplate;
-                }
-                if (settingsData.config.companyLogo) {
-                    companyLogo = settingsData.config.companyLogo;
-                }
-                if (settingsData.config.reminderHoursBefore) {
-                    reminderHoursBefore = settingsData.config.reminderHoursBefore;
-                }
-            }
-        } catch (e) {
-            console.warn('[Reminders Cron] Could not load settings, using defaults');
-        }
 
         // Process each session
         const results = {

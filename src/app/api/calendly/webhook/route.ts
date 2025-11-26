@@ -4,6 +4,12 @@ import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
+// Session type with metadata
+interface Session {
+    id: string;
+    metadata?: Record<string, any>;
+}
+
 // Verify Calendly webhook signature
 function verifyWebhookSignature(
     payload: string,
@@ -249,17 +255,18 @@ export async function POST(request: Request) {
                     // Find and update session
                     const { data: sessions } = await supabase
                         .from('sessions')
-                        .select('id')
+                        .select('id, metadata')
                         .eq('client_id', clients[0].id)
                         .eq('date', startDate.toISOString())
-                        .limit(1);
+                        .limit(1)
+                        .returns<Session[]>();
 
                     if (sessions && sessions.length > 0) {
                         await supabase
                             .from('sessions')
                             .update({
                                 metadata: {
-                                    ...sessions[0].metadata,
+                                    ...(sessions[0].metadata ?? {}),
                                     status: 'canceled',
                                 },
                                 updated_at: new Date().toISOString(),
