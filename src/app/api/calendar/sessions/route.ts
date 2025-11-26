@@ -106,13 +106,26 @@ export async function GET(request: Request) {
             })
             .map((session: any) => {
                 try {
-                    const start = new Date(session.date);
+                    // Parse the date - Supabase returns ISO strings with timezone
+                    let start: Date;
+                    const dateStr = session.date;
+                    
+                    // If date doesn't have timezone info, assume it's already UTC (from Supabase)
+                    // Supabase stores TIMESTAMP WITH TIME ZONE, so dates should have timezone
+                    if (typeof dateStr === 'string' && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+                        // Date format like "2025-01-15T14:00:00" - add Z to indicate UTC
+                        start = new Date(dateStr + 'Z');
+                    } else {
+                        start = new Date(dateStr);
+                    }
                     
                     // Validate date
                     if (isNaN(start.getTime())) {
                         console.warn('[Calendar ICS] Invalid date for session:', session.id, session.date);
                         return null;
                     }
+                    
+                    console.log(`[Calendar ICS] Session ${session.id}: ${session.date} -> ${start.toISOString()} (UTC)`);
                     
                     const durationMinutes = session.duration || 60;
                     const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
