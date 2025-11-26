@@ -25,6 +25,7 @@ import { Play, Pause, Download, Trash2, FileAudio, Calendar, Clock, Search, Filt
 import { motion, AnimatePresence } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceNotes } from "@/components/voice-notes";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface NoteSection {
     title: string;
@@ -56,17 +57,48 @@ function RecordingsContent() {
     const [editClientName, setEditClientName] = useState("");
     const [editClientId, setEditClientId] = useState<string | undefined>(undefined);
     const [refreshKey, setRefreshKey] = useState(0);
+    // Default to "history" for SSR, then update to "new" on mobile after hydration
     const [activeTab, setActiveTab] = useState("history");
 
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
+
+    // Set initial tab based on screen size after hydration - always "new" on mobile
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const isMobile = window.innerWidth < 768;
+            if (isMobile) {
+                setActiveTab("new");
+            }
+        }
+    }, []);
 
     useEffect(() => {
         const clientParam = searchParams.get('client');
         if (clientParam) {
             setSelectedClient(clientParam);
-            setActiveTab("history");
+            // Only switch to history if not on mobile (desktop only)
+            if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+                setActiveTab("history");
+            } else if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                // Keep "new" tab on mobile even when client param is present
+                setActiveTab("new");
+            }
         }
     }, [searchParams]);
+
+    // Handle window resize to update tab on mobile/desktop switch
+    useEffect(() => {
+        const handleResize = () => {
+            if (typeof window !== 'undefined') {
+                if (window.innerWidth < 768 && activeTab === "history") {
+                    // On mobile, default to "new" tab
+                    setActiveTab("new");
+                }
+            }
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [activeTab]);
 
     useEffect(() => {
         // Load immediately on mount
@@ -112,7 +144,15 @@ function RecordingsContent() {
             const response = await fetch('/api/recordings');
             if (response.ok) {
                 const data = await response.json();
-                setRecordings(data);
+                // Remove duplicates by ID (keep first occurrence)
+                const uniqueRecordings: Recording[] = Array.from(
+                    new Map((data as Recording[]).map((r: Recording) => [r.id, r])).values()
+                );
+                console.log(`[Recordings] Loaded ${data.length} recordings, ${uniqueRecordings.length} unique`);
+                if (data.length !== uniqueRecordings.length) {
+                    console.warn(`[Recordings] Found ${data.length - uniqueRecordings.length} duplicate recordings`);
+                }
+                setRecordings(uniqueRecordings);
                 setRefreshKey(prev => prev + 1);
             }
         } catch (error) {
@@ -230,9 +270,26 @@ function RecordingsContent() {
         document.body.removeChild(a);
     };
 
-    const handleDelete = (id: string) => {
-        const updatedRecordings = recordings.filter(r => r.id !== id);
-        saveRecordings(updatedRecordings);
+    const handleDelete = async (id: string) => {
+        try {
+            // Optimistically update UI
+            const updatedRecordings = recordings.filter(r => r.id !== id);
+            setRecordings(updatedRecordings);
+
+            // Delete from backend so it doesn't reappear
+            const response = await fetch(`/api/recordings?id=${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+            });
+
+            if (!response.ok) {
+                console.error('Failed to delete recording on server');
+                // Reload from server to keep data consistent
+                await loadRecordings();
+            }
+        } catch (error) {
+            console.error('Error deleting recording:', error);
+            await loadRecordings();
+        }
     };
 
     const handleEditClient = (recording: Recording) => {
@@ -289,6 +346,16 @@ function RecordingsContent() {
                 part
             )
         );
+    };
+
+    const getTranscriptPreview = (text: string, maxLength: number = 120) => {
+        if (!text) return '';
+        const firstLine = text.split('\n')[0].trim();
+        const slice = firstLine.slice(0, maxLength).trimEnd();
+        if (firstLine.length > maxLength) {
+            return slice + '...';
+        }
+        return slice;
     };
 
     return (
@@ -430,7 +497,7 @@ function RecordingsContent() {
                             <AnimatePresence>
                                 {filteredAndSortedRecordings.map((recording, index) => (
                                     <motion.div
-                                        key={recording.id}
+                                        key={`recording-${recording.id}-${index}`}
                                         initial={{ opacity: 0, y: 20 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -20 }}
@@ -470,9 +537,9 @@ function RecordingsContent() {
                                                             onClick={() => handlePlay(recording.id)}
                                                         >
                                                             {playingId === recording.id ? (
-                                                                <Pause className="h-4 w-4" />
+                                                                <Pause className="h-4 w-4 text-primary" />
                                                             ) : (
-                                                                <Play className="h-4 w-4" />
+                                                                <Play className="h-4 w-4 text-primary" />
                                                             )}
                                                         </Button>
                                                         <Button
@@ -493,6 +560,56 @@ function RecordingsContent() {
                                                 </div>
                                             </CardHeader>
                                             <CardContent className="space-y-4">
+                                                {(recording.transcript || (recording.notes && recording.notes.length > 0)) && (
+                                                    <Accordion type="multiple" className="w-full">
+                                                        {recording.transcript && (
+                                                            <AccordionItem value="transcript">
+                                                                <AccordionTrigger>
+                                                                    <div className="flex flex-col items-start text-left gap-0.5">
+                                                                        <span className="text-sm font-semibold">
+                                                                            Transcript
+                                                                        </span>
+                                                                        <span className="text-xs text-muted-foreground truncate max-w-[260px]">
+                                                                            {getTranscriptPreview(recording.transcript)}
+                                                                        </span>
+                                                                    </div>
+                                                                </AccordionTrigger>
+                                                                <AccordionContent>
+                                                                    <div className="rounded-lg bg-muted/50 p-4">
+                                                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                                                            {searchQuery
+                                                                                ? highlightText(recording.transcript, searchQuery)
+                                                                                : recording.transcript}
+                                                                        </p>
+                                                                    </div>
+                                                                </AccordionContent>
+                                                            </AccordionItem>
+                                                        )}
+
+                                                        {recording.notes && recording.notes.length > 0 && (
+                                                            <AccordionItem value="ai-notes">
+                                                                <AccordionTrigger>
+                                                                    <div className="flex flex-col items-start text-left">
+                                                                        <span className="text-sm font-semibold">AI-Structured Notes</span>
+                                                                    </div>
+                                                                </AccordionTrigger>
+                                                                <AccordionContent>
+                                                                    <div className="space-y-3">
+                                                                        {recording.notes.map((note, noteIndex) => (
+                                                                            <div key={noteIndex} className="rounded-lg border border-primary/20 bg-card p-4">
+                                                                                <h5 className="text-sm font-semibold mb-2 text-primary">{note.title}</h5>
+                                                                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                                                                    {note.content}
+                                                                                </p>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </AccordionContent>
+                                                            </AccordionItem>
+                                                        )}
+                                                    </Accordion>
+                                                )}
+
                                                 {playingId === recording.id && (
                                                     <motion.div
                                                         initial={{ opacity: 0, height: 0 }}
@@ -506,31 +623,6 @@ function RecordingsContent() {
                                                             autoPlay
                                                         />
                                                     </motion.div>
-                                                )}
-
-                                                {recording.transcript && (
-                                                    <div className="rounded-lg bg-muted/50 p-4">
-                                                        <h4 className="text-sm font-semibold mb-2">Transcript:</h4>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {searchQuery
-                                                                ? highlightText(recording.transcript, searchQuery)
-                                                                : recording.transcript}
-                                                        </p>
-                                                    </div>
-                                                )}
-
-                                                {recording.notes && recording.notes.length > 0 && (
-                                                    <div className="space-y-3">
-                                                        <h4 className="text-sm font-semibold">AI-Structured Notes:</h4>
-                                                        {recording.notes.map((note, noteIndex) => (
-                                                            <div key={noteIndex} className="rounded-lg border border-primary/20 bg-card p-4">
-                                                                <h5 className="text-sm font-semibold mb-2 text-primary">{note.title}</h5>
-                                                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                                                    {note.content}
-                                                                </p>
-                                                            </div>
-                                                        ))}
-                                                    </div>
                                                 )}
                                             </CardContent>
                                         </Card>

@@ -22,16 +22,16 @@ function Calendar({
             classNames={{
                 months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
                 month: "space-y-4",
-                month_caption: "flex justify-center pt-1 relative items-center",
+                month_caption: "flex justify-center pt-1 relative items-center pointer-events-none",
                 caption_label: "text-sm font-medium",
                 nav: "space-x-1 flex items-center",
                 button_previous: cn(
                     buttonVariants({ variant: "outline" }),
-                    "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute left-1"
+                    "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute left-1 z-20 cursor-pointer pointer-events-auto"
                 ),
                 button_next: cn(
                     buttonVariants({ variant: "outline" }),
-                    "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute right-1"
+                    "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 absolute right-1 z-20 cursor-pointer pointer-events-auto"
                 ),
                 month_grid: "w-full border-collapse space-y-1",
                 weekdays: "flex",
@@ -40,20 +40,24 @@ function Calendar({
                 week: "flex w-full mt-2",
                 day: cn(
                     buttonVariants({ variant: "ghost" }),
-                    "h-9 w-9 p-0 font-normal aria-selected:opacity-100"
+                    "h-9 w-9 p-0 font-normal aria-selected:opacity-100",
+                    "data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed data-[disabled]:bg-muted/15 data-[disabled]:grayscale-[30%] data-[disabled]:pointer-events-none data-[disabled]:hover:bg-muted/15 data-[disabled]:hover:opacity-50"
                 ),
-                day_button: "h-9 w-9 p-0 font-normal",
+                day_button: "h-9 w-9 p-0 font-normal data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed data-[disabled]:pointer-events-none",
                 range_end: "day-range-end",
                 selected:
                     "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
                 today: "bg-accent text-accent-foreground",
                 outside:
                     "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground aria-selected:opacity-30",
-                disabled: "text-muted-foreground opacity-50",
+                disabled: "!text-muted-foreground !opacity-50 !cursor-not-allowed !bg-muted/15 !grayscale-[30%] !pointer-events-none hover:!bg-muted/15 hover:!opacity-50",
                 range_middle:
                     "aria-selected:bg-accent aria-selected:text-accent-foreground",
                 hidden: "invisible",
                 ...classNames,
+            }}
+            modifiersClassNames={{
+                disabled: "rdp-day-disabled-custom"
             }}
             components={{
                 Chevron: ({ orientation }) => {

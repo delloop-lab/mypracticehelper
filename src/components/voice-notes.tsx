@@ -95,13 +95,15 @@ export function VoiceNotes() {
                 }
             };
             rec.onerror = (ev: any) => {
-                console.error("Speech recognition error:", ev.error);
+                // Treat "no-speech" as a benign warning instead of an error
                 if (ev.error === "no-speech") {
                     console.warn("No speech detected - this is normal if you haven't spoken yet");
-                } else {
-                    setError(`Recognition error: ${ev.error}`);
-                    setIsRecording(false);
+                    return;
                 }
+
+                console.error("Speech recognition error:", ev.error);
+                setError(`Recognition error: ${ev.error}`);
+                setIsRecording(false);
             };
             rec.onend = () => {
                 console.log("Speech recognition ended");
@@ -145,6 +147,37 @@ export function VoiceNotes() {
         setSaveStatus("idle");
         audioChunksRef.current = [];
 
+        // Check if getUserMedia is available
+        if (typeof window === "undefined") {
+            setError("Microphone access is not available in this environment.");
+            return;
+        }
+
+        // Check protocol (HTTPS required for microphone access, except localhost)
+        const isSecure = window.location.protocol === 'https:' || 
+                        window.location.hostname === 'localhost' || 
+                        window.location.hostname === '127.0.0.1' ||
+                        window.location.hostname.includes('.vercel.app');
+        
+        if (!isSecure) {
+            setError("Microphone access requires HTTPS. Please access this site via HTTPS (secure connection).");
+            return;
+        }
+
+        // Check for mediaDevices API
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            // Try fallback for older browsers
+            const getUserMedia = navigator.mediaDevices?.getUserMedia || 
+                                (navigator as any).getUserMedia || 
+                                (navigator as any).webkitGetUserMedia || 
+                                (navigator as any).mozGetUserMedia;
+            
+            if (!getUserMedia) {
+                setError("Your browser does not support microphone access. Please use Chrome, Edge, or Safari on a mobile device.");
+                return;
+            }
+        }
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mr = new MediaRecorder(stream);
@@ -158,7 +191,21 @@ export function VoiceNotes() {
             mr.start();
         } catch (e: any) {
             console.error("Audio error:", e);
-            setError(`Could not access microphone: ${e.message}`);
+            let errorMessage = "Could not access microphone.";
+            
+            if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+                errorMessage = "Microphone permission denied. Please grant microphone access in your browser settings and try again.";
+            } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+                errorMessage = "No microphone found. Please connect a microphone and try again.";
+            } else if (e.name === "NotReadableError" || e.name === "TrackStartError") {
+                errorMessage = "Microphone is already in use by another application. Please close other apps using the microphone.";
+            } else if (e.name === "OverconstrainedError" || e.name === "ConstraintNotSatisfiedError") {
+                errorMessage = "Microphone constraints could not be satisfied. Please try again.";
+            } else {
+                errorMessage = `Could not access microphone: ${e.message || e.name || "Unknown error"}`;
+            }
+            
+            setError(errorMessage);
             return;
         }
 
@@ -242,31 +289,127 @@ export function VoiceNotes() {
         setAudioBlob(blob);
         setAudioURL(url);
 
-        // For uploaded files, use special marker to indicate no transcript available
+        // For uploaded files, use special marker so processTranscript knows to use STT
         processTranscript("__FILE_UPLOAD__", blob);
     };
 
     const processTranscript = async (text: string, blob: Blob) => {
         setIsProcessing(true);
 
-        await new Promise((r) => setTimeout(r, 500));
+        // Determine base transcript text:
+        // - For uploaded files ("__FILE_UPLOAD__"), call backend STT
+        // - For live recordings, use provided transcript
+        let baseText = text;
 
-        // Check if this is a file upload (no transcript) or a live recording (has transcript)
-        let formattedText: string;
         if (text === "__FILE_UPLOAD__") {
-            formattedText = "No transcript available (file upload)";
-        } else if (text) {
-            formattedText = formatVoiceCommands(text);
-        } else {
-            formattedText = "No transcript captured";
+            try {
+                const formData = new FormData();
+                formData.append("file", blob);
+
+                const response = await fetch("/api/audio/transcribe-upload", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    baseText = (data.transcript as string) || "";
+                    console.log("Uploaded audio transcribed successfully. Length:", baseText.length);
+                } else {
+                    console.error("Transcription API failed for uploaded file:", await response.text());
+                    baseText = "";
+                }
+            } catch (err) {
+                console.error("Error calling transcription API for uploaded file:", err);
+                baseText = "";
+            }
         }
 
-        const notes: NoteSection[] = [{ title: "Session Notes", content: formattedText }];
+        // Handle cases where we still have no transcript text
+        let formattedText: string;
+        if (!baseText) {
+            // If this was a file upload, treat it as a hard error instead of saving a useless recording
+            if (text === "__FILE_UPLOAD__") {
+                setIsProcessing(false);
+                setError("Could not generate a transcript from the uploaded audio file. Please try again or record directly.");
+            } else {
+                formattedText = "No transcript captured";
+                setIsProcessing(false);
+                const notes: NoteSection[] = [{ title: "Session Notes", content: formattedText }];
+                setStructuredNotes(notes);
+                try {
+                    await saveRecording(formattedText, blob, notes);
+                    console.log("Recording saved successfully");
+                    window.dispatchEvent(new Event("recordings-updated"));
+                } catch (err) {
+                    console.error("Failed to save recording:", err);
+                    setError("Failed to save recording. Please try again.");
+                }
+            }
+            return;
+        }
+
+        // First, prepare a readable raw transcript
+        // - For live mic recordings we still run `formatVoiceCommands` to turn "period"/"comma" into punctuation.
+        // - For uploaded files (already processed by OpenAI STT), we gently reflow into sentences/paragraphs
+        //   without rewriting the content, so it reads more like real-world writing.
+        const formatNaturalTranscript = (raw: string): string => {
+            if (!raw) return raw;
+            console.log("[Transcript Formatter] raw transcript:", raw);
+
+            // Improve readability without breaking URLs or abbreviations:
+            // - Only insert breaks after sentence-ending punctuation
+            // - AND only when followed by a space + capital letter or opening quote.
+            //   This avoids splitting inside "example.com.au" or similar.
+            const formatted = raw
+                .trim()
+                .replace(/([.!?])\s+(?=[A-Z"“])/g, "$1\n\n")
+                .trim();
+
+            console.log("[Transcript Formatter] formatted transcript:", formatted);
+            return formatted;
+        };
+
+        const basicFormatted =
+            text === "__FILE_UPLOAD__"
+                ? formatNaturalTranscript(baseText)
+                : formatVoiceCommands(baseText);
+
+        // Show the transcript in the UI (this is what the user reviews)
+        setTranscript(basicFormatted);
+
+        // Then, use AI to create a more structured set of notes
+        let structuredText = basicFormatted;
+        try {
+            console.log("Processing transcript with AI...");
+            const response = await fetch('/api/ai/process-transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ transcript: basicFormatted })
+            });
+
+            if (response.ok) {
+                const data = await response.json() as { structured?: string; method?: string };
+                structuredText = data.structured || basicFormatted;
+                console.log(`Transcript processed using ${data.method || 'unknown'} method`);
+            } else {
+                console.warn('AI processing failed, using basic transcript only');
+            }
+        } catch (err) {
+            console.error('Error processing transcript with AI:', err);
+            // Keep structuredText as basicFormatted
+        }
+
+        // Notes saved with the recording are the AI-structured version,
+        // but we no longer show these on the Voice Notes screen (only the raw transcript),
+        // so they are used only for storage and later viewing in Recordings / Session Notes.
+        const notes: NoteSection[] = [{ title: "Session Notes", content: structuredText }];
         setStructuredNotes(notes);
         setIsProcessing(false);
 
         try {
-            await saveRecording(formattedText, blob, notes);
+            // Save the raw-but-formatted transcript, and keep AI-structured notes separately
+            await saveRecording(basicFormatted, blob, notes);
             console.log("Recording saved successfully");
             window.dispatchEvent(new Event("recordings-updated"));
         } catch (err) {
@@ -491,7 +634,9 @@ export function VoiceNotes() {
                     {transcript && (
                         <div className="rounded-lg border border-border bg-muted/50 p-4">
                             <h4 className="mb-2 text-sm font-semibold">Transcript:</h4>
-                            <p className="text-sm text-muted-foreground">{transcript}</p>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                {transcript}
+                            </p>
                         </div>
                     )}
                 </CardContent>
@@ -499,16 +644,8 @@ export function VoiceNotes() {
 
             {structuredNotes.length > 0 && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                    {structuredNotes.map((section, i) => (
-                        <Card key={i} className="border-primary/10">
-                            <CardHeader>
-                                <CardTitle className="text-base">{section.title}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{section.content}</p>
-                            </CardContent>
-                        </Card>
-                    ))}
+                    {/* We intentionally hide AI-structured notes here and only show the raw transcript above.
+                        The structured notes are still saved and can be viewed in Recording History / Session Notes. */}
                     <div className="flex gap-2">
                         <Button className="flex-1" onClick={handleSaveToClient}>
                             <CheckCircle2 className="mr-2 h-4 w-4" /> Save to Client Record
@@ -590,7 +727,7 @@ export function VoiceNotes() {
                                 Drag & drop your audio file here or click to browse
                             </p>
                             <p className="text-xs text-muted-foreground">
-                                Supports MP3, WAV, M4A, WebM (max 25MB) - Note: Uploaded files won't have transcripts
+                                Supports MP3, WAV, M4A, WebM (max 25MB) - Uploaded files will be transcribed into session notes
                             </p>
                         </div>
                     </div>

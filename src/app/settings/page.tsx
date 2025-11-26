@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, FileArchive, AlertCircle } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, RefreshCcw } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AppointmentTypeSettings {
@@ -22,6 +22,7 @@ interface SettingsData {
     defaultDuration: number;
     defaultFee: number;
     currency: string;
+    blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
 }
 
 const DEFAULT_APPOINTMENT_TYPES: AppointmentTypeSettings[] = [
@@ -40,6 +41,7 @@ export default function SettingsPage() {
         defaultDuration: 60,
         defaultFee: 80,
         currency: "EUR",
+        blockedDays: [],
     });
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
     const [newTypeName, setNewTypeName] = useState("");
@@ -48,9 +50,14 @@ export default function SettingsPage() {
     const [isCreatingBackup, setIsCreatingBackup] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
     const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [isFixingRecordings, setIsFixingRecordings] = useState(false);
+    const [baseUrl, setBaseUrl] = useState<string>("");
 
     useEffect(() => {
         loadSettings();
+        if (typeof window !== "undefined") {
+            setBaseUrl(window.location.origin);
+        }
     }, []);
 
     const loadSettings = async () => {
@@ -106,32 +113,6 @@ export default function SettingsPage() {
         }
     };
 
-    const createSuperBackup = async () => {
-        setIsCreatingBackup(true);
-        setBackupMessage(null);
-        try {
-            const response = await fetch('/api/backup/super', { method: 'POST' });
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `SUPER-BACKUP-${new Date().toISOString().split('T')[0]}.zip`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-                setBackupMessage({ type: 'success', text: 'SUPER BACKUP created successfully!' });
-            } else {
-                setBackupMessage({ type: 'error', text: 'Failed to create SUPER BACKUP' });
-            }
-        } catch (error) {
-            console.error('Error creating SUPER BACKUP:', error);
-            setBackupMessage({ type: 'error', text: 'Error creating SUPER BACKUP' });
-        } finally {
-            setIsCreatingBackup(false);
-        }
-    };
 
     const createDataBackup = async () => {
         setIsCreatingBackup(true);
@@ -139,19 +120,20 @@ export default function SettingsPage() {
         try {
             const response = await fetch('/api/backup', { method: 'POST' });
             if (response.ok) {
-                const data = await response.json();
-                const blob = new Blob([JSON.stringify(data.backup, null, 2)], { type: 'application/json' });
+                // Get the ZIP file as blob
+                const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `therapist-backup-${new Date().toISOString().split('T')[0]}.json`;
+                a.download = `therapist-backup-${new Date().toISOString().split('T')[0]}.zip`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
                 setBackupMessage({ type: 'success', text: 'Data backup created successfully!' });
             } else {
-                setBackupMessage({ type: 'error', text: 'Failed to create backup' });
+                const errorData = await response.json().catch(() => ({ error: 'Failed to create backup' }));
+                setBackupMessage({ type: 'error', text: errorData.error || 'Failed to create backup' });
             }
         } catch (error) {
             console.error('Error creating backup:', error);
@@ -192,6 +174,49 @@ export default function SettingsPage() {
         } finally {
             setIsRestoring(false);
             e.target.value = '';
+        }
+    };
+
+    const handleFixRecordings = async () => {
+        setIsFixingRecordings(true);
+        setBackupMessage(null);
+        try {
+            const response = await fetch('/api/recordings/fix-assignments', {
+                method: 'POST',
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const results = data.results;
+                let messageText = 'Recordings assignments fixed!\n';
+                messageText += `Recordings fixed: ${results.fixed}\n`;
+                messageText += `Errors: ${results.errors}\n`;
+                messageText += `Skipped: ${results.skipped}\n`;
+                
+                if (results.details && results.details.fixed && results.details.fixed.length > 0) {
+                    messageText += '\nFixed recordings:\n';
+                    results.details.fixed.forEach((f: any) => {
+                        messageText += `- ${f.id}: ${JSON.stringify(f.updates)}\n`;
+                    });
+                }
+                
+                if (results.details && results.details.errors && results.details.errors.length > 0) {
+                    messageText += '\nErrors:\n';
+                    results.details.errors.slice(0, 5).forEach((e: string) => {
+                        messageText += `- ${e}\n`;
+                    });
+                }
+                
+                setBackupMessage({ type: 'success', text: messageText });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to fix recordings' }));
+                setBackupMessage({ type: 'error', text: errorData.error || 'Failed to fix recordings' });
+            }
+        } catch (error) {
+            console.error('Error fixing recordings:', error);
+            setBackupMessage({ type: 'error', text: 'Error fixing recordings' });
+        } finally {
+            setIsFixingRecordings(false);
         }
     };
 
@@ -239,6 +264,50 @@ export default function SettingsPage() {
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     Enter your Calendly scheduling page URL. This will be used for client booking links.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Calendar className="h-5 w-5" />
+                                Google Calendar Feed
+                            </CardTitle>
+                            <CardDescription>
+                                Use this URL to create a new calendar in Google Calendar (Settings &gt; Add calendar &gt; From URL).
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <div className="space-y-2">
+                                <Label htmlFor="gcalFeedUrl">Calendar feed URL</Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        id="gcalFeedUrl"
+                                        readOnly
+                                        value={baseUrl ? `${baseUrl}/api/calendar/sessions` : ""}
+                                        className="flex-1"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={async () => {
+                                            const url = baseUrl ? `${baseUrl}/api/calendar/sessions` : "";
+                                            if (!url) return;
+                                            try {
+                                                await navigator.clipboard.writeText(url);
+                                                alert("Calendar URL copied to clipboard");
+                                            } catch {
+                                                alert("Could not copy URL. Please copy it manually.");
+                                            }
+                                        }}
+                                    >
+                                        Copy
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Paste this URL into Google Calendar under <strong>Settings &gt; Add calendar &gt; From URL</strong> to subscribe to your session calendar.
                                 </p>
                             </div>
                         </CardContent>
@@ -400,6 +469,46 @@ export default function SettingsPage() {
                         </CardHeader>
                         <CardContent className="space-y-6">
                             <div className="space-y-2">
+                                <Label>Days of Week Not Available for Bookings</Label>
+                                <div className="grid grid-cols-7 gap-2">
+                                    {[
+                                        { day: 0, label: 'Sun' },
+                                        { day: 1, label: 'Mon' },
+                                        { day: 2, label: 'Tue' },
+                                        { day: 3, label: 'Wed' },
+                                        { day: 4, label: 'Thu' },
+                                        { day: 5, label: 'Fri' },
+                                        { day: 6, label: 'Sat' },
+                                    ].map(({ day, label }) => (
+                                        <label
+                                            key={day}
+                                            className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                                                settings.blockedDays?.includes(day)
+                                                    ? 'bg-muted/50 border-muted text-muted-foreground opacity-50'
+                                                    : 'bg-background border-border hover:bg-muted'
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={settings.blockedDays?.includes(day) || false}
+                                                onChange={(e) => {
+                                                    const currentBlocked = settings.blockedDays || [];
+                                                    const updatedBlocked = e.target.checked
+                                                        ? [...currentBlocked, day]
+                                                        : currentBlocked.filter(d => d !== day);
+                                                    setSettings({ ...settings, blockedDays: updatedBlocked });
+                                                }}
+                                                className="sr-only"
+                                            />
+                                            <span className="text-sm font-medium">{label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Select days when you do not accept bookings. These days will be disabled in the calendar.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
                                 <Label htmlFor="defaultDuration">Default Duration (minutes)</Label>
                                 <div className="flex items-center gap-2">
                                     <Clock className="h-5 w-5 text-muted-foreground" />
@@ -478,35 +587,8 @@ export default function SettingsPage() {
                         </motion.div>
                     )}
 
-                    {/* SUPER BACKUP */}
-                    <Card className="border-2 border-primary">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <FileArchive className="h-5 w-5 text-primary" />
-                                SUPER BACKUP (Data + Code)
-                            </CardTitle>
-                            <CardDescription>
-                                Complete backup including ALL data AND source code files. Use this for maximum protection!
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button
-                                onClick={createSuperBackup}
-                                disabled={isCreatingBackup}
-                                size="lg"
-                                className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
-                            >
-                                <FileArchive className="mr-2 h-4 w-4" />
-                                {isCreatingBackup ? 'Creating SUPER BACKUP...' : 'Create SUPER BACKUP (Data + Code)'}
-                            </Button>
-                            <p className="text-xs text-muted-foreground mt-2">
-                                Includes: All data files + All source code (.tsx, .ts, .json, etc.)
-                            </p>
-                        </CardContent>
-                    </Card>
-
                     {/* Data Backup */}
-                    <Card>
+                    <Card className="border-2 border-primary">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Database className="h-5 w-5 text-primary" />
@@ -521,11 +603,14 @@ export default function SettingsPage() {
                                 onClick={createDataBackup}
                                 disabled={isCreatingBackup}
                                 size="lg"
-                                className="w-full sm:w-auto"
+                                className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
                             >
                                 <Download className="mr-2 h-4 w-4" />
                                 {isCreatingBackup ? 'Creating Backup...' : 'Create & Download Data Backup'}
                             </Button>
+                            <p className="text-xs text-muted-foreground mt-2">
+                                Includes: All client data, appointments, session notes, and recordings
+                            </p>
                         </CardContent>
                     </Card>
 
@@ -565,6 +650,33 @@ export default function SettingsPage() {
                                     <span>Warning: Restoring a backup will replace all current data. Make sure to create a backup first!</span>
                                 </div>
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Fix Recordings Assignments */}
+                    <Card className="border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
+                                <AlertCircle className="h-5 w-5" />
+                                Fix Recordings Assignments
+                            </CardTitle>
+                            <CardDescription className="text-indigo-600 dark:text-indigo-300">
+                                Fix missing client_id and session_id for recordings. Matches by client name in transcript/title and date.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Button
+                                onClick={handleFixRecordings}
+                                disabled={isFixingRecordings}
+                                size="lg"
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+                            >
+                                <RefreshCcw className="mr-2 h-4 w-4" />
+                                {isFixingRecordings ? 'Fixing Recordings...' : 'Fix Recordings Assignments'}
+                            </Button>
+                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
+                                This will attempt to assign recordings to clients (by name matching) and sessions (by date matching).
+                            </p>
                         </CardContent>
                     </Card>
                 </TabsContent>

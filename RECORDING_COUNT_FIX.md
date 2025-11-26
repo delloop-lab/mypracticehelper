@@ -48,3 +48,5 @@ To verify the fix:
 - The window focus listener also reloads recordings when returning to the Clients page
 - Both mechanisms ensure the count stays up to date
 
+
+

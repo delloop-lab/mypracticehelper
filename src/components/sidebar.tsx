@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Users, Mic, Calendar, DollarSign, FileText, Bell, X } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Users, Mic, Calendar, DollarSign, FileText, Bell, X, Link as LinkIcon, Archive } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 
@@ -13,7 +13,7 @@ const sidebarItems = [
         title: "Clients",
         href: "/clients",
         icon: Users,
-        color: "text-sky-500",
+        color: "text-blue-500",
     },
     {
         title: "Voice Notes",
@@ -31,7 +31,7 @@ const sidebarItems = [
         title: "Reminders",
         href: "/reminders",
         icon: Bell,
-        color: "text-orange-500",
+        color: "text-pink-500",
     },
     {
         title: "Session Notes",
@@ -49,7 +49,13 @@ const sidebarItems = [
         title: "Documents",
         href: "/documents",
         icon: FileText,
-        color: "text-amber-500",
+        color: "text-blue-500",
+    },
+    {
+        title: "Links",
+        href: "/links",
+        icon: LinkIcon,
+        color: "text-purple-500",
     },
 ];
 
@@ -87,7 +93,7 @@ const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => {
             </div>
             <div className="mt-auto border-t px-4 py-3">
                 <div className="text-xs text-muted-foreground text-center">
-                    Version 0.9.1
+                    Version 0.9.2
                 </div>
             </div>
         </>
@@ -96,12 +102,48 @@ const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => {
 
 export function Sidebar() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [touchStart, setTouchStart] = useState<number | null>(null);
+    const [touchEnd, setTouchEnd] = useState<number | null>(null);
     const pathname = usePathname();
 
     // Close mobile menu when route changes
     useEffect(() => {
         setIsMobileOpen(false);
     }, [pathname]);
+
+    // Minimum swipe distance (in pixels)
+    const minSwipeDistance = 50;
+
+    const onTouchStart = (e: React.TouchEvent) => {
+        setTouchEnd(null);
+        setTouchStart(e.targetTouches[0].clientX);
+    };
+
+    const onTouchMove = (e: React.TouchEvent) => {
+        setTouchEnd(e.targetTouches[0].clientX);
+    };
+
+    const onTouchEnd = () => {
+        if (!touchStart || !touchEnd) return;
+        
+        const distance = touchStart - touchEnd;
+        const isRightSwipe = distance < -minSwipeDistance;
+        const isLeftSwipe = distance > minSwipeDistance;
+        
+        // Swipe from left edge (within 60px) to the right to open menu
+        if (touchStart < 60 && isRightSwipe && !isMobileOpen) {
+            setIsMobileOpen(true);
+        }
+        
+        // Swipe left to close menu (when menu is open) - swipe from anywhere on the menu
+        if (isLeftSwipe && isMobileOpen && Math.abs(distance) > minSwipeDistance) {
+            setIsMobileOpen(false);
+        }
+        
+        // Reset touch positions
+        setTouchStart(null);
+        setTouchEnd(null);
+    };
 
     return (
         <>
@@ -114,32 +156,45 @@ export function Sidebar() {
 
             {/* Mobile Sidebar Drawer */}
             <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
-                <SheetTrigger asChild className="md:hidden">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="fixed bottom-4 right-4 z-50 h-14 w-14 rounded-full shadow-lg bg-primary text-primary-foreground hover:bg-primary/90 md:hidden"
-                        aria-label="Open menu"
-                    >
-                        <Users className="h-6 w-6" />
-                    </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="w-72 p-0">
-                    <div className="flex h-full flex-col">
-                        <div className="flex items-center justify-between border-b px-6 py-4">
-                            <h2 className="text-lg font-semibold">Menu</h2>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setIsMobileOpen(false)}
-                            >
-                                <X className="h-5 w-5" />
-                            </Button>
-                        </div>
+                <SheetContent 
+                    side="left" 
+                    className="w-72 p-0"
+                    onTouchStart={onTouchStart}
+                    onTouchMove={onTouchMove}
+                    onTouchEnd={onTouchEnd}
+                >
+                    <SheetHeader className="border-b px-6 py-4">
+                        <SheetTitle>Menu</SheetTitle>
+                        <SheetDescription className="sr-only">Navigation menu</SheetDescription>
+                    </SheetHeader>
+                    <div className="flex h-full flex-col overflow-hidden">
                         <SidebarContent onNavigate={() => setIsMobileOpen(false)} />
                     </div>
                 </SheetContent>
             </Sheet>
+            
+            {/* Touch handler overlay for swipe gesture - only on mobile when menu is closed */}
+            {!isMobileOpen && (
+                <div
+                    className="md:hidden fixed left-0 top-0 bottom-0 w-[60px] z-30 touch-none"
+                    onTouchStart={onTouchStart}
+                    onTouchMove={onTouchMove}
+                    onTouchEnd={onTouchEnd}
+                    style={{ touchAction: 'none' }}
+                />
+            )}
+            
+            {/* Touch handler for closing menu - overlay when menu is open */}
+            {isMobileOpen && (
+                <div
+                    className="md:hidden fixed inset-0 z-40 bg-black/50"
+                    onTouchStart={onTouchStart}
+                    onTouchMove={onTouchMove}
+                    onTouchEnd={onTouchEnd}
+                    onClick={() => setIsMobileOpen(false)}
+                    style={{ touchAction: 'pan-x pan-y' }}
+                />
+            )}
         </>
     );
 }

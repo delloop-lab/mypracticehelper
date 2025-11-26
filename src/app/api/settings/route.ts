@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
     defaultDuration: 60,
     defaultFee: 80,
     currency: "EUR",
+    blockedDays: [],
 };
 
 export async function GET() {

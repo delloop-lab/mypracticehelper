@@ -233,3 +233,5 @@ After fixes, test:
 - [ ] Count recordings after name change (should be correct)
 - [ ] Create appointment, change client name, verify it still works
 
+
+

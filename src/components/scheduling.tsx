@@ -23,7 +23,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Calendar as CalendarIcon, Clock, Video, MapPin, User, Plus, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, Video, MapPin, User, Plus, List, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday } from "date-fns";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 
 interface Appointment {
     id: string;
@@ -42,6 +43,7 @@ interface Appointment {
     status: "confirmed" | "pending" | "cancelled";
     notes: string;
     fee?: number;
+    currency?: string;
     paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit";
     paymentStatus?: "paid" | "pending" | "unpaid";
 }
@@ -62,24 +64,27 @@ interface AppointmentType {
 
 const DEFAULT_APPOINTMENT_TYPES: AppointmentType[] = [
     { name: "Initial Consultation", duration: 60, fee: 80, enabled: true },
-    { name: "Follow-up Session", duration: 60, fee: 80, enabled: true },
     { name: "Therapy Session", duration: 60, fee: 80, enabled: true },
     { name: "Couples Therapy Session", duration: 60, fee: 100, enabled: true },
-    { name: "Family Therapy", duration: 60, fee: 80, enabled: true },
     { name: "Discovery Session", duration: 30, fee: 0, enabled: true },
 ];
 
-export function Scheduling() {
+interface SchedulingProps {
+    preSelectedClient?: string;
+}
+
+export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const router = useRouter();
     // State hooks
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
     const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>(DEFAULT_APPOINTMENT_TYPES);
+    const [settings, setSettings] = useState<{ currency: string; defaultFee: number; blockedDays?: number[] }>({ currency: "EUR", defaultFee: 80, blockedDays: [] });
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-    const [viewRange, setViewRange] = useState<'today' | '7days' | '30days' | 'all'>('today');
+    const [viewRange, setViewRange] = useState<'today' | '7days' | '30days' | 'all'>('all'); // Default to 'all' to show all appointments
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [singleDayView, setSingleDayView] = useState<string | null>(null);
@@ -108,13 +113,62 @@ export function Scheduling() {
         loadAppointments();
         loadClients();
         loadAppointmentTypes();
+
+        // Reload when window gains focus (user switches back to tab)
+        const handleFocus = () => {
+            console.log('[Scheduling] Window focused - reloading appointments');
+            loadAppointments();
+        };
+
+        // Reload when appointments are updated elsewhere (e.g., from clients page)
+        const handleAppointmentsUpdated = () => {
+            console.log('[Scheduling] Appointments updated event received - reloading');
+            loadAppointments();
+        };
+
+        window.addEventListener('focus', handleFocus);
+        window.addEventListener('appointments-updated', handleAppointmentsUpdated);
+
+        return () => {
+            window.removeEventListener('focus', handleFocus);
+            window.removeEventListener('appointments-updated', handleAppointmentsUpdated);
+        };
     }, []);
+
+    // Handle pre-selected client from query parameter
+    useEffect(() => {
+        if (preSelectedClient && clients.length > 0 && settings.defaultFee) {
+            const client = clients.find(c => c.name === preSelectedClient);
+            if (client) {
+                // Pre-fill form data with client info
+                const clientFee = (client.sessionFee && client.sessionFee > 0) ? client.sessionFee : settings.defaultFee ?? 80;
+                setFormData(prev => ({
+                    ...prev,
+                    clientName: client.name,
+                    fee: clientFee,
+                    currency: client.currency ?? settings.currency ?? "EUR",
+                }));
+                // Open the dialog
+                setIsDialogOpen(true);
+            }
+        }
+    }, [preSelectedClient, clients.length, settings.defaultFee, settings.currency]);
+
 
     const loadAppointments = async () => {
         try {
+            console.log('[Scheduling] Loading appointments...');
             const response = await fetch('/api/appointments');
+            console.log('[Scheduling] Response status:', response.status);
             if (response.ok) {
                 const data = await response.json();
+                console.log('[Scheduling] Raw appointments data:', data.length, data);
+                
+                // Log all appointments with their dates
+                data.forEach((apt: Appointment) => {
+                    console.log(`[Scheduling] Appointment: ${apt.clientName} on ${apt.date} (${apt.time})`);
+                });
+                
                 // Deduplicate appointments by ID only (ID should be unique)
                 const seenIds = new Set<string>();
                 const uniqueAppointments = data.filter((apt: Appointment) => {
@@ -126,18 +180,21 @@ export function Scheduling() {
                     return true;
                 });
                 
-                // Debug: Log appointments for Nov 25th
-                const nov25Appointments = uniqueAppointments.filter((apt: Appointment) => {
+                // Log future appointments
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const futureAppointments = uniqueAppointments.filter((apt: Appointment) => {
                     if (!apt.date) return false;
-                    const aptDateStr = apt.date.split('T')[0];
-                    return aptDateStr === '2025-11-25';
+                    const aptDate = new Date(apt.date);
+                    aptDate.setHours(0, 0, 0, 0);
+                    return aptDate >= today;
                 });
-                if (nov25Appointments.length > 0) {
-                    console.log(`[Load Appointments] Found ${nov25Appointments.length} appointments for Nov 25th:`, nov25Appointments.map(a => ({ id: a.id, client: a.clientName, time: a.time, date: a.date })));
-                }
+                console.log(`[Scheduling] Found ${futureAppointments.length} future appointments:`, futureAppointments.map(a => ({ client: a.clientName, date: a.date })));
                 
                 console.log(`[Load Appointments] Loaded ${data.length} appointments, ${uniqueAppointments.length} unique`);
                 setAppointments(uniqueAppointments);
+            } else {
+                console.error('[Scheduling] Failed to load appointments:', response.status, response.statusText);
             }
         } catch (error) {
             console.error('Error loading appointments:', error);
@@ -161,7 +218,42 @@ export function Scheduling() {
             const response = await fetch('/api/settings');
             if (response.ok) {
                 const data = await response.json();
-                setAppointmentTypes(data.appointmentTypes || []);
+                const loadedTypes = data.appointmentTypes || [];
+                setAppointmentTypes(loadedTypes);
+                
+                // Validate current formData.type - if it doesn't exist or is disabled, reset to first enabled type
+                const enabledTypes = loadedTypes.filter(t => t.enabled);
+                if (enabledTypes.length > 0) {
+                    const currentTypeExists = enabledTypes.some(t => t.name === formData.type);
+                    if (!currentTypeExists) {
+                        // Reset to first enabled type (Discovery Session if available, otherwise first)
+                        const defaultType = enabledTypes.find(t => t.name === "Discovery Session") || enabledTypes[0];
+                        setFormData(prev => ({
+                            ...prev,
+                            type: defaultType.name,
+                            duration: defaultType.duration || 60,
+                            fee: defaultType.fee || (data.defaultFee || 80)
+                        }));
+                    }
+                }
+                
+                // Load currency, defaultFee, and blockedDays from settings
+                const defaultFee = data.defaultFee || 80;
+                const currency = data.currency || "EUR";
+                const blockedDays = data.blockedDays || [];
+                setSettings({
+                    currency: currency,
+                    defaultFee: defaultFee,
+                    blockedDays: blockedDays
+                });
+                // Always update formData with settings (especially important if dialog is open)
+                setFormData(prev => ({
+                    ...prev,
+                    currency: currency,
+                    // Update fee to defaultFee if no client is selected yet (new appointment)
+                    // This ensures new appointments start with the correct default fee from settings
+                    fee: (!prev.clientName && prev.fee === 80) ? defaultFee : (prev.fee === 80 || !prev.type ? defaultFee : prev.fee)
+                }));
             }
         } catch (error) {
             console.error('Error loading appointment types:', error);
@@ -169,6 +261,9 @@ export function Scheduling() {
     };
 
     const resetForm = () => {
+        // Ensure we use the latest settings when resetting
+        const currentDefaultFee = settings.defaultFee || 80;
+        const currentCurrency = settings.currency || "EUR";
         setFormData({
             clientName: "",
             date: new Date().toISOString().split('T')[0],
@@ -176,10 +271,10 @@ export function Scheduling() {
             duration: 60,
             type: "Therapy Session",
             notes: "",
-            fee: 80,
+            fee: currentDefaultFee,
             paymentMethod: "Cash",
             paymentStatus: "unpaid",
-            currency: "EUR",
+            currency: currentCurrency,
         });
         setBookingError(null);
     };
@@ -223,6 +318,18 @@ export function Scheduling() {
         const timeStr = formData.time.length === 5 ? `${formData.time}:00` : formData.time;
         const dateWithTime = `${formData.date}T${timeStr}`;
 
+        // Check if the appointment is in the past
+        const appointmentDateTime = new Date(dateWithTime);
+        const now = new Date();
+        
+        // Compare dates/times (ignore milliseconds)
+        if (appointmentDateTime < now) {
+            setBookingError(
+                `Cannot book appointments in the past. Please select a future date and time.`
+            );
+            return;
+        }
+
         // Check for time conflicts
         const conflictCheck = checkTimeConflict(formData.date, formData.time, formData.duration);
         if (conflictCheck.hasConflict && conflictCheck.conflictingAppointment) {
@@ -243,6 +350,7 @@ export function Scheduling() {
             status: "confirmed",
             notes: formData.notes,
             fee: formData.fee,
+            currency: formData.currency || settings.currency || "EUR",
             paymentMethod: formData.paymentMethod,
             paymentStatus: formData.paymentStatus,
         };
@@ -282,57 +390,91 @@ export function Scheduling() {
     const getFilteredAppointments = () => {
         const today = new Date().toISOString().split('T')[0];
         const todayDate = new Date(today);
+        todayDate.setHours(0, 0, 0, 0);
 
-        return appointments.filter(apt => {
+        console.log(`[Scheduling] Filtering appointments: viewRange=${viewRange}, selectedDate=${selectedDate}, total appointments=${appointments.length}`);
+
+        const filtered = appointments.filter(apt => {
+            if (!apt.date) {
+                console.warn('[Scheduling] Appointment missing date:', apt);
+                return false;
+            }
+
             if (viewRange === "today") {
                 // Normalize both dates to YYYY-MM-DD format for comparison
                 const aptDateStr = apt.date.split('T')[0];
                 const selectedDateStr = selectedDate.split('T')[0];
-                return aptDateStr === selectedDateStr;
+                const matches = aptDateStr === selectedDateStr;
+                console.log(`[Scheduling] Today filter: ${apt.clientName} on ${aptDateStr} matches ${selectedDateStr}: ${matches}`);
+                return matches;
             }
 
             const aptDate = new Date(apt.date);
+            aptDate.setHours(0, 0, 0, 0);
             const diffTime = aptDate.getTime() - todayDate.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
             if (viewRange === "7days") {
-                return diffDays >= 0 && diffDays <= 7;
+                // Show appointments from 7 days ago to 7 days ahead
+                return diffDays >= -7 && diffDays <= 7;
             }
             if (viewRange === "30days") {
-                return diffDays >= 0 && diffDays <= 30;
+                // Show appointments from 30 days ago to 30 days ahead
+                return diffDays >= -30 && diffDays <= 30;
             }
             if (viewRange === "all") {
-                return diffDays >= 0;
+                // Show ALL appointments (past and future) - no filtering
+                return true;
             }
             return false;
         }).sort((a, b) => {
             if (a.date !== b.date) return a.date.localeCompare(b.date);
             return a.time.localeCompare(b.time);
         });
+
+        console.log(`[Scheduling] Filtered to ${filtered.length} appointments`);
+        return filtered;
     };
 
     const filteredAppointments = getFilteredAppointments();
 
+    // NEW: Check if an appointment is past due
+    const isPastDue = (appointment: Appointment): boolean => {
+        if (!appointment.date || !appointment.time) return false;
+        try {
+            // Combine date and time to get full datetime
+            const dateStr = appointment.date.split('T')[0]; // Get YYYY-MM-DD
+            const timeStr = appointment.time.length === 5 ? `${appointment.time}:00` : appointment.time; // Ensure HH:MM:SS format
+            const appointmentDateTime = new Date(`${dateStr}T${timeStr}`);
+            const now = new Date();
+            return appointmentDateTime < now;
+        } catch {
+            return false;
+        }
+    };
+
     const handleDeleteAppointment = async () => {
         if (!selectedAppointment) return;
 
-        const updatedAppointments = appointments.filter(apt => apt.id !== selectedAppointment.id);
-
         try {
-            const response = await fetch('/api/appointments', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedAppointments),
+            const response = await fetch(`/api/appointments?id=${selectedAppointment.id}`, {
+                method: 'DELETE',
             });
 
             if (response.ok) {
+                // Remove from local state
+                const updatedAppointments = appointments.filter(apt => apt.id !== selectedAppointment.id);
                 setAppointments(updatedAppointments);
                 setIsDeleteConfirmOpen(false);
                 setIsDetailsOpen(false);
                 setSelectedAppointment(null);
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to delete appointment' }));
+                alert(`Error: ${errorData.error || 'Failed to delete appointment'}`);
             }
         } catch (error) {
             console.error('Error deleting appointment:', error);
+            alert('Error deleting appointment. Please try again.');
         }
     };
 
@@ -360,6 +502,22 @@ export function Scheduling() {
         if (!selectedAppointment || !editedAppointment) return;
         setBookingError(null);
 
+        // Combine date and time into a full ISO timestamp
+        const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
+        const dateWithTime = `${editedAppointment.date}T${timeStr}`;
+
+        // Check if the edited appointment is in the past
+        const appointmentDateTime = new Date(dateWithTime);
+        const now = new Date();
+        
+        // Compare dates/times (ignore milliseconds)
+        if (appointmentDateTime < now) {
+            setBookingError(
+                `Cannot reschedule appointments to the past. Please select a future date and time.`
+            );
+            return;
+        }
+
         // Check for time conflicts (excluding the current appointment)
         const conflictCheck = checkTimeConflict(editedAppointment.date, editedAppointment.time, selectedAppointment.duration);
         if (conflictCheck.hasConflict && conflictCheck.conflictingAppointment) {
@@ -372,10 +530,6 @@ export function Scheduling() {
                 return;
             }
         }
-
-        // Combine date and time into full ISO timestamp
-        const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
-        const dateWithTime = `${editedAppointment.date}T${timeStr}`;
 
         const updated = appointments.map(apt =>
             apt.id === selectedAppointment.id
@@ -434,26 +588,39 @@ export function Scheduling() {
                 <div className="flex items-center gap-2">
                     <div className="bg-muted p-1 rounded-lg flex items-center">
                         <Button
-                            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                            variant={viewMode === 'list' ? 'default' : 'ghost'}
                             size="sm"
                             onClick={() => setViewMode('list')}
-                            className="h-8"
+                            className={cn("h-8", viewMode === 'list' && "bg-blue-500 hover:bg-blue-600 text-white")}
                         >
                             <List className="h-4 w-4 mr-2" />
                             List
                         </Button>
                         <Button
-                            variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
+                            variant={viewMode === 'calendar' ? 'default' : 'ghost'}
                             size="sm"
                             onClick={() => setViewMode('calendar')}
-                            className="h-8"
+                            className={cn("h-8", viewMode === 'calendar' && "bg-blue-500 hover:bg-blue-600 text-white")}
                         >
                             <CalendarIcon className="h-4 w-4 mr-2" />
                             Calendar
                         </Button>
 
                     </div>
-                    <Button className="gap-2" onClick={() => setIsDialogOpen(true)}>
+                    <Button className="gap-2 bg-green-500 hover:bg-green-600 text-white" onClick={async () => {
+                        // Ensure settings are loaded before opening dialog
+                        await loadAppointmentTypes();
+                        // Set default fee and currency from settings when opening dialog
+                        const currentDefaultFee = settings.defaultFee || 80;
+                        const currentCurrency = settings.currency || "EUR";
+                        setFormData({
+                            ...formData,
+                            fee: currentDefaultFee,
+                            currency: currentCurrency,
+                            type: "Therapy Session" // Reset to default type
+                        });
+                        setIsDialogOpen(true);
+                    }}>
                         <Plus className="h-4 w-4" />
                         New Appointment
                     </Button>
@@ -503,8 +670,15 @@ export function Scheduling() {
                                         <CalendarIcon className="h-12 w-12 mb-4 opacity-50" />
                                         <p className="text-sm text-center mb-4">No appointments scheduled for this day</p>
                                         <Button 
+                                            className="bg-green-500 hover:bg-green-600 text-white"
                                             onClick={() => {
-                                                setFormData({ ...formData, date: singleDayView || new Date().toISOString().split('T')[0] });
+                                                setFormData({ 
+                                                    ...formData, 
+                                                    date: singleDayView || new Date().toISOString().split('T')[0],
+                                                    fee: settings.defaultFee || 80,
+                                                    currency: settings.currency || "EUR",
+                                                    type: "Therapy Session" // Reset to default type
+                                                });
                                                 setIsDialogOpen(true);
                                                 setSingleDayView(null);
                                             }}
@@ -610,16 +784,25 @@ export function Scheduling() {
                                     if (dayStr === '2025-11-25') {
                                         console.log(`[Calendar Render] Day: ${dayStr}, Found ${dayAppointments.length} appointments:`, dayAppointments.map(a => ({ id: a.id, client: a.clientName, time: a.time, date: a.date })));
                                     }
+                                    // Check if this day is blocked (day of week is in blockedDays)
+                                    const dayOfWeek = day.getDay();
+                                    const isBlockedDay = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
+                                    
                                     return (
                                         <div
                                             key={day.toString()}
                                             className={cn(
-                                                "border-b border-r p-1.5 transition-colors hover:bg-muted/50 cursor-pointer relative group overflow-hidden flex flex-col",
+                                                "border-b border-r p-1.5 transition-colors relative group overflow-hidden flex flex-col",
                                                 !isSameMonth(day, currentMonth) && "bg-muted/20 text-muted-foreground",
-                                                isToday(day) && "bg-primary/5",
-                                                dayAppointments.length > 0 && "bg-muted/30"
+                                                isToday(day) && !isBlockedDay && "bg-primary/5",
+                                                dayAppointments.length > 0 && !isBlockedDay && "bg-muted/30",
+                                                isBlockedDay && "opacity-25 bg-muted/20 grayscale cursor-not-allowed pointer-events-none",
+                                                !isBlockedDay && "hover:bg-muted/50 cursor-pointer"
                                             )}
                                             onClick={() => {
+                                                // Prevent clicking on blocked days
+                                                if (isBlockedDay) return;
+                                                
                                                 const dateStr = format(day, 'yyyy-MM-dd');
                                                 setSelectedDate(dateStr);
                                                 setViewRange("today"); // Ensure viewRange is set to show selected date
@@ -664,9 +847,7 @@ export function Scheduling() {
                                                                     apt.type === "Initial Consultation" && "bg-blue-100 text-blue-800 border-blue-300",
                                                                     apt.type === "Therapy Session" && "bg-green-100 text-green-800 border-green-300",
                                                                     apt.type === "Discovery Session" && "bg-purple-100 text-purple-800 border-purple-300",
-                                                                    apt.type === "Couples Therapy Session" && "bg-pink-100 text-pink-800 border-pink-300",
-                                                                    apt.type === "Family Therapy" && "bg-orange-100 text-orange-800 border-orange-300",
-                                                                    apt.type === "Follow-up Session" && "bg-yellow-100 text-yellow-800 border-yellow-300"
+                                                                    apt.type === "Couples Therapy Session" && "bg-pink-100 text-pink-800 border-pink-300"
                                                                 )}
                                                                 title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
                                                             >
@@ -708,14 +889,6 @@ export function Scheduling() {
                                 <div className="w-3 h-3 rounded-full bg-pink-500"></div>
                                 <span>Couples Therapy</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                                <span>Family Therapy</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                <span>Follow-up Session</span>
-                            </div>
                         </div>
                     </div>
                 </Card>
@@ -743,9 +916,15 @@ export function Scheduling() {
                                     <p className="text-sm text-center">No appointments scheduled</p>
                                     <Button 
                                         size="sm" 
-                                        className="mt-4" 
+                                        className="mt-4 bg-green-500 hover:bg-green-600 text-white" 
                                         onClick={() => {
-                                            setFormData({ ...formData, date: selectedDate });
+                                            setFormData({ 
+                                                ...formData, 
+                                                date: selectedDate,
+                                                fee: settings.defaultFee || 80,
+                                                currency: settings.currency || "EUR",
+                                                type: "Therapy Session" // Reset to default type
+                                            });
                                             setIsDialogOpen(true);
                                         }}
                                     >
@@ -772,9 +951,7 @@ export function Scheduling() {
                                                             appointment.type === "Initial Consultation" && "bg-blue-100 text-blue-700",
                                                             appointment.type === "Therapy Session" && "bg-green-100 text-green-700",
                                                             appointment.type === "Discovery Session" && "bg-purple-100 text-purple-700",
-                                                            appointment.type === "Couples Therapy Session" && "bg-pink-100 text-pink-700",
-                                                            appointment.type === "Family Therapy" && "bg-orange-100 text-orange-700",
-                                                            appointment.type === "Follow-up Session" && "bg-yellow-100 text-yellow-700"
+                                                            appointment.type === "Couples Therapy Session" && "bg-pink-100 text-pink-700"
                                                         )}>
                                                             {appointment.type}
                                                         </span>
@@ -796,10 +973,15 @@ export function Scheduling() {
                                         </Card>
                                     ))}
                                     <Button 
-                                        variant="outline" 
-                                        className="w-full mt-4" 
+                                        className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white" 
                                         onClick={() => {
-                                            setFormData({ ...formData, date: selectedDate });
+                                            setFormData({ 
+                                                ...formData, 
+                                                date: selectedDate,
+                                                fee: settings.defaultFee || 80,
+                                                currency: settings.currency || "EUR",
+                                                type: "Therapy Session" // Reset to default type
+                                            });
                                             setIsDialogOpen(true);
                                         }}
                                     >
@@ -860,16 +1042,12 @@ export function Scheduling() {
                                                 therapy: getAppointmentDatesByType("Therapy Session"),
                                                 discovery: getAppointmentDatesByType("Discovery Session"),
                                                 couples: getAppointmentDatesByType("Couples Therapy Session"),
-                                                family: getAppointmentDatesByType("Family Therapy"),
-                                                followup: getAppointmentDatesByType("Follow-up Session"),
                                             }}
                                             modifiersStyles={{
                                                 consultation: { color: '#3b82f6', fontWeight: 'bold', textDecoration: 'underline' }, // Blue
                                                 therapy: { color: '#22c55e', fontWeight: 'bold', textDecoration: 'underline' }, // Green
                                                 discovery: { color: '#a855f7', fontWeight: 'bold', textDecoration: 'underline' }, // Purple
                                                 couples: { color: '#ec4899', fontWeight: 'bold', textDecoration: 'underline' }, // Pink
-                                                family: { color: '#f97316', fontWeight: 'bold', textDecoration: 'underline' }, // Orange
-                                                followup: { color: '#eab308', fontWeight: 'bold', textDecoration: 'underline' }, // Yellow
                                             }}
                                         />
                                     </PopoverContent>
@@ -895,14 +1073,6 @@ export function Scheduling() {
                                         <div className="w-3 h-3 rounded-full bg-pink-500"></div>
                                         <span>Couples Therapy</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                                        <span>Family Therapy</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                                        <span>Follow-up Session</span>
-                                    </div>
                                 </div>
                             </div>
                         </CardContent>
@@ -925,56 +1095,77 @@ export function Scheduling() {
                                     <p className="text-sm">No appointments found for this period</p>
                                 </div>
                             ) : (
-                                filteredAppointments.map((appointment, index) => (
-                                    <motion.div
-                                        key={appointment.id}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: index * 0.1 }}
-                                    >
-                                        <Card className="border-l-4 border-l-primary hover:shadow-md transition-shadow">
-                                            <CardContent className="p-4">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="flex flex-col items-center justify-center w-14 h-14 rounded-lg bg-primary/10 text-primary">
-                                                            <span className="text-xs font-bold uppercase">
-                                                                {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short' })}
-                                                            </span>
-                                                            <span className="text-xl font-bold">
-                                                                {new Date(appointment.date).getDate()}
-                                                            </span>
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="font-semibold text-lg">{appointment.clientName}</h4>
-                                                            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                                                                <span className="flex items-center gap-1">
-                                                                    <Clock className="h-3 w-3" />
-                                                                    {appointment.time}
+                                filteredAppointments.map((appointment, index) => {
+                                    const pastDue = isPastDue(appointment);
+                                    return (
+                                        <motion.div
+                                            key={appointment.id}
+                                            initial={{ opacity: 0, x: -20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: index * 0.1 }}
+                                        >
+                                            <Card className={`border-l-4 hover:shadow-md transition-shadow ${
+                                                pastDue 
+                                                    ? 'border-l-red-500 bg-red-50/50 dark:bg-red-950/20' 
+                                                    : 'border-l-primary'
+                                            }`}>
+                                                <CardContent className="p-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                            <div className={`flex flex-col items-center justify-center w-14 h-14 rounded-lg ${
+                                                                pastDue 
+                                                                    ? 'bg-red-500/10 text-red-600 dark:text-red-400' 
+                                                                    : 'bg-primary/10 text-primary'
+                                                            }`}>
+                                                                <span className="text-xs font-bold uppercase">
+                                                                    {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short' })}
                                                                 </span>
-                                                                <span>{appointment.duration}m</span>
-                                                                <span>{appointment.type}</span>
+                                                                <span className="text-xl font-bold">
+                                                                    {new Date(appointment.date).getDate()}
+                                                                </span>
                                                             </div>
-                                                            {appointment.fee && (
-                                                                <div className="text-xs text-muted-foreground mt-1">
-                                                                    €{appointment.fee} - {appointment.paymentStatus || "unpaid"}
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-center gap-2">
+                                                                    <h4 className={`font-semibold text-lg ${pastDue ? 'text-red-700 dark:text-red-300' : ''}`}>
+                                                                        {appointment.clientName}
+                                                                    </h4>
+                                                                    {pastDue && (
+                                                                        <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-red-500 text-white rounded-full">
+                                                                            <AlertCircle className="h-3 w-3" />
+                                                                            Past Due
+                                                                        </span>
+                                                                    )}
                                                                 </div>
-                                                            )}
+                                                                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Clock className={`h-3 w-3 ${pastDue ? 'text-red-500' : ''}`} />
+                                                                        {appointment.time}
+                                                                    </span>
+                                                                    <span>{appointment.duration}m</span>
+                                                                    <span>{appointment.type}</span>
+                                                                </div>
+                                                                {appointment.fee && (
+                                                                    <div className={`text-xs mt-1 ${pastDue ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
+                                                                        €{appointment.fee} - {appointment.paymentStatus || "unpaid"}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => {
+                                                                router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
+                                                            }}
+                                                        >
+                                                            View
+                                                        </Button>
                                                     </div>
-                                                    <Button
-                                                        size="sm"
-                                                        variant="ghost"
-                                                        onClick={() => {
-                                                            router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
-                                                        }}
-                                                    >
-                                                        View
-                                                    </Button>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </motion.div>
-                                ))
+                                                </CardContent>
+                                            </Card>
+                                        </motion.div>
+                                    );
+                                })
                             )}
                         </CardContent>
                     </Card>
@@ -999,11 +1190,13 @@ export function Scheduling() {
                                     value={formData.clientName}
                                     onValueChange={(value) => {
                                         const client = clients.find(c => c.name === value);
+                                        // Only use client.sessionFee if it's a valid positive number, otherwise use default fee
+                                        const clientFee = (client?.sessionFee && client.sessionFee > 0) ? client.sessionFee : undefined;
                                         setFormData({
                                             ...formData,
                                             clientName: value,
-                                            fee: client?.sessionFee ?? 0,
-                                            currency: client?.currency ?? "EUR",
+                                            fee: clientFee ?? settings.defaultFee ?? 80,
+                                            currency: client?.currency ?? settings.currency ?? "EUR",
                                         });
                                     }}
                                 >
@@ -1033,6 +1226,8 @@ export function Scheduling() {
                                             setBookingError(null);
                                         }
                                     }}
+                                    minDate={new Date()}
+                                    blockedDays={settings.blockedDays}
                                 />
                             </div>
 
@@ -1046,6 +1241,7 @@ export function Scheduling() {
                                         setFormData({ ...formData, time: e.target.value });
                                         setBookingError(null);
                                     }}
+                                    min={formData.date === new Date().toISOString().split('T')[0] ? new Date().toTimeString().slice(0, 5) : "00:00"}
                                     required
                                 />
                             </div>
@@ -1071,13 +1267,14 @@ export function Scheduling() {
                                         // Find the selected appointment type to get its default duration and fee
                                         const selectedType = appointmentTypes.find(t => t.name === value);
                                         const duration = selectedType?.duration || 60;
-                                        const fee = selectedType?.fee || 80;
+                                        const fee = selectedType?.fee || settings.defaultFee || 80;
 
                                         setFormData({
                                             ...formData,
                                             type: value,
                                             duration,
-                                            fee
+                                            fee,
+                                            currency: settings.currency || formData.currency || "EUR"
                                         });
                                     }}
                                 >
@@ -1086,7 +1283,7 @@ export function Scheduling() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {appointmentTypes
-                                            .filter(t => t.enabled)
+                                            .filter(t => t.enabled && t.name) // Only show enabled types with valid names
                                             .sort((a, b) => {
                                                 // Move Discovery Session to the top
                                                 if (a.name === "Discovery Session") return -1;
@@ -1190,7 +1387,7 @@ export function Scheduling() {
                             }}>
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={!formData.clientName}>
+                            <Button type="submit" disabled={!formData.clientName} className="bg-green-500 hover:bg-green-600 text-white">
                                 Create Appointment
                             </Button>
                         </DialogFooter>
@@ -1245,6 +1442,8 @@ export function Scheduling() {
                                                     setBookingError(null);
                                                 }
                                             }}
+                                            minDate={new Date()}
+                                            blockedDays={settings.blockedDays}
                                         />
                                     ) : (
                                         <div className="flex items-center gap-2">
@@ -1403,6 +1602,7 @@ export function Scheduling() {
                                             Cancel
                                         </Button>
                                         <Button
+                                            className="bg-green-500 hover:bg-green-600 text-white"
                                             onClick={handleSaveAppointmentTime}
                                             disabled={!editedAppointment || !editedAppointment.date || !editedAppointment.time}
                                         >
@@ -1411,31 +1611,23 @@ export function Scheduling() {
                                     </>
                                 ) : (
                                     <>
-                                        {selectedAppointment.date >= new Date().toISOString().split('T')[0] ? (
-                                            <>
-                                                <Button
-                                                    variant="destructive"
-                                                    onClick={() => setIsDeleteConfirmOpen(true)}
-                                                >
-                                                    Delete Appointment
-                                                </Button>
-                                                <div className="flex gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        onClick={handleEditAppointmentTime}
-                                                    >
-                                                        Edit
-                                                    </Button>
-                                                    <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
-                                                        Close
-                                                    </Button>
-                                                </div>
-                                            </>
-                                        ) : (
+                                        <Button
+                                            variant="destructive"
+                                            onClick={() => setIsDeleteConfirmOpen(true)}
+                                        >
+                                            Delete Appointment
+                                        </Button>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleEditAppointmentTime}
+                                            >
+                                                Edit
+                                            </Button>
                                             <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
                                                 Close
                                             </Button>
-                                        )}
+                                        </div>
                                     </>
                                 )}
                             </div>
@@ -1445,24 +1637,14 @@ export function Scheduling() {
             </Dialog>
 
             {/* Delete Confirmation Dialog */}
-            <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-                <DialogContent className="max-w-sm">
-                    <DialogHeader>
-                        <DialogTitle>Confirm Deletion</DialogTitle>
-                        <DialogDescription>
-                            Are you sure you want to delete this appointment? This action cannot be undone.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDeleteConfirmOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button variant="destructive" onClick={handleDeleteAppointment}>
-                            Delete
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <DeleteConfirmationDialog
+                open={isDeleteConfirmOpen}
+                onOpenChange={setIsDeleteConfirmOpen}
+                onConfirm={handleDeleteAppointment}
+                title="Delete Appointment"
+                description="Are you sure you want to delete this appointment? This action cannot be undone."
+                itemName={selectedAppointment?.clientName ? `${selectedAppointment.clientName}'s appointment` : undefined}
+            />
         </div >
     );
 

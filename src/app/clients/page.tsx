@@ -24,10 +24,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientImportExport } from "@/components/client-import-export";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
+import { GDPRDeleteDialog } from "@/components/ui/gdpr-delete-dialog";
 
 interface Appointment {
     id: string;
@@ -68,6 +70,8 @@ interface Client {
     currency?: 'EUR' | 'GBP' | 'USD' | 'AUD'; // Currency for session fee
     documents?: ClientDocument[];
     relationships?: ClientRelationship[];
+    archived?: boolean; // Whether client is archived
+    archivedAt?: string; // When client was archived
     // Extended personal/medical fields
     dateOfBirth?: string;
     mailingAddress?: string;
@@ -94,6 +98,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [clients, setClients] = useState<Client[]>([]);
     const [recordings, setRecordings] = useState<any[]>([]);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(autoOpenAddDialog);
+    const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [isDocumentsExpanded, setIsDocumentsExpanded] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [formData, setFormData] = useState<Partial<Client>>({
@@ -105,7 +110,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         nextAppointment: "",
         notes: "",
         sessions: 0,
-        sessionFee: 80, // Default €80
+        sessionFee: undefined, // Empty by default - will use standard fee from settings
         currency: 'EUR', // Default to Euros
         documents: [],
         relationships: [],
@@ -122,6 +127,27 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [reciprocalQueue, setReciprocalQueue] = useState<{ sourceId: string, targetId: string, sourceName: string, targetName: string, initialType: string }[]>([]);
     const [currentReciprocal, setCurrentReciprocal] = useState<{ sourceId: string, targetId: string, sourceName: string, targetName: string, initialType: string } | null>(null);
     const [reciprocalType, setReciprocalType] = useState("");
+
+    // Map relationship types to their reciprocals
+    const getReciprocalRelationshipType = (type: string): string => {
+        const reciprocalMap: Record<string, string> = {
+            "Mum": "Daughter",
+            "Mother": "Daughter",
+            "Dad": "Son",
+            "Father": "Son",
+            "Daughter": "Mum",
+            "Son": "Dad",
+            "Wife": "Husband",
+            "Husband": "Wife",
+            "Partner": "Partner",
+            "Sister": "Sister",
+            "Brother": "Brother",
+            "Friend": "Friend",
+            "Guardian": "Ward",
+            "Ward": "Guardian",
+        };
+        return reciprocalMap[type] || type;
+    };
     const [showBulkImport, setShowBulkImport] = useState(false);
 
     useEffect(() => {
@@ -134,7 +160,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     useEffect(() => {
         loadClients();
         loadRecordings();
-    }, []);
+    }, [activeTab]); // Reload when tab changes
 
     // Open client details if client query parameter is present
     useEffect(() => {
@@ -160,23 +186,45 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         };
     }, []);
 
-    // Process Reciprocal Queue
+    // Process Reciprocal Queue - Automatically open target client's details
     useEffect(() => {
-        if (!currentReciprocal && reciprocalQueue.length > 0) {
+        if (!currentReciprocal && reciprocalQueue.length > 0 && clients.length > 0) {
             const next = reciprocalQueue[0];
             setCurrentReciprocal(next);
             setReciprocalQueue(prev => prev.slice(1));
-            setReciprocalType(""); // Reset input
+            
+            // Find the target client and open their details
+            const targetClient = clients.find(c => c.id === next.targetId);
+            if (targetClient) {
+                // Get the suggested reciprocal type
+                const suggestedType = getReciprocalRelationshipType(next.initialType);
+                setReciprocalType(suggestedType);
+                
+                // Open the target client's details dialog
+                setEditingClient(targetClient);
+                setFormData({
+                    ...targetClient,
+                    // Pre-populate with the reciprocal relationship
+                    relationships: [
+                        ...(targetClient.relationships || []),
+                        { relatedClientId: next.sourceId, type: suggestedType }
+                    ]
+                });
+                setIsAddDialogOpen(true);
+            }
         }
-    }, [currentReciprocal, reciprocalQueue]);
+    }, [currentReciprocal, reciprocalQueue, clients]);
 
     const loadClients = async () => {
         try {
-            const response = await fetch('/api/clients');
-            if (response.ok) {
-                const data = await response.json();
-                setClients(data);
-            }
+            console.log('[Clients Page] Loading clients...', { activeTab });
+            
+            // Load clients based on active tab
+            const response = await fetch(activeTab === 'archived' ? '/api/clients?archived=true' : '/api/clients');
+            const data = response.ok ? await response.json() : [];
+            
+            console.log(`[Clients Page] ${activeTab === 'archived' ? 'Archived' : 'Active'} clients:`, data.length);
+            setClients(data);
         } catch (error) {
             console.error('Error loading clients:', error);
         }
@@ -226,8 +274,79 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     };
 
     const [appointments, setAppointments] = useState<Appointment[]>([]);
+    const [syncingNextAppointment, setSyncingNextAppointment] = useState<string | null>(null);
+    
+    // NEW: Check if a client's nextAppointment has a corresponding session
+    const hasSessionForNextAppointment = (client: Client): boolean => {
+        if (!client.nextAppointment) return false;
+        try {
+            const nextDate = new Date(client.nextAppointment);
+            const nextDateStr = nextDate.toISOString().split('T')[0]; // Date only
+            
+            return appointments.some(apt => {
+                // Match by client name (API only returns clientName, not client_id)
+                const matchesClient = apt.clientName === client.name;
+                
+                if (!matchesClient) return false;
+                
+                const aptDate = new Date(apt.date);
+                const aptDateStr = aptDate.toISOString().split('T')[0]; // Date only
+                
+                // Compare dates (ignore time for matching)
+                return aptDateStr === nextDateStr;
+            });
+        } catch {
+            return false;
+        }
+    };
+    
+    // NEW: Sync nextAppointment to session manually
+    const handleSyncNextAppointment = async (clientId: string) => {
+        setSyncingNextAppointment(clientId);
+        try {
+            // Get the nextAppointment from formData if editing, or from client if viewing
+            const client = editingClient || clients.find(c => c.id === clientId);
+            const nextAppointmentToSync = formData.nextAppointment || client?.nextAppointment;
+            
+            const response = await fetch('/api/appointments/sync-next', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    clientId,
+                    nextAppointment: nextAppointmentToSync // Pass the current formData value
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                // Always reload appointments to sync UI state
+                await loadAppointments();
+                
+                if (data.created) {
+                    alert(`Session created successfully for ${data.message || 'this client'}`);
+                } else {
+                    // Session already exists - provide more helpful message
+                    const message = data.existingDate 
+                        ? `Session already exists for this date (${new Date(data.existingDate).toLocaleString()})`
+                        : data.message || 'Session already exists or no nextAppointment set';
+                    alert(message);
+                }
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to sync' }));
+                alert(errorData.error || 'Failed to sync nextAppointment to session');
+            }
+        } catch (error) {
+            console.error('Error syncing nextAppointment:', error);
+            alert('Error syncing nextAppointment to session');
+        } finally {
+            setSyncingNextAppointment(null);
+        }
+    };
+    
     const [activeSession, setActiveSession] = useState<Appointment | null>(null);
     const [sessionDialogTab, setSessionDialogTab] = useState<"notes" | "attachments">("notes");
+    const [sessionNotes, setSessionNotes] = useState<any[]>([]);
+    const [isLoadingSessionNotes, setIsLoadingSessionNotes] = useState(false);
 
     // Log Past Session State
     const [isLogSessionDialogOpen, setIsLogSessionDialogOpen] = useState(false);
@@ -279,9 +398,74 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
-    const handleOpenSession = (session: Appointment, tab: "notes" | "attachments") => {
+    const handleOpenSession = async (session: Appointment, tab: "notes" | "attachments") => {
         setActiveSession(session);
         setSessionDialogTab(tab);
+        if (tab === "notes") {
+            await loadSessionNotes(session.id);
+        }
+    };
+
+    const loadSessionNotes = async (sessionId: string) => {
+        setIsLoadingSessionNotes(true);
+        try {
+            const response = await fetch('/api/session-notes');
+            if (response.ok) {
+                const allNotes = await response.json();
+                
+                // Get the active session to match by client and date
+                const session = appointments.find(apt => apt.id === sessionId);
+                if (!session) {
+                    setSessionNotes([]);
+                    return;
+                }
+
+                // Filter notes for this specific session
+                const notesForSession = allNotes.filter((note: any) => {
+                    // For session notes: match by session_id
+                    if (note.session_id === sessionId || note.sessionId === sessionId) {
+                        return true;
+                    }
+                    
+                    // For recordings: match by client and date
+                    if (note.source === 'recording') {
+                        const noteClientId = note.clientId;
+                        const sessionClientId = editingClient?.id;
+                        
+                        // Match by client ID first
+                        if (noteClientId && sessionClientId && noteClientId === sessionClientId) {
+                            // Try to match by date (session date vs recording date)
+                            const sessionDate = new Date(session.date).toISOString().split('T')[0];
+                            const noteDate = note.sessionDate ? new Date(note.sessionDate).toISOString().split('T')[0] : null;
+                            
+                            // If dates match exactly, include it
+                            if (noteDate === sessionDate) {
+                                return true;
+                            }
+                            
+                            // Also include recordings for this client even if date doesn't match exactly
+                            // (recordings might be created on a different day but related to the session)
+                            return true;
+                        }
+                        
+                        // Fallback: match by client name (case-insensitive)
+                        if (note.clientName && session.clientName && 
+                            note.clientName.toLowerCase() === session.clientName.toLowerCase()) {
+                            return true;
+                        }
+                    }
+                    
+                    return false;
+                });
+                
+                console.log(`Found ${notesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
+                setSessionNotes(notesForSession);
+            }
+        } catch (error) {
+            console.error('Error loading session notes:', error);
+        } finally {
+            setIsLoadingSessionNotes(false);
+        }
     };
 
     const saveActiveSession = async () => {
@@ -339,6 +523,23 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    const handleRemoveSessionDocumentClick = (index: number) => {
+        setDeleteSessionDocConfirm({ isOpen: true, index });
+    };
+
+    const confirmRemoveSessionDocument = () => {
+        if (deleteSessionDocConfirm.index !== null) {
+            setActiveSession(prev => {
+                if (!prev) return null;
+                return {
+                    ...prev,
+                    attachments: prev.attachments?.filter((_, i) => i !== deleteSessionDocConfirm.index) || []
+                };
+            });
+            setDeleteSessionDocConfirm({ isOpen: false, index: null });
+        }
+    };
+
     const removeSessionDocument = (index: number) => {
         setActiveSession(prev => {
             if (!prev) return null;
@@ -353,6 +554,19 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         loadAppointments();
     }, []);
 
+    // Update session count when appointments change and a client is being edited
+    useEffect(() => {
+        if (editingClient) {
+            const actualSessionCount = getClientAppointments(editingClient.name).length;
+            if (formData.sessions !== actualSessionCount) {
+                setFormData(prev => ({
+                    ...prev,
+                    sessions: actualSessionCount
+                }));
+            }
+        }
+    }, [appointments, editingClient]);
+
     const loadAppointments = async () => {
         try {
             const response = await fetch('/api/appointments');
@@ -366,9 +580,34 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     };
 
     const getClientAppointments = (clientName: string) => {
+        if (!clientName) return [];
+        // Normalize names for case-insensitive matching
+        const normalizedClientName = clientName.trim().toLowerCase();
         return appointments
-            .filter(apt => apt.clientName === clientName)
+            .filter(apt => {
+                if (!apt.clientName) return false;
+                const normalizedAptName = apt.clientName.trim().toLowerCase();
+                return normalizedAptName === normalizedClientName;
+            })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    };
+
+    const getLastAppointment = (clientName: string) => {
+        const clientAppointments = getClientAppointments(clientName);
+        if (clientAppointments.length === 0) return null;
+        // Appointments are already sorted by date (newest first)
+        return clientAppointments[0];
+    };
+
+    const getClientRelationships = (client: Client) => {
+        if (!client.relationships || client.relationships.length === 0) return [];
+        return client.relationships.map(rel => {
+            const relatedClient = clients.find(c => c.id === rel.relatedClientId);
+            return {
+                ...rel,
+                relatedClientName: relatedClient?.name || "Unknown"
+            };
+        });
     };
 
     const saveClients = async (updatedClients: Client[]) => {
@@ -415,6 +654,20 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    const handleRemoveDocumentClick = (index: number) => {
+        setDeleteDocumentConfirm({ isOpen: true, index });
+    };
+
+    const confirmRemoveDocument = () => {
+        if (deleteDocumentConfirm.index !== null) {
+            setFormData(prev => ({
+                ...prev,
+                documents: prev.documents?.filter((_, i) => i !== deleteDocumentConfirm.index) || []
+            }));
+            setDeleteDocumentConfirm({ isOpen: false, index: null });
+        }
+    };
+
     const removeDocument = (index: number) => {
         setFormData(prev => ({
             ...prev,
@@ -435,6 +688,20 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             newrels[index] = { ...newrels[index], [field]: value };
             return { ...prev, relationships: newrels };
         });
+    };
+
+    const handleRemoveRelationshipClick = (index: number) => {
+        setDeleteRelationshipConfirm({ isOpen: true, index });
+    };
+
+    const confirmRemoveRelationship = () => {
+        if (deleteRelationshipConfirm.index !== null) {
+            setFormData(prev => ({
+                ...prev,
+                relationships: prev.relationships?.filter((_, i) => i !== deleteRelationshipConfirm.index) || []
+            }));
+            setDeleteRelationshipConfirm({ isOpen: false, index: null });
+        }
     };
 
     const removeRelationship = (index: number) => {
@@ -469,7 +736,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         setCurrentReciprocal(null);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         let savedClient: Client;
@@ -478,12 +745,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         if (editingClient) {
             // Update existing client
             const combinedName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
-            savedClient = { ...editingClient, ...formData, name: combinedName } as Client;
+            // Only include sessionFee if it's a valid positive number, otherwise set to undefined
+            const sessionFeeToSave = (formData.sessionFee && formData.sessionFee > 0) ? formData.sessionFee : undefined;
+            savedClient = { ...editingClient, ...formData, name: combinedName, sessionFee: sessionFeeToSave } as Client;
             updatedClientsList = clients.map(c =>
                 c.id === editingClient.id ? savedClient : c
             );
         } else {
             // Add new client
+            // Only include sessionFee if it's a valid positive number, otherwise set to undefined
+            const sessionFeeToSave = (formData.sessionFee && formData.sessionFee > 0) ? formData.sessionFee : undefined;
             savedClient = {
                 id: Date.now().toString(),
                 firstName: formData.firstName || "",
@@ -495,6 +766,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 notes: formData.notes || "",
                 recordings: 0, // Legacy field
                 sessions: formData.sessions || 0,
+                sessionFee: sessionFeeToSave,
+                currency: formData.currency || 'EUR',
                 documents: formData.documents || [],
                 relationships: formData.relationships || [],
                 dateOfBirth: formData.dateOfBirth || "",
@@ -508,37 +781,45 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             updatedClientsList = [...clients, savedClient];
         }
 
-        saveClients(updatedClientsList);
-        setEditingClient(null);
-
-        // Reset form
-        setFormData({
-            name: "",
-            email: "",
-            phone: "",
-            nextAppointment: "",
-            notes: "",
-            sessions: 0,
-            sessionFee: 80, // Default €80
-            currency: 'EUR', // Default to Euros
-            documents: [],
-            relationships: [],
-            dateOfBirth: "",
-            mailingAddress: "",
-            preferredName: "",
-            emergencyContact: { name: "", phone: "" },
-            medicalConditions: "",
-            currentMedications: "",
-            doctorInfo: { name: "", phone: "" },
-        });
-        setIsAddDialogOpen(false);
-
-        // Check for missing reciprocal relationships
+        await saveClients(updatedClientsList);
+        
+        // NEW: Automatically create session if nextAppointment is set
+        if (savedClient.nextAppointment) {
+            try {
+                const syncResponse = await fetch('/api/appointments/sync-next', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        clientId: savedClient.id,
+                        nextAppointment: savedClient.nextAppointment // Pass the value to ensure it's used
+                    })
+                });
+                if (syncResponse.ok) {
+                    const syncData = await syncResponse.json();
+                    if (syncData.created) {
+                        console.log(`[Client Save] ✅ Automatically created session for ${savedClient.name} from nextAppointment`);
+                        // Reload appointments to show the new session
+                        await loadAppointments();
+                        // Trigger a custom event to notify other components (like schedule) to reload
+                        window.dispatchEvent(new CustomEvent('appointments-updated'));
+                    } else if (syncData.message && syncData.message.includes('already exists')) {
+                        console.log(`[Client Save] ℹ️ Session already exists for ${savedClient.name}`);
+                        // Still reload to sync UI state
+                        await loadAppointments();
+                        window.dispatchEvent(new CustomEvent('appointments-updated'));
+                    }
+                }
+            } catch (error) {
+                console.error('[Client Save] Error automatically syncing nextAppointment to session:', error);
+                // Don't block save if sync fails
+            }
+        }
+        
+        // Check for missing reciprocal relationships BEFORE closing dialog
         const newQueue: typeof reciprocalQueue = [];
-
         if (savedClient.relationships) {
             savedClient.relationships.forEach(rel => {
-                const targetClient = clients.find(c => c.id === rel.relatedClientId);
+                const targetClient = updatedClientsList.find(c => c.id === rel.relatedClientId);
                 if (targetClient) {
                     const targetHasRel = targetClient.relationships?.some(r => r.relatedClientId === savedClient.id);
                     if (!targetHasRel) {
@@ -554,33 +835,220 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             });
         }
 
+        // If there are reciprocal relationships needed, open the first target client's details
         if (newQueue.length > 0) {
-            setReciprocalQueue(prev => [...prev, ...newQueue]);
+            const firstReciprocal = newQueue[0];
+            const targetClient = updatedClientsList.find(c => c.id === firstReciprocal.targetId);
+            if (targetClient) {
+                // Close current dialog
+                setEditingClient(null);
+                setIsAddDialogOpen(false);
+                
+                // Get suggested reciprocal type
+                const suggestedType = getReciprocalRelationshipType(firstReciprocal.initialType);
+                
+                // Open target client's details with relationship pre-filled
+                setTimeout(() => {
+                    setEditingClient(targetClient);
+                    setFormData({
+                        ...targetClient,
+                        relationships: [
+                            ...(targetClient.relationships || []),
+                            { relatedClientId: firstReciprocal.sourceId, type: suggestedType }
+                        ]
+                    });
+                    setIsAddDialogOpen(true);
+                    
+                    // Add remaining to queue if any
+                    if (newQueue.length > 1) {
+                        setReciprocalQueue(newQueue.slice(1));
+                    }
+                }, 100);
+                return; // Exit early, don't reset form yet
+            }
         }
+
+        // No reciprocal relationships needed, proceed normally
+        setEditingClient(null);
+
+        // Reset form
+        setFormData({
+            name: "",
+            email: "",
+            phone: "",
+            nextAppointment: "",
+            notes: "",
+            sessions: 0,
+            sessionFee: undefined, // Empty by default - will use standard fee from settings
+            currency: 'EUR', // Default to Euros
+            documents: [],
+            relationships: [],
+            dateOfBirth: "",
+            mailingAddress: "",
+            preferredName: "",
+            emergencyContact: { name: "", phone: "" },
+            medicalConditions: "",
+            currentMedications: "",
+            doctorInfo: { name: "", phone: "" },
+        });
+        setIsAddDialogOpen(false);
     };
 
     const handleEdit = (client: Client) => {
+        // Don't open modal for archived clients when viewing archived tab
+        if (activeTab === 'archived') {
+            return; // Archived clients are view-only in the archived tab
+        }
         setEditingClient(client);
-        setFormData(client);
+        // Calculate actual session count from appointments
+        const actualSessionCount = getClientAppointments(client.name).length;
+        setFormData({
+            ...client,
+            sessions: actualSessionCount // Update with actual count
+        });
         setIsAddDialogOpen(true);
     };
 
-    const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, clientId: string | null }>({ isOpen: false, clientId: null });
+    const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, clientId: string | null, action: 'archive' | 'delete' | null }>({ isOpen: false, clientId: null, action: null });
+    const [gdprDeleteOpen, setGdprDeleteOpen] = useState(false);
+    const [gdprDeleteClientId, setGdprDeleteClientId] = useState<string | null>(null);
+    const [deleteDocumentConfirm, setDeleteDocumentConfirm] = useState<{ isOpen: boolean, index: number | null }>({ isOpen: false, index: null });
+    const [deleteRelationshipConfirm, setDeleteRelationshipConfirm] = useState<{ isOpen: boolean, index: number | null }>({ isOpen: false, index: null });
+    const [deleteSessionDocConfirm, setDeleteSessionDocConfirm] = useState<{ isOpen: boolean, index: number | null }>({ isOpen: false, index: null });
 
-    const handleDeleteClick = (id: string) => {
-        setDeleteConfirmation({ isOpen: true, clientId: id });
-    };
+    // Check if client has session notes or recordings
+    const clientHasSessionData = async (clientId: string): Promise<boolean> => {
+        try {
+            // Check session notes
+            const notesResponse = await fetch('/api/session-notes');
+            if (notesResponse.ok) {
+                const notes = await notesResponse.json();
+                const client = clients.find(c => c.id === clientId);
+                if (client) {
+                    const hasNotes = notes.some((note: any) => 
+                        note.clientId === clientId || 
+                        note.client_id === clientId ||
+                        note.clientName?.toLowerCase() === client.name?.toLowerCase()
+                    );
+                    if (hasNotes) return true;
+                }
+            }
 
-    const confirmDelete = () => {
-        if (deleteConfirmation.clientId) {
-            const updatedClients = clients.filter(c => c.id !== deleteConfirmation.clientId);
-            saveClients(updatedClients);
-            setDeleteConfirmation({ isOpen: false, clientId: null });
+            // Check recordings
+            const recordingsResponse = await fetch('/api/recordings');
+            if (recordingsResponse.ok) {
+                const recordings = await recordingsResponse.json();
+                const client = clients.find(c => c.id === clientId);
+                if (client) {
+                    const hasRecordings = recordings.some((recording: any) => 
+                        recording.clientId === clientId || 
+                        recording.client_id === clientId ||
+                        recording.clientName?.toLowerCase() === client.name?.toLowerCase()
+                    );
+                    if (hasRecordings) return true;
+                }
+            }
+
+            // Check appointments
+            const hasAppointments = appointments.some(apt => {
+                const client = clients.find(c => c.id === clientId);
+                return client && apt.clientName?.toLowerCase() === client.name?.toLowerCase();
+            });
+            if (hasAppointments) return true;
+
+            return false;
+        } catch (error) {
+            console.error('Error checking client session data:', error);
+            // If we can't check, assume they have data to be safe
+            return true;
         }
     };
 
-    const cancelDelete = () => {
-        setDeleteConfirmation({ isOpen: false, clientId: null });
+    const handleDeleteClick = async (id: string) => {
+        const client = clients.find(c => c.id === id);
+        // If client is already archived, allow deletion. Otherwise, always archive.
+        const action = client?.archived ? 'delete' : 'archive';
+        console.log(`[Client Delete] Client ${id} is archived: ${client?.archived}, action: ${action}`);
+        setDeleteConfirmation({ isOpen: true, clientId: id, action });
+    };
+
+    const handleGDPRDeleteClick = (id: string) => {
+        setGdprDeleteClientId(id);
+        setGdprDeleteOpen(true);
+    };
+
+    const confirmArchive = async () => {
+        if (deleteConfirmation.clientId && deleteConfirmation.action === 'archive') {
+            try {
+                const response = await fetch('/api/clients/archive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: deleteConfirmation.clientId, restore: false }),
+                });
+                if (response.ok) {
+                    await loadClients();
+                    setDeleteConfirmation({ isOpen: false, clientId: null, action: null });
+                    // Refresh the page to ensure UI is updated
+                    window.location.reload();
+                } else {
+                    alert('Failed to archive client');
+                }
+            } catch (error) {
+                console.error('Error archiving client:', error);
+                alert('Error archiving client');
+            }
+        }
+    };
+
+    const confirmDelete = async () => {
+        if (deleteConfirmation.clientId && deleteConfirmation.action === 'delete') {
+            const updatedClients = clients.filter(c => c.id !== deleteConfirmation.clientId);
+            await saveClients(updatedClients);
+            await loadClients();
+            setDeleteConfirmation({ isOpen: false, clientId: null, action: null });
+        }
+    };
+
+    const handleRestore = async (id: string) => {
+        try {
+            const response = await fetch('/api/clients/archive', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, restore: true }),
+            });
+
+            if (response.ok) {
+                await loadClients();
+                // Close the dialog and refresh
+                handleDialogClose();
+            } else {
+                alert('Failed to restore client');
+            }
+        } catch (error) {
+            console.error('Error restoring client:', error);
+            alert('Error restoring client');
+        }
+    };
+
+    const confirmGDPRDelete = async () => {
+        if (gdprDeleteClientId) {
+            // Delete from database via API
+            try {
+                const response = await fetch(`/api/clients/gdpr-delete?id=${gdprDeleteClientId}`, {
+                    method: 'DELETE',
+                });
+                if (response.ok) {
+                    await loadClients();
+                    setGdprDeleteOpen(false);
+                    setGdprDeleteClientId(null);
+                } else {
+                    alert('Failed to delete client. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error deleting client:', error);
+                alert('Error deleting client. Please try again.');
+            }
+        }
     };
 
     const handleDialogClose = () => {
@@ -593,7 +1061,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             nextAppointment: "",
             notes: "",
             sessions: 0,
-            sessionFee: 80, // Default €80
+            sessionFee: undefined, // Empty by default - will use standard fee from settings
             currency: 'EUR', // Default to Euros
             documents: [],
             relationships: [],
@@ -614,13 +1082,24 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
             <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
+                <div className="flex-1">
                     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Clients</h1>
-                    <p className="text-sm sm:text-base text-muted-foreground">
+                    <p className="text-sm sm:text-base text-muted-foreground mb-4">
                         Manage your client information and appointments
                     </p>
+                    {/* Tabs for Active/Archived */}
+                    <Tabs value={activeTab} onValueChange={(value) => {
+                        setActiveTab(value as 'active' | 'archived');
+                        setShowBulkImport(false); // Hide bulk import when switching tabs
+                    }}>
+                        <TabsList>
+                            <TabsTrigger value="active">Active Clients</TabsTrigger>
+                            <TabsTrigger value="archived">Archived Clients</TabsTrigger>
+                        </TabsList>
+                    </Tabs>
                 </div>
 
+                {activeTab === 'active' && (
                 <Dialog open={isAddDialogOpen} onOpenChange={(open: boolean) => {
                     if (open) {
                         setIsAddDialogOpen(true);
@@ -629,7 +1108,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     }
                 }}>
                     <DialogTrigger asChild>
-                        <Button size="lg">
+                        <Button size="lg" className="bg-green-500 hover:bg-green-600 text-white">
                             <Plus className="mr-2 h-5 w-5" />
                             Add Client
                         </Button>
@@ -659,7 +1138,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="firstName">
-                                                    <User className="inline h-4 w-4 mr-1" />
+                                                    <User className="inline h-4 w-4 mr-1 text-blue-500" />
                                                     First Name *
                                                 </Label>
                                                 <Input
@@ -672,7 +1151,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="lastName">
-                                                    <User className="inline h-4 w-4 mr-1" />
+                                                    <User className="inline h-4 w-4 mr-1 text-green-500" />
                                                     Last Name *
                                                 </Label>
                                                 <Input
@@ -688,7 +1167,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         {/* Known As */}
                                         <div className="space-y-2">
                                             <Label htmlFor="preferredName">
-                                                <User className="inline h-4 w-4 mr-1" />
+                                                <User className="inline h-4 w-4 mr-1 text-purple-500" />
                                                 Known As
                                             </Label>
                                             <Input
@@ -703,7 +1182,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="email">
-                                                    <Mail className="inline h-4 w-4 mr-1" />
+                                                    <Mail className="inline h-4 w-4 mr-1 text-blue-500" />
                                                     Email
                                                 </Label>
                                                 <Input
@@ -716,7 +1195,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="phone">
-                                                    <Phone className="inline h-4 w-4 mr-1" />
+                                                    <Phone className="inline h-4 w-4 mr-1 text-green-500" />
                                                     Phone
                                                 </Label>
                                                 <Input
@@ -729,11 +1208,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                         </div>
 
-                                        {/* Next Appointment & Date of Birth */}
+                                        {/* Next Appointment & Last Appointment */}
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="nextAppointment">
-                                                    <Calendar className="inline h-4 w-4 mr-1" />
+                                                    <Calendar className="inline h-4 w-4 mr-1 text-green-500" />
                                                     Next Appointment
                                                 </Label>
                                                 <Input
@@ -744,24 +1223,41 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 />
                                             </div>
                                             <div className="space-y-2">
-                                                <Label htmlFor="dateOfBirth">
-                                                    <Calendar className="inline h-4 w-4 mr-1" />
-                                                    Date of Birth
+                                                <Label htmlFor="lastAppointment">
+                                                    <Calendar className="inline h-4 w-4 mr-1 text-purple-500" />
+                                                    Last Appointment
                                                 </Label>
                                                 <Input
-                                                    id="dateOfBirth"
-                                                    type="date"
-                                                    value={formData.dateOfBirth || ''}
-                                                    onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                                                    id="lastAppointment"
+                                                    type="text"
+                                                    readOnly
+                                                    value={editingClient && getLastAppointment(editingClient.name) 
+                                                        ? new Date(getLastAppointment(editingClient.name)!.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                        : 'No appointments yet'}
+                                                    className="bg-muted cursor-not-allowed"
                                                 />
                                             </div>
+                                        </div>
+
+                                        {/* Date of Birth */}
+                                        <div className="space-y-2">
+                                            <Label htmlFor="dateOfBirth">
+                                                <Calendar className="inline h-4 w-4 mr-1 text-blue-500" />
+                                                Date of Birth
+                                            </Label>
+                                            <Input
+                                                id="dateOfBirth"
+                                                type="date"
+                                                value={formData.dateOfBirth || ''}
+                                                onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                                            />
                                         </div>
 
                                         {/* Sessions & Fee */}
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="sessions">
-                                                    <Hash className="inline h-4 w-4 mr-1" />
+                                                    <Hash className="inline h-4 w-4 mr-1 text-green-500" />
                                                     Total Sessions
                                                 </Label>
                                                 <Input
@@ -775,8 +1271,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="sessionFee">
-                                                    <FileText className="inline h-4 w-4 mr-1" />
-                                                    Session Fee
+                                                    <FileText className="inline h-4 w-4 mr-1 text-pink-500" />
+                                                    Discount Session Fee
                                                 </Label>
                                                 <div className="flex gap-2">
                                                     <Select
@@ -805,8 +1301,12 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             min="0"
                                                             step="0.01"
                                                             placeholder="80"
-                                                            value={formData.sessionFee || 0}
-                                                            onChange={(e) => setFormData({ ...formData, sessionFee: parseFloat(e.target.value) || 80 })}
+                                                            value={formData.sessionFee || ''}
+                                                            onChange={(e) => {
+                                                                const value = e.target.value;
+                                                                // Allow empty string, otherwise parse as number
+                                                                setFormData({ ...formData, sessionFee: value === '' ? undefined : parseFloat(value) || undefined });
+                                                            }}
                                                             className="pl-10"
                                                         />
                                                     </div>
@@ -873,7 +1373,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                         variant="ghost"
                                                                         size="icon"
                                                                         className="h-6 w-6 text-red-500 hover:text-red-600"
-                                                                        onClick={() => removeDocument(index)}
+                                                                        onClick={() => handleRemoveDocumentClick(index)}
                                                                     >
                                                                         <Trash2 className="h-3 w-3" />
                                                                     </Button>
@@ -890,7 +1390,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         {/* Relationships */}
                                         <div className="space-y-2">
                                             <Label>
-                                                <Users className="inline h-4 w-4 mr-1" />
+                                                <Users className="inline h-4 w-4 mr-1 text-pink-500" />
                                                 Relationships
                                             </Label>
                                             <div className="space-y-2">
@@ -922,7 +1422,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-8 w-8 text-red-500"
-                                                            onClick={() => removeRelationship(index)}
+                                                            onClick={() => handleRemoveRelationshipClick(index)}
                                                         >
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
@@ -936,20 +1436,54 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     </div>
                                     <DialogFooter className="flex sm:justify-between gap-2">
                                         {editingClient && (
-                                            <Button
-                                                type="button"
-                                                variant="destructive"
-                                                onClick={() => handleDeleteClick(editingClient.id)}
-                                            >
-                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                Delete Client
-                                            </Button>
+                                            <div className="flex gap-2">
+                                                {editingClient.archived ? (
+                                                    <>
+                                                        <Button
+                                                            type="button"
+                                                            variant="default"
+                                                            className="bg-green-500 hover:bg-green-600 text-white"
+                                                            onClick={() => handleRestore(editingClient.id)}
+                                                        >
+                                                            <RotateCcw className="mr-2 h-4 w-4" />
+                                                            Restore Client
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant="destructive"
+                                                            onClick={() => handleDeleteClick(editingClient.id)}
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Delete Client
+                                                        </Button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Button
+                                                            type="button"
+                                                            variant="destructive"
+                                                            onClick={() => handleDeleteClick(editingClient.id)}
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Archive Client
+                                                        </Button>
+                                                    </>
+                                                )}
+                                                <Button
+                                                    type="button"
+                                                    variant="destructive"
+                                                    className="bg-red-700 hover:bg-red-800"
+                                                    onClick={() => handleGDPRDeleteClick(editingClient.id)}
+                                                >
+                                                    GDPR Delete
+                                                </Button>
+                                            </div>
                                         )}
                                         <div className="flex gap-2 ml-auto">
                                             <Button type="button" variant="outline" onClick={handleDialogClose}>
                                                 Cancel
                                             </Button>
-                                            <Button type="submit">
+                                            <Button type="submit" className={editingClient ? "" : "bg-green-500 hover:bg-green-600 text-white"}>
                                                 {editingClient ? "Update Client" : "Add Client"}
                                             </Button>
                                         </div>
@@ -960,14 +1494,29 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             <TabsContent value="sessions" className="space-y-4 py-4">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-lg font-semibold">Session History</h3>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setIsLogSessionDialogOpen(true)}
-                                    >
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        Log Past Session
-                                    </Button>
+                                    <div className="flex gap-2">
+                                        <Button
+                                            variant="default"
+                                            size="sm"
+                                            className="bg-green-500 hover:bg-green-600 text-white"
+                                            onClick={() => {
+                                                // Navigate to schedule page with client pre-selected
+                                                router.push(`/schedule?client=${encodeURIComponent(editingClient?.name || '')}`);
+                                                handleDialogClose();
+                                            }}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Add Appointment
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setIsLogSessionDialogOpen(true)}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Log Past Session
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 {editingClient && getClientAppointments(editingClient.name).length === 0 ? (
@@ -1006,7 +1555,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             onClick={() => handleOpenSession(apt, "notes")}
                                                         >
                                                             <FileText className="mr-2 h-3 w-3" />
-                                                            Clinical Notes
+                                                            Session Notes
                                                         </Button>
                                                         <Button
                                                             size="sm"
@@ -1027,6 +1576,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         </Tabs>
                     </DialogContent>
                 </Dialog>
+                )}
 
                 {/* Log Past Session Dialog */}
                 <Dialog open={isLogSessionDialogOpen} onOpenChange={setIsLogSessionDialogOpen}>
@@ -1119,20 +1669,102 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         </DialogHeader>
 
                         {activeSession && (
-                            <Tabs defaultValue={sessionDialogTab} className="w-full">
+                            <Tabs defaultValue={sessionDialogTab} className="w-full" onValueChange={async (value) => {
+                                setSessionDialogTab(value as "notes" | "attachments");
+                                if (value === "notes") {
+                                    await loadSessionNotes(activeSession.id);
+                                }
+                            }}>
                                 <TabsList className="grid w-full grid-cols-2">
-                                    <TabsTrigger value="notes">Clinical Notes</TabsTrigger>
+                                    <TabsTrigger value="notes">Session Notes</TabsTrigger>
                                     <TabsTrigger value="attachments">Attachments</TabsTrigger>
                                 </TabsList>
 
                                 <TabsContent value="notes" className="py-4 space-y-4">
-                                    <Textarea
-                                        placeholder="Enter detailed clinical notes here..."
-                                        className="min-h-[300px]"
-                                        value={activeSession.clinicalNotes || ''}
-                                        onChange={(e) => setActiveSession({ ...activeSession, clinicalNotes: e.target.value })}
-                                    />
-                                    <Button onClick={saveActiveSession}>Save Notes</Button>
+                                    {isLoadingSessionNotes ? (
+                                        <p className="text-muted-foreground text-center py-8">Loading session notes...</p>
+                                    ) : sessionNotes.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {/* If there is any recording-based note with audio, show a shared audio player at the top */}
+                                            {(() => {
+                                                const recordingNote = sessionNotes.find((n: any) => n.source === 'recording' && n.audioURL);
+                                                if (!recordingNote || !recordingNote.audioURL) return null;
+                                                return (
+                                                    <div className="border rounded-lg p-4 bg-muted/50">
+                                                        <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                                                            <Mic className="h-4 w-4 text-purple-600" />
+                                                            Audio Recording for this session
+                                                        </p>
+                                                        <audio controls className="w-full">
+                                                            <source src={recordingNote.audioURL} type="audio/webm" />
+                                                            <source src={recordingNote.audioURL} type="audio/mp3" />
+                                                            Your browser does not support the audio element.
+                                                        </audio>
+                                                    </div>
+                                                );
+                                            })()}
+
+                                            {sessionNotes.map((note, index) => (
+                                                <div key={note.id || index} className="border rounded-lg p-4 bg-muted/50">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <div className="text-sm text-muted-foreground">
+                                                            {note.createdDate || note.created_at 
+                                                                ? new Date(note.createdDate || note.created_at).toLocaleDateString() 
+                                                                : 'No date'}
+                                                        </div>
+                                                        {note.source === 'recording' && (
+                                                            <span className="flex items-center gap-1 text-xs text-purple-600">
+                                                                <Mic className="h-3 w-3" />
+                                                                Voice Note
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="whitespace-pre-wrap text-sm">
+                                                        {note.content || note.notes || 'No content'}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <div className="pt-4 border-t">
+                                                <Button 
+                                                    variant="outline" 
+                                                    onClick={() => {
+                                                        // Navigate to session notes page to create a new note for this session
+                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&date=${activeSession.date}&create=true`);
+                                                        setActiveSession(null);
+                                                    }}
+                                                >
+                                                    Add Session Note
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <p className="text-muted-foreground text-center py-4">No session notes found for this session.</p>
+                                            <div className="flex gap-2">
+                                                <Button 
+                                                    onClick={() => {
+                                                        // Navigate to session notes page to create a new note for this session
+                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&date=${activeSession.date}&create=true`);
+                                                        setActiveSession(null);
+                                                    }}
+                                                >
+                                                    Add Session Note
+                                                </Button>
+                                                <Button 
+                                                    variant="outline"
+                                                    onClick={saveActiveSession}
+                                                >
+                                                    Save Session Notes
+                                                </Button>
+                                            </div>
+                                            <Textarea
+                                                placeholder="Enter detailed session notes here (legacy field)..."
+                                                className="min-h-[200px]"
+                                                value={activeSession.clinicalNotes || ''}
+                                                onChange={(e) => setActiveSession({ ...activeSession, clinicalNotes: e.target.value })}
+                                            />
+                                        </div>
+                                    )}
                                 </TabsContent>
 
                                 <TabsContent value="attachments" className="py-4 space-y-4">
@@ -1168,7 +1800,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-6 w-6 text-red-500"
-                                                            onClick={() => removeSessionDocument(index)}
+                                                            onClick={() => handleRemoveSessionDocumentClick(index)}
                                                         >
                                                             <Trash2 className="h-3 w-3" />
                                                         </Button>
@@ -1183,50 +1815,89 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         )}
                     </DialogContent>
                 </Dialog>
+
+                {/* Archive/Delete Confirmation Dialog */}
+                <DeleteConfirmationDialog
+                    open={deleteConfirmation.isOpen}
+                    onOpenChange={(open) => {
+                        console.log('[Client Dialog] onOpenChange called:', open, 'action:', deleteConfirmation.action);
+                        setDeleteConfirmation({ isOpen: open, clientId: deleteConfirmation.clientId, action: deleteConfirmation.action });
+                    }}
+                    onConfirm={() => {
+                        console.log('[Client Dialog] onConfirm called, action:', deleteConfirmation.action);
+                        if (deleteConfirmation.action === 'archive') {
+                            confirmArchive();
+                        } else {
+                            confirmDelete();
+                        }
+                    }}
+                    title={deleteConfirmation.action === 'archive' ? "Archive Client" : "Delete Client"}
+                    description={
+                        deleteConfirmation.action === 'archive' 
+                            ? `This client has session notes or recordings. They will be archived instead of deleted. Archived clients can be restored later for audit purposes.`
+                            : `Are you sure you want to delete this client? This will permanently remove all associated data. This action cannot be undone.`
+                    }
+                    itemName={editingClient?.name || clients.find(c => c.id === deleteConfirmation.clientId)?.name}
+                    confirmButtonText={deleteConfirmation.action === 'archive' ? "Archive" : undefined}
+                />
+
+                {/* GDPR Deletion Dialog */}
+                <GDPRDeleteDialog
+                    open={gdprDeleteOpen}
+                    onOpenChange={setGdprDeleteOpen}
+                    onConfirm={confirmGDPRDelete}
+                    clientName={editingClient?.name}
+                />
             </div >
 
-            {/* Bulk Import/Export - Collapsible */}
-            < Card className="mb-6" >
-                <CardHeader
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => setShowBulkImport(!showBulkImport)}
-                >
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <FileSpreadsheet className="h-5 w-5 text-primary" />
-                            <CardTitle>Bulk Client Import/Export</CardTitle>
+            {/* Bulk Import/Export - Collapsible - Only show for active clients */}
+            {activeTab === 'active' && (
+                <Card className="mb-6" key="bulk-import-export">
+                    <CardHeader
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => setShowBulkImport(!showBulkImport)}
+                    >
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <FileSpreadsheet className="h-5 w-5 text-primary" />
+                                <CardTitle>Bulk Client Import/Export</CardTitle>
+                            </div>
+                            <Button variant="ghost" size="sm">
+                                {showBulkImport ? "Hide" : "Show"}
+                            </Button>
                         </div>
-                        <Button variant="ghost" size="sm">
-                            {showBulkImport ? "Hide" : "Show"}
-                        </Button>
-                    </div>
-                    <CardDescription>
-                        Import multiple clients from Excel or export existing clients
-                    </CardDescription>
-                </CardHeader>
-                {
-                    showBulkImport && (
+                        <CardDescription>
+                            Import multiple clients from Excel or export existing clients
+                        </CardDescription>
+                    </CardHeader>
+                    {showBulkImport && (
                         <CardContent>
                             <ClientImportExport />
                         </CardContent>
-                    )
-                }
-            </Card >
+                    )}
+                </Card>
+            )}
 
             {/* Clients List */}
             {
                 clients.length === 0 ? (
                     <Card>
                         <CardContent className="flex flex-col items-center justify-center py-16">
-                            <User className="h-16 w-16 text-muted-foreground mb-4" />
-                            <h3 className="text-xl font-semibold mb-2">No clients yet</h3>
-                            <p className="text-muted-foreground text-center max-w-md mb-6">
-                                Add your first client to start managing your practice
-                            </p>
-                            <Button onClick={() => setIsAddDialogOpen(true)}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add Your First Client
-                            </Button>
+                            <User className="h-16 w-16 text-muted-foreground mb-4 opacity-20" />
+                            {activeTab === 'archived' ? (
+                                <h3 className="text-lg font-medium text-muted-foreground">No Archived Clients Yet</h3>
+                            ) : (
+                                <>
+                                    <h3 className="text-xl font-semibold mb-2">No clients yet</h3>
+                                    <p className="text-muted-foreground text-center max-w-md mb-6">
+                                        Add your first client to start managing your practice
+                                    </p>
+                                    <Button onClick={() => setIsAddDialogOpen(true)} className="bg-green-500 hover:bg-green-600 text-white">
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add Your First Client
+                                    </Button>
+                                </>
+                            )}
                         </CardContent>
                     </Card>
                 ) : (
@@ -1267,7 +1938,41 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         {client.phone}
                                                     </div>
                                                 )}
+                                                {getLastAppointment(client.name) && (
+                                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate">
+                                                        <Calendar className="h-2.5 w-2.5 shrink-0 text-green-500" />
+                                                        <span>Last: {new Date(getLastAppointment(client.name)!.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                                    </div>
+                                                )}
+                                                {client.nextAppointment && (
+                                                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate">
+                                                        <Calendar className="h-2.5 w-2.5 shrink-0 text-green-500" />
+                                                        <span>Next: {new Date(client.nextAppointment).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                                    </div>
+                                                )}
                                             </div>
+                                            {/* Relationships */}
+                                            {getClientRelationships(client).length > 0 && (
+                                                <div className="mt-1.5 pt-1.5 border-t border-blue-200 dark:border-blue-800">
+                                                    <div className="flex items-center gap-1 flex-wrap">
+                                                        <Users className="h-2.5 w-2.5 shrink-0 text-blue-600 dark:text-blue-400" />
+                                                        <span className="text-[9px] text-blue-600 dark:text-blue-400">Relationships:</span>
+                                                        <div className="flex items-center gap-0.5 flex-wrap">
+                                                            {getClientRelationships(client).map((rel, idx) => {
+                                                                const initials = rel.relatedClientName.split(" ").map((n: string) => n[0] || "").join("").toUpperCase();
+                                                                return (
+                                                                    <span
+                                                                        key={idx}
+                                                                        className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-[9px] text-blue-700 dark:text-blue-300 whitespace-nowrap"
+                                                                    >
+                                                                        {rel.type}: {initials}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                             {/* Stats Row */}
                                             <div className="mt-2 pt-2 border-t flex items-center justify-between text-[10px] text-muted-foreground">
                                                 {(getClientAppointments(client.name).length > 0) ? (
@@ -1277,16 +1982,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         title="View Sessions"
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
-                                                        <Calendar className="h-3 w-3 text-blue-500" />
+                                                        <Calendar className="h-3 w-3 text-green-500" />
                                                         <span>{getClientAppointments(client.name).length}</span>
                                                     </Link>
                                                 ) : (
                                                     <div
-                                                        className="flex items-center gap-1 text-blue-300/80 cursor-default"
+                                                        className="flex items-center gap-1 text-green-300/80 cursor-default"
                                                         title="No Sessions"
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
-                                                        <Calendar className="h-3 w-3 text-blue-300/80" />
+                                                        <Calendar className="h-3 w-3 text-green-300/80" />
                                                         <span>0</span>
                                                     </div>
                                                 )}

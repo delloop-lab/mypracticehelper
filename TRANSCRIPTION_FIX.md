@@ -87,3 +87,5 @@ If transcription still doesn't work:
 - ❌ "Speech recognition error: [error]" - indicates a problem
 - ❌ "Speech recognition not available" - wrong browser
 
+
+

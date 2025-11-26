@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { downloadDocumentFile } from '@/lib/storage';
+import fs from 'fs';
+import path from 'path';
 
 export async function GET(
     request: Request,
@@ -9,11 +11,36 @@ export async function GET(
     const filename = params.filename;
     
     let fileBuffer: Buffer;
-    try {
-        fileBuffer = await downloadDocumentFile(filename);
-    } catch (error) {
-        console.error('Error downloading document from Supabase:', error);
-        return new NextResponse('File not found', { status: 404 });
+    
+    // In production, always use Supabase storage
+    // In development, try local folder first, then Supabase
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    if (!isProduction) {
+        // Development: Try local file first
+        const localFilePath = path.join(process.cwd(), 'data', 'documents', filename);
+        try {
+            if (fs.existsSync(localFilePath)) {
+                fileBuffer = fs.readFileSync(localFilePath);
+                console.log(`[DEV] Serving document from local file: ${localFilePath}`);
+            } else {
+                // Fallback to Supabase storage
+                fileBuffer = await downloadDocumentFile(filename);
+                console.log(`[DEV] Serving document from Supabase storage: ${filename}`);
+            }
+        } catch (error) {
+            console.error('Error loading document:', error);
+            return new NextResponse('File not found', { status: 404 });
+        }
+    } else {
+        // Production: Always use Supabase storage
+        try {
+            fileBuffer = await downloadDocumentFile(filename);
+            console.log(`[PROD] Serving document from Supabase storage: ${filename}`);
+        } catch (error) {
+            console.error('Error loading document from Supabase:', error);
+            return new NextResponse('File not found', { status: 404 });
+        }
     }
 
     // Determine content type with comprehensive file type support

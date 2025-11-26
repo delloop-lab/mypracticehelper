@@ -22,18 +22,24 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File } from "lucide-react";
+import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File, Mic, Play } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface SessionNote {
     id: string;
     clientName: string;
     clientId?: string;
     sessionDate: string;
-    content: string;
+    content: string; // AI-structured content for display
     createdDate: string;
+    transcript?: string; // Raw/natural transcript (for recordings)
     attachments?: { name: string; url: string }[];
+    source?: 'session_note' | 'recording'; // Indicates if note came from session_notes table or recordings table
+    recordingId?: string; // Original recording ID if source is 'recording'
+    audioURL?: string | null; // Audio URL if source is 'recording'
 }
 
 type SortOption = 'date-desc' | 'date-asc' | 'client-asc' | 'client-desc' | 'session-desc' | 'session-asc';
@@ -47,6 +53,7 @@ function SessionNotesContent() {
     const [sortBy, setSortBy] = useState<SortOption>('date-desc');
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [editingNote, setEditingNote] = useState<SessionNote | null>(null);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; noteId: string | null }>({ isOpen: false, noteId: null });
     const [formData, setFormData] = useState({
         clientName: "",
         clientId: undefined as string | undefined,
@@ -54,6 +61,16 @@ function SessionNotesContent() {
         content: "",
         attachments: [] as { name: string; url: string }[]
     });
+
+    const getTranscriptPreview = (text: string, maxLength: number = 120) => {
+        if (!text) return '';
+        const firstLine = text.split('\n')[0].trim();
+        const slice = firstLine.slice(0, maxLength).trimEnd();
+        if (firstLine.length > maxLength) {
+            return slice + '...';
+        }
+        return slice;
+    };
 
     useEffect(() => {
         const clientParam = searchParams.get('client');
@@ -112,7 +129,13 @@ function SessionNotesContent() {
             const response = await fetch('/api/session-notes');
             if (response.ok) {
                 const data = await response.json();
-                setNotes(data);
+                console.log('Session notes loaded:', data);
+                console.log('Number of notes:', data?.length || 0);
+                setNotes(data || []);
+            } else {
+                console.error('Failed to load session notes:', response.status, response.statusText);
+                const errorData = await response.json().catch(() => ({}));
+                console.error('Error data:', errorData);
             }
         } catch (error) {
             console.error('Error loading session notes:', error);
@@ -205,6 +228,10 @@ function SessionNotesContent() {
     };
 
     const handleEdit = (note: SessionNote) => {
+        if (note.source === 'recording') {
+            alert('Voice note recordings cannot be edited from this page. The transcript is automatically generated from the audio recording.');
+            return;
+        }
         setEditingNote(note);
         setFormData({
             clientName: note.clientName,
@@ -243,9 +270,20 @@ function SessionNotesContent() {
         setIsCreateDialogOpen(false);
     };
 
-    const handleDelete = (id: string) => {
-        const updatedNotes = notes.filter(n => n.id !== id);
+    const handleDeleteClick = (id: string) => {
+        const note = notes.find(n => n.id === id);
+        if (note?.source === 'recording') {
+            alert('Voice note recordings cannot be deleted from this page. Please go to Voice Notes to manage recordings.');
+            return;
+        }
+        setDeleteConfirm({ isOpen: true, noteId: id });
+    };
+
+    const handleDelete = () => {
+        if (!deleteConfirm.noteId) return;
+        const updatedNotes = notes.filter(n => n.id !== deleteConfirm.noteId);
         saveNotes(updatedNotes);
+        setDeleteConfirm({ isOpen: false, noteId: null });
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -296,7 +334,7 @@ function SessionNotesContent() {
                         <Button onClick={loadNotes} variant="outline" size="sm">
                             Refresh List
                         </Button>
-                        <Button onClick={handleCreate} size="sm">
+                        <Button onClick={handleCreate} size="sm" className="bg-green-500 hover:bg-green-600 text-white">
                             <Plus className="mr-2 h-4 w-4" />
                             New Note
                         </Button>
@@ -381,7 +419,7 @@ function SessionNotesContent() {
                                     ? "Start documenting your sessions by creating your first note"
                                     : "Try adjusting your search or filters"}
                             </p>
-                            <Button onClick={handleCreate}>
+                            <Button onClick={handleCreate} className="bg-green-500 hover:bg-green-600 text-white">
                                 <Plus className="mr-2 h-4 w-4" />
                                 Create First Note
                             </Button>
@@ -423,30 +461,104 @@ function SessionNotesContent() {
                                                             <span className="text-xs">
                                                                 Created: {formatDate(note.createdDate)}
                                                             </span>
+                                                            {note.source === 'recording' && (
+                                                                <span className="flex items-center gap-1 text-xs text-purple-600">
+                                                                    <Mic className="h-3 w-3" />
+                                                                    Voice Note
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </CardDescription>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleEdit(note)}
-                                                    >
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleDelete(note.id)}
-                                                        className="text-red-500 hover:text-red-700"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
+                                                    {note.source !== 'recording' && (
+                                                        <>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleEdit(note)}
+                                                            >
+                                                                <Edit className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleDeleteClick(note.id)}
+                                                                className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </>
+                                                    )}
+                                                    {note.source === 'recording' && note.audioURL && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => {
+                                                                const audio = new Audio(note.audioURL!);
+                                                                audio.play();
+                                                            }}
+                                                            title="Play audio"
+                                                        >
+                                                            <Play className="h-4 w-4 text-primary" />
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardHeader>
                                         <CardContent>
-                                            <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                            {note.source === 'recording' ? (
+                                                <>
+                                                    <Accordion type="multiple" className="w-full">
+                                                        {note.transcript && (
+                                                            <AccordionItem value="transcript">
+                                                                <AccordionTrigger>
+                                                                    <div className="flex flex-col items-start text-left gap-0.5">
+                                                                        <span className="text-sm font-semibold">
+                                                                            Transcript
+                                                                        </span>
+                                                                        <span className="text-xs text-muted-foreground truncate max-w-[260px]">
+                                                                            {getTranscriptPreview(note.transcript)}
+                                                                        </span>
+                                                                    </div>
+                                                                </AccordionTrigger>
+                                                                <AccordionContent>
+                                                                    <p className="text-sm whitespace-pre-wrap">
+                                                                        {note.transcript}
+                                                                    </p>
+                                                                </AccordionContent>
+                                                            </AccordionItem>
+                                                        )}
+                                                        <AccordionItem value="ai-notes">
+                                                            <AccordionTrigger>
+                                                                <div className="flex flex-col items-start text-left">
+                                                                    <span className="text-sm font-semibold">AI-Structured Notes</span>
+                                                                </div>
+                                                            </AccordionTrigger>
+                                                            <AccordionContent>
+                                                                <p className="text-sm whitespace-pre-wrap">
+                                                                    {note.content}
+                                                                </p>
+                                                            </AccordionContent>
+                                                        </AccordionItem>
+                                                    </Accordion>
+                                                </>
+                                            ) : (
+                                                <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                            )}
+                                            {note.source === 'recording' && note.audioURL && (
+                                                <div className="mt-4 pt-4 border-t">
+                                                    <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                                                        <Mic className="h-4 w-4 text-purple-600" />
+                                                        Audio Recording:
+                                                    </p>
+                                                    <audio controls className="w-full mt-2">
+                                                        <source src={note.audioURL} type="audio/webm" />
+                                                        <source src={note.audioURL} type="audio/mp3" />
+                                                        Your browser does not support the audio element.
+                                                    </audio>
+                                                </div>
+                                            )}
                                             {note.attachments && note.attachments.length > 0 && (
                                                 <div className="mt-4 pt-4 border-t">
                                                     <p className="text-sm font-medium mb-2">Attachments:</p>
@@ -576,12 +688,21 @@ function SessionNotesContent() {
                         <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSave}>
+                        <Button onClick={handleSave} className={editingNote ? "" : "bg-green-500 hover:bg-green-600 text-white"}>
                             {editingNote ? "Update Note" : "Create Note"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete Confirmation Dialog */}
+            <DeleteConfirmationDialog
+                open={deleteConfirm.isOpen}
+                onOpenChange={(open) => setDeleteConfirm({ isOpen: open, noteId: deleteConfirm.noteId })}
+                onConfirm={handleDelete}
+                title="Delete Session Note"
+                description="Are you sure you want to delete this session note? This action cannot be undone."
+            />
         </div>
     );
 }

@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +13,7 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu";
-import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetTrigger, SheetClose, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 const components: { title: string; href: string; description: string }[] = [
   {
@@ -35,7 +34,7 @@ const components: { title: string; href: string; description: string }[] = [
   {
     title: "Notes & Documentation",
     href: "#features",
-    description: "HIPAA-compliant clinical notes and templates.",
+    description: "HIPAA-compliant session notes and templates.",
   },
 ];
 
@@ -45,8 +44,8 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between px-4 md:px-8">
-        <div className="mr-4 flex items-center">
-          <Link href="/" className="mr-6 flex items-center">
+        <div className="flex items-center">
+          <Link href="/" className="flex items-center">
             <img
               src="/logo.png"
               alt="My Practice Helper"
@@ -55,16 +54,14 @@ export function Navbar() {
           </Link>
         </div>
 
-        {/* Mobile Menu Trigger */}
+        {/* Mobile Menu - Swipe only, no hamburger */}
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
-          <SheetTrigger asChild className="md:hidden">
-            <Button variant="ghost" size="icon" className="mr-2">
-              <Menu className="h-5 w-5" />
-              <span className="sr-only">Toggle Menu</span>
-            </Button>
-          </SheetTrigger>
           <SheetContent side="left" className="pr-0">
-            <Link href="/" className="flex items-center" onClick={() => setIsOpen(false)}>
+            <SheetHeader className="px-6 py-4">
+              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+              <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
+            </SheetHeader>
+            <Link href="/" className="flex items-center px-6" onClick={() => setIsOpen(false)}>
               <img
                 src="/logo.png"
                 alt="My Practice Helper"

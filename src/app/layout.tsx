@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit, Inter } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/navbar";
-import { Sidebar } from "@/components/sidebar";
-import { FooterSimple } from "@/components/footer-simple";
+import { ConditionalLayout } from "@/components/conditional-layout";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -31,14 +29,7 @@ export default function RootLayout({
         className={`${outfit.variable} ${inter.variable} antialiased font-sans bg-background text-foreground`}
         suppressHydrationWarning
       >
-        <div className="flex min-h-screen flex-col">
-          <Navbar />
-          <div className="flex flex-1">
-            <Sidebar />
-            <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-10 max-w-[1920px] mx-auto w-full">{children}</main>
-          </div>
-          <FooterSimple />
-        </div>
+        <ConditionalLayout>{children}</ConditionalLayout>
       </body>
     </html>
   );

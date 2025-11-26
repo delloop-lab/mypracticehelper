@@ -2,6 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ensure blocked/disabled days in react-day-picker v9 are properly styled */
+/* Target all possible selectors for disabled days */
+.rdp-day_disabled,
+.rdp-day[aria-disabled="true"],
+.rdp-day_button[aria-disabled="true"],
+button.rdp-day_button[aria-disabled="true"],
+.rdp-day.rdp-day_disabled,
+.rdp-day_button.rdp-day_disabled,
+[role="gridcell"] button[aria-disabled="true"],
+[role="gridcell"][aria-disabled="true"] button,
+button[aria-disabled="true"].rdp-day_button,
+.rdp-day[aria-disabled="true"] button,
+.rdp-button[aria-disabled="true"] {
+  opacity: 0.25 !important;
+  cursor: not-allowed !important;
+  background-color: hsl(var(--muted) / 0.2) !important;
+  filter: grayscale(100%) !important;
+  pointer-events: none !important;
+  color: hsl(var(--muted-foreground)) !important;
+  text-decoration: line-through !important;
+}
+
+.rdp-day_disabled:hover,
+.rdp-day[aria-disabled="true"]:hover,
+.rdp-day_button[aria-disabled="true"]:hover,
+button.rdp-day_button[aria-disabled="true"]:hover,
+[role="gridcell"] button[aria-disabled="true"]:hover,
+button[aria-disabled="true"].rdp-day_button:hover,
+.rdp-button[aria-disabled="true"]:hover {
+  opacity: 0.25 !important;
+  background-color: hsl(var(--muted) / 0.2) !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
 :root {
   --radius: 0.625rem;
   --background: 220 14% 96%;
@@ -96,4 +131,49 @@
   .container {
     @apply mx-auto;
   }
+}
+
+/* Force styling for disabled/blocked days in react-day-picker v9 */
+/* Target ALL possible selectors - subtle ghosting so days are still visible */
+.rdp-day_disabled,
+.rdp-day-disabled-custom,
+.rdp-day[aria-disabled="true"],
+.rdp-day_button[aria-disabled="true"],
+button.rdp-day_button[aria-disabled="true"],
+.rdp-day.rdp-day_disabled,
+.rdp-day_button.rdp-day_disabled,
+[role="gridcell"] button[aria-disabled="true"],
+[role="gridcell"][aria-disabled="true"] button,
+button[aria-disabled="true"].rdp-day_button,
+.rdp-day[aria-disabled="true"] button,
+.rdp-button[aria-disabled="true"],
+.rdp-day.rdp-day-disabled-custom,
+.rdp-day_button.rdp-day-disabled-custom,
+button[data-disabled="true"],
+[data-disabled="true"] button,
+.rdp-day[data-disabled="true"],
+.rdp-day_button[data-disabled="true"] {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  background-color: hsl(var(--muted) / 0.15) !important;
+  filter: grayscale(30%) !important;
+  pointer-events: none !important;
+  color: hsl(var(--muted-foreground) / 0.7) !important;
+  user-select: none !important;
+}
+
+.rdp-day_disabled:hover,
+.rdp-day-disabled-custom:hover,
+.rdp-day[aria-disabled="true"]:hover,
+.rdp-day_button[aria-disabled="true"]:hover,
+button.rdp-day_button[aria-disabled="true"]:hover,
+[role="gridcell"] button[aria-disabled="true"]:hover,
+button[aria-disabled="true"].rdp-day_button:hover,
+.rdp-button[aria-disabled="true"]:hover,
+button[data-disabled="true"]:hover,
+[data-disabled="true"] button:hover {
+  opacity: 0.5 !important;
+  background-color: hsl(var(--muted) / 0.15) !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
 }

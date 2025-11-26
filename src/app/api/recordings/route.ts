@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRecordings, saveRecordings, saveAudioFile } from '@/lib/storage';
+import { supabase } from '@/lib/supabase';
 
 export async function GET() {
     try {
@@ -85,5 +86,31 @@ export async function PUT(request: Request) {
 
     } catch (error) {
         return NextResponse.json({ error: 'Failed to update recordings' }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: Request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const id = searchParams.get('id');
+
+        if (!id) {
+            return NextResponse.json({ error: 'Recording id is required' }, { status: 400 });
+        }
+
+        const { error } = await supabase
+            .from('recordings')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('Error deleting recording:', error);
+            return NextResponse.json({ error: 'Failed to delete recording' }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error('Unexpected error deleting recording:', error);
+        return NextResponse.json({ error: 'Failed to delete recording' }, { status: 500 });
     }
 }

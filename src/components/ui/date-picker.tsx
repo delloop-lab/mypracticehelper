@@ -19,6 +19,8 @@ interface DatePickerProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  minDate?: Date;
+  blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
 }
 
 export function DatePicker({
@@ -27,6 +29,8 @@ export function DatePicker({
   placeholder = "Pick a date",
   disabled = false,
   className,
+  minDate,
+  blockedDays = [],
 }: DatePickerProps) {
   const parsedDate =
     typeof value === "string"
@@ -34,6 +38,33 @@ export function DatePicker({
         ? new Date(value)
         : undefined
       : value;
+
+  // Ensure blockedDays is always an array
+  const safeBlockedDays = React.useMemo(() => {
+    if (!blockedDays) return [];
+    if (!Array.isArray(blockedDays)) return [];
+    return blockedDays;
+  }, [blockedDays]);
+
+  // Helper function to check if a date is disabled
+  const isDateDisabled = React.useCallback((date: Date): boolean => {
+    // Disable past dates if minDate is set
+    if (minDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const checkDate = new Date(date);
+      checkDate.setHours(0, 0, 0, 0);
+      if (checkDate < today) return true;
+    }
+    // Disable blocked days of the week (0=Sunday, 1=Monday, ..., 6=Saturday)
+    if (safeBlockedDays.length > 0) {
+      const dayOfWeek = date.getDay();
+      if (safeBlockedDays.includes(dayOfWeek)) {
+        return true;
+      }
+    }
+    return false;
+  }, [minDate, safeBlockedDays]);
 
   return (
     <Popover>
@@ -56,8 +87,34 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={parsedDate}
-          onSelect={onChange}
+          onSelect={(date) => {
+            // Prevent selection of blocked days - double check
+            if (date && isDateDisabled(date)) {
+              return; // Don't allow selection of disabled/blocked days
+            }
+            onChange(date);
+          }}
           initialFocus
+          fromDate={minDate || undefined}
+          toDate={undefined}
+          disabled={(date) => {
+            // Disable past dates if minDate is set
+            if (minDate) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const checkDate = new Date(date);
+              checkDate.setHours(0, 0, 0, 0);
+              if (checkDate < today) return true;
+            }
+            // Disable blocked days of the week (0=Sunday, 1=Monday, ..., 6=Saturday)
+            if (safeBlockedDays.length > 0) {
+              const dayOfWeek = date.getDay();
+              if (safeBlockedDays.includes(dayOfWeek)) {
+                return true;
+              }
+            }
+            return false;
+          }}
         />
       </PopoverContent>
     </Popover>
