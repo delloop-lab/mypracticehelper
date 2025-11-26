@@ -61,13 +61,18 @@ export async function GET(request: Request) {
         
         console.log('[Calendar ICS] Using timezone:', timezone);
         
-        // Single-user app: Fetch all sessions
+        // Single-user app: Fetch all sessions (including past ones for Google Calendar)
         // Note: For Google Calendar subscriptions, this endpoint needs to be accessible
         // Since it's single-user, we allow access without strict auth
         // (Google Calendar won't send cookies when fetching the feed)
+        // Fetch sessions from the past 30 days and future to ensure Google Calendar shows them
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
         const { data: sessions, error: sessionsError } = await supabase
             .from('sessions')
             .select('*')
+            .gte('date', thirtyDaysAgo.toISOString()) // Only get sessions from last 30 days onwards
             .order('date', { ascending: true });
 
         console.log('[Calendar ICS] Fetched sessions:', sessions?.length || 0);
