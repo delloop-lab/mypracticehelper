@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,10 +47,13 @@ export function Navbar() {
       <div className="container flex h-16 items-center justify-between px-4 md:px-8">
         <div className="flex items-center">
           <Link href="/" className="flex items-center">
-            <img
+            <Image
               src="/logo.png"
               alt="My Practice Helper"
+              width={200}
+              height={64}
               className="h-16 w-auto"
+              priority
             />
           </Link>
         </div>
@@ -62,10 +66,13 @@ export function Navbar() {
               <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
             </SheetHeader>
             <Link href="/" className="flex items-center px-6" onClick={() => setIsOpen(false)}>
-              <img
+              <Image
                 src="/logo.png"
                 alt="My Practice Helper"
+                width={150}
+                height={32}
                 className="h-8 w-auto"
+                priority
               />
             </Link>
             <div className="my-4 h-[calc(100vh-8rem)] pb-10 pl-6">
