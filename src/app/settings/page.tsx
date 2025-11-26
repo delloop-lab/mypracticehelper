@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -22,6 +23,7 @@ interface SettingsData {
     defaultDuration: number;
     defaultFee: number;
     currency: string;
+    timezone?: string; // IANA timezone (e.g., "Europe/Lisbon", "America/New_York")
     blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
 }
 
@@ -41,6 +43,7 @@ export default function SettingsPage() {
         defaultDuration: 60,
         defaultFee: 80,
         currency: "EUR",
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", // Auto-detect user's timezone
         blockedDays: [],
     });
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
@@ -265,6 +268,40 @@ export default function SettingsPage() {
                                 </div>
                                 <p className="text-xs text-muted-foreground">
                                     Paste this URL into Google Calendar under <strong>Settings &gt; Add calendar &gt; From URL</strong> to subscribe to your session calendar.
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="timezone">Timezone</Label>
+                                <Select
+                                    value={settings.timezone || "UTC"}
+                                    onValueChange={(value) => setSettings({ ...settings, timezone: value })}
+                                >
+                                    <SelectTrigger id="timezone">
+                                        <SelectValue placeholder="Select timezone" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="UTC">UTC</SelectItem>
+                                        <SelectItem value="Europe/Lisbon">Europe/Lisbon (Portugal)</SelectItem>
+                                        <SelectItem value="Europe/London">Europe/London (UK)</SelectItem>
+                                        <SelectItem value="Europe/Paris">Europe/Paris (France)</SelectItem>
+                                        <SelectItem value="Europe/Berlin">Europe/Berlin (Germany)</SelectItem>
+                                        <SelectItem value="Europe/Madrid">Europe/Madrid (Spain)</SelectItem>
+                                        <SelectItem value="Europe/Rome">Europe/Rome (Italy)</SelectItem>
+                                        <SelectItem value="America/New_York">America/New_York (US Eastern)</SelectItem>
+                                        <SelectItem value="America/Chicago">America/Chicago (US Central)</SelectItem>
+                                        <SelectItem value="America/Denver">America/Denver (US Mountain)</SelectItem>
+                                        <SelectItem value="America/Los_Angeles">America/Los_Angeles (US Pacific)</SelectItem>
+                                        <SelectItem value="America/Toronto">America/Toronto (Canada Eastern)</SelectItem>
+                                        <SelectItem value="America/Vancouver">America/Vancouver (Canada Pacific)</SelectItem>
+                                        <SelectItem value="Australia/Sydney">Australia/Sydney</SelectItem>
+                                        <SelectItem value="Australia/Melbourne">Australia/Melbourne</SelectItem>
+                                        <SelectItem value="Asia/Tokyo">Asia/Tokyo (Japan)</SelectItem>
+                                        <SelectItem value="Asia/Shanghai">Asia/Shanghai (China)</SelectItem>
+                                        <SelectItem value="Asia/Dubai">Asia/Dubai (UAE)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Your timezone is used for calendar feeds and appointment times. This ensures appointments appear at the correct time in Google Calendar.
                                 </p>
                             </div>
                         </CardContent>

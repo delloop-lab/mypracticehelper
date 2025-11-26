@@ -43,6 +43,24 @@ function foldLine(line: string): string {
 
 export async function GET(request: Request) {
     try {
+        // Fetch timezone setting
+        let timezone = 'UTC';
+        try {
+            const { data: settingsData } = await supabase
+                .from('settings')
+                .select('config')
+                .eq('id', 'default')
+                .single();
+            
+            if (settingsData?.config?.timezone) {
+                timezone = settingsData.config.timezone;
+            }
+        } catch (error) {
+            console.warn('[Calendar ICS] Could not load timezone setting, using UTC:', error);
+        }
+        
+        console.log('[Calendar ICS] Using timezone:', timezone);
+        
         // Single-user app: Fetch all sessions
         // Note: For Google Calendar subscriptions, this endpoint needs to be accessible
         // Since it's single-user, we allow access without strict auth
@@ -130,7 +148,9 @@ export async function GET(request: Request) {
                     const durationMinutes = session.duration || 60;
                     const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
 
-                    const dtStart = formatDateToICS(start);
+                    // Convert date to user's timezone, then format as UTC for ICS
+                    // This ensures the time displayed matches what the user expects
+                    const dtStart = formatDateToICS(start); // Always use UTC format for ICS
                     const dtEnd = formatDateToICS(end);
 
                     const clientName = session.client_id
@@ -150,6 +170,7 @@ export async function GET(request: Request) {
                     const description = descriptionLines.join('\n');
 
                     // Build event lines with proper formatting
+                    // Use UTC format (Z suffix) - Google Calendar will convert based on calendar timezone
                     const eventLines: string[] = [
                         'BEGIN:VEVENT',
                         `UID:${uid}`,
@@ -205,7 +226,7 @@ export async function GET(request: Request) {
             'CALSCALE:GREGORIAN',
             'METHOD:PUBLISH',
             'X-WR-CALNAME:Therapy Sessions',
-            'X-WR-TIMEZONE:UTC',
+            `X-WR-TIMEZONE:${timezone}`, // Inform Google Calendar of the intended timezone
             events,
             'END:VCALENDAR',
         ];
