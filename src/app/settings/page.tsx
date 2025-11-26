@@ -65,6 +65,9 @@ export default function SettingsPage() {
     const [userEmail, setUserEmail] = useState<string>("");
     const [firstName, setFirstName] = useState<string>("");
     const [lastName, setLastName] = useState<string>("");
+    const [testEmailAddress, setTestEmailAddress] = useState<string>("");
+    const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
+    const [testEmailMessage, setTestEmailMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     useEffect(() => {
         loadSettings();
@@ -796,6 +799,117 @@ This is an automated reminder. Please do not reply to this email.`,
                                     <li><code>{"{{duration}}"}</code> - Duration (e.g., "60 minutes")</li>
                                 </ul>
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Test Email */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Mail className="h-5 w-5" />
+                                Send Test Email
+                            </CardTitle>
+                            <CardDescription>
+                                Send a test email to verify your template looks correct before it's used for reminders.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {testEmailMessage && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className={`p-4 rounded-lg flex items-center gap-2 ${
+                                        testEmailMessage.type === 'success'
+                                            ? 'bg-green-50 dark:bg-green-950/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-900'
+                                            : 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900'
+                                    }`}
+                                >
+                                    {testEmailMessage.type === 'success' ? (
+                                        <CheckCircle2 className="h-5 w-5" />
+                                    ) : (
+                                        <AlertCircle className="h-5 w-5" />
+                                    )}
+                                    <span>{testEmailMessage.text}</span>
+                                </motion.div>
+                            )}
+
+                            <div className="space-y-2">
+                                <Label htmlFor="testEmail">Test Email Address</Label>
+                                <Input
+                                    id="testEmail"
+                                    type="email"
+                                    placeholder="your-email@example.com"
+                                    value={testEmailAddress}
+                                    onChange={(e) => setTestEmailAddress(e.target.value)}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Enter the email address where you want to receive the test email
+                                </p>
+                            </div>
+
+                            <Button
+                                onClick={async () => {
+                                    if (!testEmailAddress) {
+                                        setTestEmailMessage({
+                                            type: 'error',
+                                            text: 'Please enter an email address',
+                                        });
+                                        return;
+                                    }
+
+                                    setIsSendingTest(true);
+                                    setTestEmailMessage(null);
+
+                                    try {
+                                        const response = await fetch('/api/reminders/test-email', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                            },
+                                            body: JSON.stringify({
+                                                email: testEmailAddress,
+                                                template: settings.reminderEmailTemplate,
+                                            }),
+                                        });
+
+                                        const data = await response.json();
+
+                                        if (response.ok) {
+                                            setTestEmailMessage({
+                                                type: 'success',
+                                                text: `Test email sent successfully to ${testEmailAddress}! Check your inbox.`,
+                                            });
+                                            setTestEmailAddress('');
+                                        } else {
+                                            setTestEmailMessage({
+                                                type: 'error',
+                                                text: data.error || 'Failed to send test email',
+                                            });
+                                        }
+                                    } catch (error: any) {
+                                        setTestEmailMessage({
+                                            type: 'error',
+                                            text: `Error: ${error.message || 'Failed to send test email'}`,
+                                        });
+                                    } finally {
+                                        setIsSendingTest(false);
+                                    }
+                                }}
+                                disabled={isSendingTest || !testEmailAddress}
+                                className="w-full"
+                            >
+                                {isSendingTest ? (
+                                    <>
+                                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                        Sending Test Email...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Mail className="h-4 w-4 mr-2" />
+                                        Send Test Email
+                                    </>
+                                )}
+                            </Button>
                         </CardContent>
                     </Card>
                 </TabsContent>
