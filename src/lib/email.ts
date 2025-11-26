@@ -189,26 +189,41 @@ export async function sendReminderEmail(
         customTemplate
     );
 
-    // Replace logo placeholder with CID reference for embedded image
-    const finalHtml = html.replace(/\{\{logoUrl\}\}/g, 'cid:logo');
-
-    // Prepare attachments with logo embedded
-    const attachments: any[] = [];
-    
-    // Try to read logo file and attach it
+    // Read logo file and embed as base64 data URI (more reliable than CID)
+    let finalHtml = html;
     try {
         const logoPath = path.join(process.cwd(), 'public', 'logo.png');
         if (fs.existsSync(logoPath)) {
-            attachments.push({
-                filename: 'logo.png',
-                path: logoPath,
-                cid: 'logo', // Content-ID used in HTML: <img src="cid:logo">
-            });
+            const logoBuffer = fs.readFileSync(logoPath);
+            const logoBase64 = logoBuffer.toString('base64');
+            const logoDataUri = `data:image/png;base64,${logoBase64}`;
+            
+            // Replace logo placeholder with base64 data URI
+            finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoDataUri);
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[Email] Logo embedded as base64 data URI');
+            }
         } else {
             console.warn('[Email] Logo file not found at:', logoPath);
+            // Try alternative path
+            const altPath = path.join(process.cwd(), 'logo.png');
+            if (fs.existsSync(altPath)) {
+                const logoBuffer = fs.readFileSync(altPath);
+                const logoBase64 = logoBuffer.toString('base64');
+                const logoDataUri = `data:image/png;base64,${logoBase64}`;
+                finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoDataUri);
+                console.log('[Email] Logo found at alternative path:', altPath);
+            } else {
+                // Remove logo div if logo not found
+                finalHtml = html.replace(/<div[^>]*>\s*<img[^>]*src="\{\{logoUrl\}\}"[^>]*>\s*<\/div>/gi, '');
+                console.warn('[Email] Logo not found, removed logo from email');
+            }
         }
     } catch (error) {
         console.error('[Email] Error reading logo file:', error);
+        // Remove logo div on error
+        finalHtml = html.replace(/<div[^>]*>\s*<img[^>]*src="\{\{logoUrl\}\}"[^>]*>\s*<\/div>/gi, '');
     }
 
     const mailOptions = {
@@ -216,12 +231,11 @@ export async function sendReminderEmail(
         to: to,
         subject: subject || 'Appointment Reminder', // Ensure subject is always set
         html: finalHtml, // HTML email body only - no plain text
-        attachments: attachments.length > 0 ? attachments : undefined,
     };
 
     // Log for debugging (only in development)
     if (process.env.NODE_ENV === 'development') {
-        console.log('[Email] Sending HTML email with', attachments.length, 'attachments');
+        console.log('[Email] Sending HTML email');
         console.log('[Email] HTML length:', finalHtml.length, 'characters');
     }
 
