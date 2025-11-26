@@ -14,9 +14,39 @@ function formatDateToICS(date: Date): string {
     return `${year}${month}${day}T${hours}${mins}${secs}Z`;
 }
 
-export async function GET() {
+// Escape special characters in ICS text fields
+function escapeICS(text: string): string {
+    return text
+        .replace(/\\/g, '\\\\')
+        .replace(/;/g, '\\;')
+        .replace(/,/g, '\\,')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '');
+}
+
+// Fold long lines according to RFC 5545 (max 75 chars per line)
+function foldLine(line: string): string {
+    if (line.length <= 75) {
+        return line;
+    }
+    const parts: string[] = [];
+    let remaining = line;
+    while (remaining.length > 75) {
+        parts.push(remaining.substring(0, 75));
+        remaining = ' ' + remaining.substring(75); // Continuation lines start with space
+    }
+    if (remaining.length > 0) {
+        parts.push(remaining);
+    }
+    return parts.join('\r\n');
+}
+
+export async function GET(request: Request) {
     try {
-        // Fetch sessions and clients to build events
+        // Single-user app: Fetch all sessions
+        // Note: For Google Calendar subscriptions, this endpoint needs to be accessible
+        // Since it's single-user, we allow access without strict auth
+        // (Google Calendar won't send cookies when fetching the feed)
         const { data: sessions, error: sessionsError } = await supabase
             .from('sessions')
             .select('*')
@@ -63,35 +93,44 @@ export async function GET() {
 
             const description = descriptionLines.join('\n');
 
-            return [
+            // Build event lines with proper formatting
+            const eventLines: string[] = [
                 'BEGIN:VEVENT',
                 `UID:${uid}`,
                 `DTSTAMP:${dtStamp}`,
                 `DTSTART:${dtStart}`,
                 `DTEND:${dtEnd}`,
-                `SUMMARY:${summary}`,
-                // In ICS, literal "\n" sequences represent line breaks inside DESCRIPTION
-                `DESCRIPTION:${description.replace(/\r?\n/g, '\\n')}`,
+                `SUMMARY:${escapeICS(summary)}`,
+                `DESCRIPTION:${escapeICS(description)}`,
                 'END:VEVENT',
-            ].join('\r\n');
+            ];
+
+            // Fold long lines and join with CRLF
+            return eventLines.map(foldLine).join('\r\n');
         }).join('\r\n');
 
-        const ical = [
+        const calendarLines = [
             'BEGIN:VCALENDAR',
             'VERSION:2.0',
             'PRODID:-//My Practice Helper//Therapy Sessions//EN',
             'CALSCALE:GREGORIAN',
             'METHOD:PUBLISH',
+            'X-WR-CALNAME:Therapy Sessions',
+            'X-WR-TIMEZONE:UTC',
             events,
             'END:VCALENDAR',
-            '',
-        ].join('\r\n');
+        ];
+
+        const ical = calendarLines.map(foldLine).join('\r\n') + '\r\n';
 
         return new NextResponse(ical, {
             status: 200,
             headers: {
-                'Content-Type': 'text/calendar; charset=utf-8',
-                'Content-Disposition': 'attachment; filename=\"sessions.ics\"',
+                'Content-Type': 'text/calendar',
+                'Content-Disposition': 'attachment; filename="sessions.ics"',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
             },
         });
     } catch (error) {
