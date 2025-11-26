@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 import { Users, Mic, Calendar, DollarSign, FileText, Bell, X, Link as LinkIcon, Archive } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -93,7 +94,7 @@ const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => {
             </div>
             <div className="mt-auto border-t px-4 py-3">
                 <div className="text-xs text-muted-foreground text-center">
-                    Version 0.9.2
+                    Version {APP_VERSION}
                 </div>
             </div>
         </>

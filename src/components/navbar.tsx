@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/version";
 import { Button } from "@/components/ui/button";
 import {
   NavigationMenu,
@@ -122,6 +123,11 @@ export function Navbar() {
                     Settings
                   </Link>
                 </SheetClose>
+              </div>
+              <div className="mt-auto border-t px-6 py-4">
+                <div className="text-xs text-muted-foreground text-center">
+                  Version {APP_VERSION}
+                </div>
               </div>
             </div>
           </SheetContent>
