@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AppointmentTypeSettings {
@@ -15,6 +16,12 @@ interface AppointmentTypeSettings {
     duration: number;
     fee: number;
     enabled: boolean;
+}
+
+interface EmailTemplate {
+    subject: string;
+    htmlBody: string;
+    textBody: string;
 }
 
 interface SettingsData {
@@ -25,6 +32,7 @@ interface SettingsData {
     currency: string;
     timezone?: string; // IANA timezone (e.g., "Europe/Lisbon", "America/New_York")
     blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
+    reminderEmailTemplate?: EmailTemplate;
 }
 
 const DEFAULT_APPOINTMENT_TYPES: AppointmentTypeSettings[] = [
@@ -220,11 +228,12 @@ export default function SettingsPage() {
             </div>
 
             <Tabs defaultValue="profile" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-5 max-w-3xl">
+                <TabsList className="grid w-full grid-cols-6 max-w-4xl">
                     <TabsTrigger value="profile">Profile</TabsTrigger>
                     <TabsTrigger value="general">General</TabsTrigger>
                     <TabsTrigger value="appointments">Appointments</TabsTrigger>
                     <TabsTrigger value="defaults">Defaults</TabsTrigger>
+                    <TabsTrigger value="reminders">Reminders</TabsTrigger>
                     <TabsTrigger value="backup">Backup & Data</TabsTrigger>
                 </TabsList>
 
@@ -636,6 +645,99 @@ export default function SettingsPage() {
                                 <p className="text-xs text-muted-foreground">
                                     Currency for all financial transactions
                                 </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* Reminders Tab */}
+                <TabsContent value="reminders" className="space-y-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Mail className="h-5 w-5" />
+                                Email Reminder Template
+                            </CardTitle>
+                            <CardDescription>
+                                Customize the email template sent to clients 24 hours before their appointments.
+                                Use placeholders: {"{{clientName}}"}, {"{{dateTime}}"}, {"{{appointmentType}}"}, {"{{duration}}"}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="emailSubject">Email Subject</Label>
+                                <Input
+                                    id="emailSubject"
+                                    value={settings.reminderEmailTemplate?.subject || ""}
+                                    onChange={(e) => setSettings({
+                                        ...settings,
+                                        reminderEmailTemplate: {
+                                            ...settings.reminderEmailTemplate,
+                                            subject: e.target.value,
+                                            htmlBody: settings.reminderEmailTemplate?.htmlBody || "",
+                                            textBody: settings.reminderEmailTemplate?.textBody || "",
+                                        }
+                                    })}
+                                    placeholder="Reminder: Your appointment tomorrow - {{date}}"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Available placeholders: {"{{date}}"}, {"{{clientName}}"}, {"{{appointmentType}}"}, {"{{duration}}"}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="emailHtmlBody">HTML Email Body</Label>
+                                <Textarea
+                                    id="emailHtmlBody"
+                                    className="min-h-[300px] font-mono text-sm"
+                                    value={settings.reminderEmailTemplate?.htmlBody || ""}
+                                    onChange={(e) => setSettings({
+                                        ...settings,
+                                        reminderEmailTemplate: {
+                                            ...settings.reminderEmailTemplate,
+                                            subject: settings.reminderEmailTemplate?.subject || "",
+                                            htmlBody: e.target.value,
+                                            textBody: settings.reminderEmailTemplate?.textBody || "",
+                                        }
+                                    })}
+                                    placeholder="HTML email template..."
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    HTML version of the email. Use placeholders: {"{{clientName}}"}, {"{{dateTime}}"}, {"{{appointmentType}}"}, {"{{duration}}"}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="emailTextBody">Plain Text Email Body</Label>
+                                <Textarea
+                                    id="emailTextBody"
+                                    className="min-h-[200px] font-mono text-sm"
+                                    value={settings.reminderEmailTemplate?.textBody || ""}
+                                    onChange={(e) => setSettings({
+                                        ...settings,
+                                        reminderEmailTemplate: {
+                                            ...settings.reminderEmailTemplate,
+                                            subject: settings.reminderEmailTemplate?.subject || "",
+                                            htmlBody: settings.reminderEmailTemplate?.htmlBody || "",
+                                            textBody: e.target.value,
+                                        }
+                                    })}
+                                    placeholder="Plain text email template..."
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Plain text version (for email clients that don't support HTML). Use same placeholders.
+                                </p>
+                            </div>
+
+                            <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-900">
+                                <p className="text-sm font-semibold mb-2">Available Placeholders:</p>
+                                <ul className="text-xs space-y-1 text-muted-foreground">
+                                    <li><code>{"{{clientName}}"}</code> - Client's full name</li>
+                                    <li><code>{"{{dateTime}}"}</code> - Formatted appointment date and time</li>
+                                    <li><code>{"{{date}}"}</code> - Just the date portion</li>
+                                    <li><code>{"{{appointmentType}}"}</code> - Type of appointment (e.g., "Therapy Session")</li>
+                                    <li><code>{"{{duration}}"}</code> - Duration (e.g., "60 minutes")</li>
+                                </ul>
                             </div>
                         </CardContent>
                     </Card>

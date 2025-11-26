@@ -38,18 +38,48 @@ function formatAppointmentDateTime(date: Date, timezone?: string): string {
     return date.toLocaleString('en-US', options);
 }
 
+// Replace placeholders in template
+function replacePlaceholders(template: string, replacements: Record<string, string>): string {
+    let result = template;
+    for (const [key, value] of Object.entries(replacements)) {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        result = result.replace(regex, value);
+    }
+    return result;
+}
+
 // Create reminder email template
 export function createReminderEmail(
     clientName: string,
     appointmentDate: Date,
     appointmentType: string,
     duration: number,
-    timezone?: string
+    timezone?: string,
+    customTemplate?: { subject: string; htmlBody: string; textBody: string }
 ): { subject: string; html: string; text: string } {
     const formattedDateTime = formatAppointmentDateTime(appointmentDate, timezone);
+    const formattedDate = formattedDateTime.split(',')[0];
     const durationText = duration ? `${duration} minutes` : '1 hour';
 
-    const subject = `Reminder: Your appointment tomorrow - ${formattedDateTime.split(',')[0]}`;
+    // Use custom template if provided, otherwise use default
+    if (customTemplate) {
+        const replacements = {
+            clientName,
+            dateTime: formattedDateTime,
+            date: formattedDate,
+            appointmentType,
+            duration: durationText,
+        };
+
+        return {
+            subject: replacePlaceholders(customTemplate.subject, replacements),
+            html: replacePlaceholders(customTemplate.htmlBody, replacements),
+            text: replacePlaceholders(customTemplate.textBody, replacements),
+        };
+    }
+
+    // Default template
+    const subject = `Reminder: Your appointment tomorrow - ${formattedDate}`;
 
     const html = `
 <!DOCTYPE html>
@@ -119,7 +149,8 @@ export async function sendReminderEmail(
     appointmentDate: Date,
     appointmentType: string,
     duration: number,
-    timezone?: string
+    timezone?: string,
+    customTemplate?: { subject: string; htmlBody: string; textBody: string }
 ): Promise<void> {
     const transporter = createTransporter();
     const smtpFrom = process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -134,7 +165,8 @@ export async function sendReminderEmail(
         appointmentDate,
         appointmentType,
         duration,
-        timezone
+        timezone,
+        customTemplate
     );
 
     await transporter.sendMail({

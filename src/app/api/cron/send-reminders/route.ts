@@ -108,8 +108,9 @@ export async function GET(request: Request) {
 
         const clientMap = new Map((clients || []).map((c: any) => [c.id, c]));
 
-        // Get timezone setting (default to UTC)
+        // Get settings (timezone and email template)
         let timezone = 'UTC';
+        let emailTemplate: any = undefined;
         try {
             const { data: settingsData } = await supabase
                 .from('settings')
@@ -117,11 +118,16 @@ export async function GET(request: Request) {
                 .eq('id', 'default')
                 .single();
             
-            if (settingsData?.config?.timezone) {
-                timezone = settingsData.config.timezone;
+            if (settingsData?.config) {
+                if (settingsData.config.timezone) {
+                    timezone = settingsData.config.timezone;
+                }
+                if (settingsData.config.reminderEmailTemplate) {
+                    emailTemplate = settingsData.config.reminderEmailTemplate;
+                }
             }
         } catch (e) {
-            console.warn('[Reminders Cron] Could not load timezone setting, using UTC');
+            console.warn('[Reminders Cron] Could not load settings, using defaults');
         }
 
         // Process each session
@@ -171,7 +177,8 @@ export async function GET(request: Request) {
                     appointmentDate,
                     appointmentType,
                     duration,
-                    timezone
+                    timezone,
+                    emailTemplate
                 );
 
                 // Mark reminder as sent
