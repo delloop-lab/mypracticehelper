@@ -189,41 +189,16 @@ export async function sendReminderEmail(
         customTemplate
     );
 
-    // Read logo file and embed as base64 data URI (more reliable than CID)
+    // Replace logo placeholder with public URL
     let finalHtml = html;
-    try {
-        const logoPath = path.join(process.cwd(), 'public', 'logo.png');
-        if (fs.existsSync(logoPath)) {
-            const logoBuffer = fs.readFileSync(logoPath);
-            const logoBase64 = logoBuffer.toString('base64');
-            const logoDataUri = `data:image/png;base64,${logoBase64}`;
-            
-            // Replace logo placeholder with base64 data URI
-            finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoDataUri);
-            
-            if (process.env.NODE_ENV === 'development') {
-                console.log('[Email] Logo embedded as base64 data URI');
-            }
-        } else {
-            console.warn('[Email] Logo file not found at:', logoPath);
-            // Try alternative path
-            const altPath = path.join(process.cwd(), 'logo.png');
-            if (fs.existsSync(altPath)) {
-                const logoBuffer = fs.readFileSync(altPath);
-                const logoBase64 = logoBuffer.toString('base64');
-                const logoDataUri = `data:image/png;base64,${logoBase64}`;
-                finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoDataUri);
-                console.log('[Email] Logo found at alternative path:', altPath);
-            } else {
-                // Remove logo div if logo not found
-                finalHtml = html.replace(/<div[^>]*>\s*<img[^>]*src="\{\{logoUrl\}\}"[^>]*>\s*<\/div>/gi, '');
-                console.warn('[Email] Logo not found, removed logo from email');
-            }
-        }
-    } catch (error) {
-        console.error('[Email] Error reading logo file:', error);
-        // Remove logo div on error
-        finalHtml = html.replace(/<div[^>]*>\s*<img[^>]*src="\{\{logoUrl\}\}"[^>]*>\s*<\/div>/gi, '');
+    const baseUrl = getBaseUrl();
+    const logoUrl = `${baseUrl}/logo.png`;
+    
+    // Replace logo placeholder with public URL
+    finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoUrl);
+    
+    if (process.env.NODE_ENV === 'development') {
+        console.log('[Email] Logo URL:', logoUrl);
     }
 
     const mailOptions = {

@@ -1,3 +1,3 @@
 // Application version - updated automatically on each GitHub push
-export const APP_VERSION = "0.12.6";
+export const APP_VERSION = "0.12.7";
 
