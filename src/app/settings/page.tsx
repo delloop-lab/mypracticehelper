@@ -102,6 +102,63 @@ export default function SettingsPage() {
             const response = await fetch('/api/settings');
             if (response.ok) {
                 const data = await response.json();
+                // Ensure reminderEmailTemplate has default values if missing
+                if (!data.reminderEmailTemplate) {
+                    data.reminderEmailTemplate = {
+                        subject: "Reminder: Your appointment tomorrow - {{date}}",
+                        htmlBody: `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <h1 style="color: #0069ff; margin-top: 0;">Appointment Reminder</h1>
+    </div>
+    
+    <p>Dear {{clientName}},</p>
+    
+    <p>This is a friendly reminder that you have an appointment scheduled for:</p>
+    
+    <div style="background-color: #e7f3ff; padding: 15px; border-left: 4px solid #0069ff; margin: 20px 0;">
+        <p style="margin: 0; font-size: 18px; font-weight: bold;">{{dateTime}}</p>
+        <p style="margin: 5px 0 0 0; color: #666;">{{appointmentType}} • {{duration}}</p>
+    </div>
+    
+    <p>If you need to reschedule or cancel, please contact me as soon as possible.</p>
+    
+    <p>I look forward to seeing you tomorrow.</p>
+    
+    <p>Best regards,<br>
+    <strong>Claire Schillaci</strong></p>
+    
+    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+    <p style="font-size: 12px; color: #999; margin: 0;">
+        This is an automated reminder. Please do not reply to this email.
+    </p>
+</body>
+</html>`,
+                        textBody: `Appointment Reminder
+
+Dear {{clientName}},
+
+This is a friendly reminder that you have an appointment scheduled for:
+
+{{dateTime}}
+{{appointmentType}} • {{duration}}
+
+If you need to reschedule or cancel, please contact me as soon as possible.
+
+I look forward to seeing you tomorrow.
+
+Best regards,
+Claire Schillaci
+
+---
+This is an automated reminder. Please do not reply to this email.`,
+                    };
+                }
                 setSettings(data);
             }
         } catch (error) {
