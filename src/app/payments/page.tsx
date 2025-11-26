@@ -138,6 +138,8 @@ export default function PaymentsPage() {
                 startDate = startOfYear(now);
                 endDate = now;
                 break;
+            case "all":
+                return allRelevantSessions;
             default:
                 return allRelevantSessions;
         }
@@ -146,10 +148,6 @@ export default function PaymentsPage() {
             const appointmentDate = new Date(apt.date);
             // Always include paid sessions regardless of date (they're already paid)
             if (apt.paymentStatus === "paid") {
-                return true;
-            }
-            // For "all" period, show all relevant sessions
-            if (selectedPeriod === "all") {
                 return true;
             }
             // For other periods, filter unpaid/pending sessions by date range

@@ -53,7 +53,7 @@ export async function POST() {
                 }
                 
                 // Restore all clients - use direct Supabase insert for better error handling
-                const records = backupClients.map(client => {
+                const records = backupClients.map((client: any) => {
                     const metadata: any = {
                         nextAppointment: client.nextAppointment || '',
                         sessions: client.sessions || 0,
@@ -194,7 +194,7 @@ export async function POST() {
                     
                     // Try removing middle initial (e.g., "Lilli D Schillaci" -> "Lilli Schillaci")
                     if (!clientId && apt.clientName.includes(' ')) {
-                        const parts = apt.clientName.split(' ').filter(p => p.length > 0);
+                        const parts = apt.clientName.split(' ').filter((p: string) => p.length > 0);
                         if (parts.length === 3) {
                             // Remove middle name/initial
                             const withoutMiddle = `${parts[0]} ${parts[2]}`.toLowerCase();
@@ -349,7 +349,7 @@ export async function POST() {
                     
                     // Try removing middle initial
                     if (!clientId && note.clientName.includes(' ')) {
-                        const parts = note.clientName.split(' ').filter(p => p.length > 0);
+                        const parts = note.clientName.split(' ').filter((p: string) => p.length > 0);
                         if (parts.length === 3) {
                             const withoutMiddle = `${parts[0]} ${parts[2]}`.toLowerCase();
                             clientId = clientMap.get(withoutMiddle);

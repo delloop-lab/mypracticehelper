@@ -189,7 +189,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                     aptDate.setHours(0, 0, 0, 0);
                     return aptDate >= today;
                 });
-                console.log(`[Scheduling] Found ${futureAppointments.length} future appointments:`, futureAppointments.map(a => ({ client: a.clientName, date: a.date })));
+                console.log(`[Scheduling] Found ${futureAppointments.length} future appointments:`, futureAppointments.map((a: any) => ({ client: a.clientName, date: a.date })));
                 
                 console.log(`[Load Appointments] Loaded ${data.length} appointments, ${uniqueAppointments.length} unique`);
                 setAppointments(uniqueAppointments);
@@ -222,12 +222,12 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                 setAppointmentTypes(loadedTypes);
                 
                 // Validate current formData.type - if it doesn't exist or is disabled, reset to first enabled type
-                const enabledTypes = loadedTypes.filter(t => t.enabled);
+                const enabledTypes = loadedTypes.filter((t: any) => t.enabled);
                 if (enabledTypes.length > 0) {
-                    const currentTypeExists = enabledTypes.some(t => t.name === formData.type);
+                    const currentTypeExists = enabledTypes.some((t: any) => t.name === formData.type);
                     if (!currentTypeExists) {
                         // Reset to first enabled type (Discovery Session if available, otherwise first)
-                        const defaultType = enabledTypes.find(t => t.name === "Discovery Session") || enabledTypes[0];
+                        const defaultType = enabledTypes.find((t: any) => t.name === "Discovery Session") || enabledTypes[0];
                         setFormData(prev => ({
                             ...prev,
                             type: defaultType.name,

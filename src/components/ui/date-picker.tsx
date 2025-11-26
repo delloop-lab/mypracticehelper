@@ -92,7 +92,7 @@ export function DatePicker({
             if (date && isDateDisabled(date)) {
               return; // Don't allow selection of disabled/blocked days
             }
-            onChange(date);
+            onChange?.(date);
           }}
           initialFocus
           fromDate={minDate || undefined}
