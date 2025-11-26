@@ -215,8 +215,7 @@ export async function sendReminderEmail(
         from: `"${smtpFromName}" <${smtpFrom}>`,
         to: to,
         subject: subject || 'Appointment Reminder', // Ensure subject is always set
-        html: finalHtml, // HTML email body
-        text: text, // Plain text fallback
+        html: finalHtml, // HTML email body only - no plain text
         attachments: attachments.length > 0 ? attachments : undefined,
     };
 
