@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, RefreshCcw } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface AppointmentTypeSettings {
@@ -50,7 +50,6 @@ export default function SettingsPage() {
     const [isCreatingBackup, setIsCreatingBackup] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
     const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-    const [isFixingRecordings, setIsFixingRecordings] = useState(false);
     const [baseUrl, setBaseUrl] = useState<string>("");
 
     useEffect(() => {
@@ -177,48 +176,6 @@ export default function SettingsPage() {
         }
     };
 
-    const handleFixRecordings = async () => {
-        setIsFixingRecordings(true);
-        setBackupMessage(null);
-        try {
-            const response = await fetch('/api/recordings/fix-assignments', {
-                method: 'POST',
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const results = data.results;
-                let messageText = 'Recordings assignments fixed!\n';
-                messageText += `Recordings fixed: ${results.fixed}\n`;
-                messageText += `Errors: ${results.errors}\n`;
-                messageText += `Skipped: ${results.skipped}\n`;
-                
-                if (results.details && results.details.fixed && results.details.fixed.length > 0) {
-                    messageText += '\nFixed recordings:\n';
-                    results.details.fixed.forEach((f: any) => {
-                        messageText += `- ${f.id}: ${JSON.stringify(f.updates)}\n`;
-                    });
-                }
-                
-                if (results.details && results.details.errors && results.details.errors.length > 0) {
-                    messageText += '\nErrors:\n';
-                    results.details.errors.slice(0, 5).forEach((e: string) => {
-                        messageText += `- ${e}\n`;
-                    });
-                }
-                
-                setBackupMessage({ type: 'success', text: messageText });
-            } else {
-                const errorData = await response.json().catch(() => ({ error: 'Failed to fix recordings' }));
-                setBackupMessage({ type: 'error', text: errorData.error || 'Failed to fix recordings' });
-            }
-        } catch (error) {
-            console.error('Error fixing recordings:', error);
-            setBackupMessage({ type: 'error', text: 'Error fixing recordings' });
-        } finally {
-            setIsFixingRecordings(false);
-        }
-    };
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -653,32 +610,6 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Fix Recordings Assignments */}
-                    <Card className="border-2 border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-indigo-700 dark:text-indigo-400">
-                                <AlertCircle className="h-5 w-5" />
-                                Fix Recordings Assignments
-                            </CardTitle>
-                            <CardDescription className="text-indigo-600 dark:text-indigo-300">
-                                Fix missing client_id and session_id for recordings. Matches by client name in transcript/title and date.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button
-                                onClick={handleFixRecordings}
-                                disabled={isFixingRecordings}
-                                size="lg"
-                                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-                            >
-                                <RefreshCcw className="mr-2 h-4 w-4" />
-                                {isFixingRecordings ? 'Fixing Recordings...' : 'Fix Recordings Assignments'}
-                            </Button>
-                            <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
-                                This will attempt to assign recordings to clients (by name matching) and sessions (by date matching).
-                            </p>
-                        </CardContent>
-                    </Card>
                 </TabsContent>
             </Tabs>
 
