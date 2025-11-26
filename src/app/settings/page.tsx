@@ -55,7 +55,8 @@ export default function SettingsPage() {
     const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [baseUrl, setBaseUrl] = useState<string>("");
     const [userEmail, setUserEmail] = useState<string>("");
-    const [userName, setUserName] = useState<string>("");
+    const [firstName, setFirstName] = useState<string>("");
+    const [lastName, setLastName] = useState<string>("");
 
     useEffect(() => {
         loadSettings();
@@ -69,14 +70,21 @@ export default function SettingsPage() {
             
             // Extract name from email or use default
             if (email === "claire@claireschillaci.com") {
-                setUserName("Claire Schillaci");
+                setFirstName("Claire");
+                setLastName("Schillaci");
             } else if (email) {
-                // Extract name from email (e.g., "john.doe@example.com" -> "John Doe")
+                // Extract name from email (e.g., "john.doe@example.com" -> "John" "Doe")
                 const namePart = email.split('@')[0];
-                const name = namePart.split('.').map(part => 
+                const nameParts = namePart.split('.').map(part => 
                     part.charAt(0).toUpperCase() + part.slice(1)
-                ).join(' ');
-                setUserName(name);
+                );
+                if (nameParts.length >= 2) {
+                    setFirstName(nameParts[0]);
+                    setLastName(nameParts.slice(1).join(' '));
+                } else if (nameParts.length === 1) {
+                    setFirstName(nameParts[0]);
+                    setLastName("");
+                }
             }
         }
     }, []);
@@ -233,18 +241,29 @@ export default function SettingsPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="userName">Name</Label>
-                                <Input
-                                    id="userName"
-                                    readOnly
-                                    value={userName}
-                                    className="bg-muted"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Your name as displayed in the application
-                                </p>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="firstName">First Name</Label>
+                                    <Input
+                                        id="firstName"
+                                        readOnly
+                                        value={firstName}
+                                        className="bg-muted"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="lastName">Last Name</Label>
+                                    <Input
+                                        id="lastName"
+                                        readOnly
+                                        value={lastName}
+                                        className="bg-muted"
+                                    />
+                                </div>
                             </div>
+                            <p className="text-xs text-muted-foreground">
+                                Your name as displayed in the application
+                            </p>
                             <div className="space-y-2">
                                 <Label htmlFor="userEmail">Email</Label>
                                 <Input
