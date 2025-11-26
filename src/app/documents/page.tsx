@@ -236,7 +236,7 @@ function DocumentsContent() {
                 <Card className="mb-6">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Filter className="h-5 w-5" />
+                            <Filter className="h-5 w-5 text-purple-500" />
                             Filter & Search
                         </CardTitle>
                     </CardHeader>
@@ -246,7 +246,7 @@ function DocumentsContent() {
                             <div className="space-y-2">
                                 <Label htmlFor="search">Search</Label>
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
                                     <Input id="search" placeholder="Search documents..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
                                 </div>
                             </div>
@@ -305,7 +305,7 @@ function DocumentsContent() {
                 ) : filteredAndSortedDocuments.length === 0 ? (
                     <Card>
                         <CardContent className="flex flex-col items-center justify-center py-16">
-                            <Search className="h-16 w-16 text-muted-foreground mb-4" />
+                            <Search className="h-16 w-16 text-blue-500 mb-4" />
                             <h3 className="text-xl font-semibold mb-2">No matching documents</h3>
                             <p className="text-muted-foreground text-center max-w-md">Try adjusting your search or filters</p>
                             <Button className="mt-6" variant="outline" onClick={() => { setSearchQuery(""); setSelectedClient("all"); }}>Clear Filters</Button>
@@ -332,7 +332,7 @@ function DocumentsContent() {
                                                     </CardDescription>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <Button variant="outline" size="icon" onClick={() => handleView(doc)} title="View document"><ExternalLink className="h-4 w-4" /></Button>
+                                                    <Button variant="outline" size="icon" onClick={() => handleView(doc)} title="View document"><ExternalLink className="h-4 w-4 text-blue-500" /></Button>
                                                     <Button variant="outline" size="icon" onClick={() => handleDelete(doc.id)} title="Delete document"><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                                 </div>
                                             </div>

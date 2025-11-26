@@ -33,6 +33,9 @@ interface SettingsData {
     timezone?: string; // IANA timezone (e.g., "Europe/Lisbon", "America/New_York")
     blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
     reminderEmailTemplate?: EmailTemplate;
+    companyName?: string;
+    companyLogo?: string; // Path or URL to company logo
+    reminderHoursBefore?: number; // Hours before appointment to send reminder (default: 24)
 }
 
 const DEFAULT_APPOINTMENT_TYPES: AppointmentTypeSettings[] = [
@@ -53,6 +56,7 @@ export default function SettingsPage() {
         currency: "EUR",
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", // Auto-detect user's timezone
         blockedDays: [],
+        reminderHoursBefore: 24, // Default: send reminders 24 hours before
     });
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
     const [newTypeName, setNewTypeName] = useState("");
@@ -68,6 +72,7 @@ export default function SettingsPage() {
     const [testEmailAddress, setTestEmailAddress] = useState<string>("");
     const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
     const [testEmailMessage, setTestEmailMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
 
     useEffect(() => {
         loadSettings();
@@ -118,7 +123,7 @@ export default function SettingsPage() {
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <!-- Logo centered at top -->
     <div style="text-align: center; margin-bottom: 30px;">
-        <img src="{{logoUrl}}" alt="Algarve Therapy Centre" style="max-width: 200px; height: auto;" />
+        <img src="{{logoUrl}}" alt="Algarve Therapy Centre" style="max-width: 150px; width: 150px; height: auto; display: block; margin: 0 auto;" />
     </div>
     
     <p>Hi {{clientName}},</p>
@@ -134,8 +139,11 @@ export default function SettingsPage() {
     Tel: 937596665</p>
     
     <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-    <p style="font-size: 12px; color: #999; margin: 0;">
+    <p style="font-size: 11px; color: #999; margin: 0 0 10px 0;">
         This is an automated reminder. Please do not reply to this email.
+    </p>
+    <p style="font-size: 11px; color: #999; margin: 0;">
+        <em>Add this email to your whitelist to ensure it arrives in your inbox safely next time.</em>
     </p>
 </body>
 </html>`,
@@ -154,7 +162,9 @@ Algarve Therapy Centre
 Tel: 937596665
 
 ---
-This is an automated reminder. Please do not reply to this email.`,
+This is an automated reminder. Please do not reply to this email.
+
+Add this email to your whitelist to ensure it arrives in your inbox safely next time.`,
                     };
                 }
                 setSettings(data);
@@ -274,7 +284,7 @@ This is an automated reminder. Please do not reply to this email.`,
         <div className="container mx-auto px-4 py-8 max-w-5xl">
             <div className="mb-8">
                 <h1 className="text-4xl font-bold mb-2 flex items-center gap-2">
-                    <Settings className="h-8 w-8" />
+                    <Settings className="h-8 w-8 text-blue-500" />
                     Settings
                 </h1>
                 <p className="text-muted-foreground">
@@ -297,7 +307,7 @@ This is an automated reminder. Please do not reply to this email.`,
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <User className="h-5 w-5" />
+                                <User className="h-5 w-5 text-blue-500" />
                                 Profile Information
                             </CardTitle>
                             <CardDescription>
@@ -377,6 +387,147 @@ This is an automated reminder. Please do not reply to this email.`,
                             </div>
                         </CardContent>
                     </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Settings className="h-5 w-5 text-blue-500" />
+                                Company Information
+                            </CardTitle>
+                            <CardDescription>
+                                Company details used in emails and communications
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="companyName">Company Name</Label>
+                                <Input
+                                    id="companyName"
+                                    type="text"
+                                    placeholder="e.g., Algarve Therapy Centre"
+                                    value={settings.companyName || ""}
+                                    onChange={(e) => setSettings({ ...settings, companyName: e.target.value })}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Your company name as it appears in emails and communications
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="companyLogo">Company Logo</Label>
+                                <div className="flex items-center gap-4">
+                                    {settings.companyLogo && (
+                                        <div className="relative" key={`logo-container-${settings.companyLogo}`}>
+                                            <img 
+                                                src={settings.companyLogo}
+                                                alt="Company Logo" 
+                                                key={`logo-img-${settings.companyLogo}`}
+                                                className="h-20 w-auto object-contain border rounded p-2 bg-muted"
+                                                onError={(e) => {
+                                                    console.error('Error loading logo:', settings.companyLogo);
+                                                    // Fallback if image fails to load
+                                                    (e.target as HTMLImageElement).style.display = 'none';
+                                                }}
+                                                onLoad={() => {
+                                                    console.log('Logo loaded successfully:', settings.companyLogo);
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    <div className="flex-1 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                id="companyLogo"
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+                                                className="cursor-pointer"
+                                                onChange={async (e) => {
+                                                    const file = e.target.files?.[0];
+                                                    if (!file) return;
+
+                                                    setIsUploadingLogo(true);
+                                                    try {
+                                                        const formData = new FormData();
+                                                        formData.append('file', file);
+
+                                                        const response = await fetch('/api/settings/upload-logo', {
+                                                            method: 'POST',
+                                                            body: formData,
+                                                        });
+
+                                                        if (response.ok) {
+                                                            const data = await response.json();
+                                                            console.log('Logo upload response:', data);
+                                                            const updatedSettings = { ...settings, companyLogo: data.logoPath };
+                                                            console.log('Updating settings with logo:', data.logoPath);
+                                                            setSettings(updatedSettings);
+                                                            
+                                                            // Dispatch event to notify sidebar to refresh logo
+                                                            window.dispatchEvent(new CustomEvent('logo-updated'));
+                                                            
+                                                            // Auto-save settings after logo upload
+                                                            try {
+                                                                const saveResponse = await fetch('/api/settings', {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify(updatedSettings),
+                                                                });
+                                                                
+                                                                if (saveResponse.ok) {
+                                                                    setSaveStatus('saved');
+                                                                    setTimeout(() => setSaveStatus('idle'), 2000);
+                                                                } else {
+                                                                    console.error('Failed to save settings after logo upload');
+                                                                }
+                                                            } catch (saveError) {
+                                                                console.error('Error saving settings after logo upload:', saveError);
+                                                            }
+                                                        } else {
+                                                            const errorData = await response.json();
+                                                            alert(`Failed to upload logo: ${errorData.error || 'Unknown error'}`);
+                                                        }
+                                                    } catch (error) {
+                                                        console.error('Error uploading logo:', error);
+                                                        alert('Error uploading logo. Please try again.');
+                                                    } finally {
+                                                        setIsUploadingLogo(false);
+                                                        // Reset input to allow selecting a new file
+                                                        if (e.target) {
+                                                            (e.target as HTMLInputElement).value = '';
+                                                        }
+                                                    }
+                                                }}
+                                                disabled={isUploadingLogo}
+                                                key={`logo-input-${Date.now()}`} // Force re-render with timestamp
+                                            />
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => {
+                                                    const input = document.getElementById('companyLogo') as HTMLInputElement;
+                                                    if (input) {
+                                                        input.click();
+                                                    }
+                                                }}
+                                                disabled={isUploadingLogo}
+                                            >
+                                                {isUploadingLogo ? 'Uploading...' : 'Choose File'}
+                                            </Button>
+                                        </div>
+                                        {isUploadingLogo && (
+                                            <p className="text-xs text-muted-foreground">Uploading...</p>
+                                        )}
+                                        <p className="text-xs text-muted-foreground">
+                                            Select a new logo file (PNG, JPG, GIF, or WebP, max 5MB)
+                                        </p>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Upload your company logo (PNG, JPG, or GIF). Recommended size: 200x200px. Logo will be used in email templates.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 {/* General Settings Tab */}
@@ -384,7 +535,7 @@ This is an automated reminder. Please do not reply to this email.`,
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Calendar className="h-5 w-5" />
+                                <Calendar className="h-5 w-5 text-blue-500" />
                                 Calendly Integration
                             </CardTitle>
                             <CardDescription>
@@ -411,7 +562,7 @@ This is an automated reminder. Please do not reply to this email.`,
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Calendar className="h-5 w-5" />
+                                <Calendar className="h-5 w-5 text-blue-500" />
                                 Google Calendar Feed
                             </CardTitle>
                             <CardDescription>
@@ -510,7 +661,7 @@ This is an automated reminder. Please do not reply to this email.`,
                                                 Duration (minutes)
                                             </Label>
                                             <div className="flex items-center gap-2">
-                                                <Clock className="h-4 w-4 text-muted-foreground" />
+                                                <Clock className="h-4 w-4 text-green-500" />
                                                 <Input
                                                     id={`duration-${displayIndex}`}
                                                     type="number"
@@ -527,7 +678,7 @@ This is an automated reminder. Please do not reply to this email.`,
                                                 Fee ({settings.currency})
                                             </Label>
                                             <div className="flex items-center gap-2">
-                                                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                                <DollarSign className="h-4 w-4 text-pink-500" />
                                                 <Input
                                                     id={`fee-${displayIndex}`}
                                                     type="number"
@@ -601,7 +752,10 @@ This is an automated reminder. Please do not reply to this email.`,
                 <TabsContent value="defaults" className="space-y-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Default Settings</CardTitle>
+                            <CardTitle className="flex items-center gap-2">
+                                <Settings className="h-5 w-5 text-blue-500" />
+                                Default Settings
+                            </CardTitle>
                             <CardDescription>
                                 Set default values for new appointments
                             </CardDescription>
@@ -650,7 +804,7 @@ This is an automated reminder. Please do not reply to this email.`,
                             <div className="space-y-2">
                                 <Label htmlFor="defaultDuration">Default Duration (minutes)</Label>
                                 <div className="flex items-center gap-2">
-                                    <Clock className="h-5 w-5 text-muted-foreground" />
+                                    <Clock className="h-5 w-5 text-green-500" />
                                     <Input
                                         id="defaultDuration"
                                         type="number"
@@ -669,6 +823,7 @@ This is an automated reminder. Please do not reply to this email.`,
                             <div className="space-y-2">
                                 <Label htmlFor="defaultFee">Default Fee</Label>
                                 <div className="flex items-center gap-2">
+                                    <DollarSign className="h-5 w-5 text-pink-500" />
                                     <span className="text-lg font-bold">€</span>
                                     <Input
                                         id="defaultFee"
@@ -710,11 +865,45 @@ This is an automated reminder. Please do not reply to this email.`,
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Mail className="h-5 w-5" />
+                                <Mail className="h-5 w-5 text-pink-500" />
+                                Reminder Settings
+                            </CardTitle>
+                            <CardDescription>
+                                Configure when and how reminder emails are sent to clients
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="space-y-2">
+                                <Label htmlFor="reminderHoursBefore">Send Reminder (Hours Before Appointment)</Label>
+                                <div className="flex items-center gap-2">
+                                    <Clock className="h-5 w-5 text-muted-foreground" />
+                                    <Input
+                                        id="reminderHoursBefore"
+                                        type="number"
+                                        min="1"
+                                        max="168"
+                                        step="1"
+                                        value={settings.reminderHoursBefore || 24}
+                                        onChange={(e) => setSettings({ ...settings, reminderHoursBefore: parseInt(e.target.value) || 24 })}
+                                        className="w-32"
+                                    />
+                                    <span className="text-sm text-muted-foreground">hours</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    How many hours before the appointment should reminder emails be sent? (Default: 24 hours)
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Mail className="h-5 w-5 text-pink-500" />
                                 Email Reminder Template
                             </CardTitle>
                             <CardDescription>
-                                Customize the email template sent to clients 24 hours before their appointments.
+                                Customize the email template sent to clients {settings.reminderHoursBefore || 24} hours before their appointments.
                                 Use placeholders: {"{{clientName}}"}, {"{{dateTime}}"}, {"{{appointmentType}}"}, {"{{duration}}"}
                             </CardDescription>
                         </CardHeader>
@@ -802,7 +991,7 @@ This is an automated reminder. Please do not reply to this email.`,
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Mail className="h-5 w-5" />
+                                <Mail className="h-5 w-5 text-pink-500" />
                                 Send Test Email
                             </CardTitle>
                             <CardDescription>
@@ -821,9 +1010,9 @@ This is an automated reminder. Please do not reply to this email.`,
                                     }`}
                                 >
                                     {testEmailMessage.type === 'success' ? (
-                                        <CheckCircle2 className="h-5 w-5" />
+                                        <CheckCircle2 className="h-5 w-5 text-green-500" />
                                     ) : (
-                                        <AlertCircle className="h-5 w-5" />
+                                        <AlertCircle className="h-5 w-5 text-pink-500" />
                                     )}
                                     <span>{testEmailMessage.text}</span>
                                 </motion.div>
@@ -901,7 +1090,7 @@ This is an automated reminder. Please do not reply to this email.`,
                                     </>
                                 ) : (
                                     <>
-                                        <Mail className="h-4 w-4 mr-2" />
+                                        <Mail className="h-4 w-4 mr-2 text-pink-500" />
                                         Send Test Email
                                     </>
                                 )}
@@ -923,9 +1112,9 @@ This is an automated reminder. Please do not reply to this email.`,
                                 }`}
                         >
                             {backupMessage.type === 'success' ? (
-                                <CheckCircle2 className="h-5 w-5" />
+                                <CheckCircle2 className="h-5 w-5 text-green-500" />
                             ) : (
-                                <AlertCircle className="h-5 w-5" />
+                                <AlertCircle className="h-5 w-5 text-pink-500" />
                             )}
                             <span>{backupMessage.text}</span>
                         </motion.div>
@@ -935,7 +1124,7 @@ This is an automated reminder. Please do not reply to this email.`,
                     <Card className="border-2 border-primary">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Database className="h-5 w-5 text-primary" />
+                                <Database className="h-5 w-5 text-purple-500" />
                                 Create Data Backup
                             </CardTitle>
                             <CardDescription>
@@ -949,7 +1138,7 @@ This is an automated reminder. Please do not reply to this email.`,
                                 size="lg"
                                 className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90"
                             >
-                                <Download className="mr-2 h-4 w-4" />
+                                <Download className="mr-2 h-4 w-4 text-purple-500" />
                                 {isCreatingBackup ? 'Creating Backup...' : 'Create & Download Data Backup'}
                             </Button>
                             <p className="text-xs text-muted-foreground mt-2">
@@ -962,7 +1151,7 @@ This is an automated reminder. Please do not reply to this email.`,
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Upload className="h-5 w-5 text-primary" />
+                                <Upload className="h-5 w-5 text-purple-500" />
                                 Restore from Backup
                             </CardTitle>
                             <CardDescription>
@@ -985,12 +1174,12 @@ This is an automated reminder. Please do not reply to this email.`,
                                         className={`flex items-center gap-2 px-4 py-2 border rounded-md cursor-pointer hover:bg-muted ${isRestoring ? 'opacity-50 cursor-not-allowed' : ''
                                             }`}
                                     >
-                                        <Upload className="h-4 w-4" />
+                                        <Upload className="h-4 w-4 text-purple-500" />
                                         {isRestoring ? 'Restoring...' : 'Upload Backup File'}
                                     </Label>
                                 </div>
                                 <div className="text-sm text-amber-600 dark:text-amber-400 flex items-start gap-2">
-                                    <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                    <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-pink-500" />
                                     <span>Warning: Restoring a backup will replace all current data. Make sure to create a backup first!</span>
                                 </div>
                             </div>
@@ -1015,12 +1204,12 @@ This is an automated reminder. Please do not reply to this email.`,
                         </>
                     ) : saveStatus === "saved" ? (
                         <>
-                            <CheckCircle2 className="h-5 w-5" />
+                            <CheckCircle2 className="h-5 w-5 text-green-500" />
                             Saved!
                         </>
                     ) : (
                         <>
-                            <Save className="h-5 w-5" />
+                            <Save className="h-5 w-5 text-green-500" />
                             Save Settings
                         </>
                     )}

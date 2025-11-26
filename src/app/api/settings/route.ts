@@ -16,6 +16,9 @@ const DEFAULT_SETTINGS = {
     currency: "EUR",
     timezone: "UTC",
     blockedDays: [],
+    companyName: "",
+    companyLogo: "",
+    reminderHoursBefore: 24, // Hours before appointment to send reminder
     reminderEmailTemplate: {
         subject: "Reminder: Your appointment tomorrow - {{date}}",
         htmlBody: `<!DOCTYPE html>
@@ -27,7 +30,7 @@ const DEFAULT_SETTINGS = {
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <!-- Logo centered at top -->
     <div style="text-align: center; margin-bottom: 30px;">
-        <img src="{{logoUrl}}" alt="Algarve Therapy Centre" style="max-width: 200px; height: auto;" />
+        <img src="{{logoUrl}}" alt="Algarve Therapy Centre" style="max-width: 150px; width: 150px; height: auto; display: block; margin: 0 auto;" />
     </div>
     
     <p>Hi {{clientName}},</p>
@@ -43,8 +46,11 @@ const DEFAULT_SETTINGS = {
     Tel: 937596665</p>
     
     <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-    <p style="font-size: 12px; color: #999; margin: 0;">
+    <p style="font-size: 11px; color: #999; margin: 0 0 10px 0;">
         This is an automated reminder. Please do not reply to this email.
+    </p>
+    <p style="font-size: 11px; color: #999; margin: 0;">
+        <em>Add this email to your whitelist to ensure it arrives in your inbox safely next time.</em>
     </p>
 </body>
 </html>`,
@@ -63,7 +69,9 @@ Algarve Therapy Centre
 Tel: 937596665
 
 ---
-This is an automated reminder. Please do not reply to this email.`,
+This is an automated reminder. Please do not reply to this email.
+
+Add this email to your whitelist to ensure it arrives in your inbox safely next time.`,
     },
 };
 

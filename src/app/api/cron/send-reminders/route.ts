@@ -53,13 +53,14 @@ export async function GET(request: Request) {
     try {
         console.log('[Reminders Cron] Starting reminder check...');
 
-        // Calculate time range: appointments 24 hours from now (±1 hour window)
+        // Calculate time range: appointments X hours from now (±1 hour window)
+        // Use reminderHoursBefore from settings (default: 24 hours)
         const now = new Date();
-        const targetTime = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
+        const targetTime = new Date(now.getTime() + reminderHoursBefore * 60 * 60 * 1000); // X hours from now
         const windowStart = new Date(targetTime.getTime() - 60 * 60 * 1000); // 1 hour before
         const windowEnd = new Date(targetTime.getTime() + 60 * 60 * 1000); // 1 hour after
 
-        console.log(`[Reminders Cron] Checking for appointments between ${windowStart.toISOString()} and ${windowEnd.toISOString()}`);
+        console.log(`[Reminders Cron] Checking for appointments ${reminderHoursBefore} hours from now (between ${windowStart.toISOString()} and ${windowEnd.toISOString()})`);
 
         // Fetch sessions in the time window
         const { data: sessions, error: sessionsError } = await supabase
@@ -108,9 +109,11 @@ export async function GET(request: Request) {
 
         const clientMap = new Map((clients || []).map((c: any) => [c.id, c]));
 
-        // Get settings (timezone and email template)
+        // Get settings (timezone, email template, company logo, and reminder hours)
         let timezone = 'UTC';
         let emailTemplate: any = undefined;
+        let companyLogo: string | undefined = undefined;
+        let reminderHoursBefore = 24; // Default to 24 hours
         try {
             const { data: settingsData } = await supabase
                 .from('settings')
@@ -124,6 +127,12 @@ export async function GET(request: Request) {
                 }
                 if (settingsData.config.reminderEmailTemplate) {
                     emailTemplate = settingsData.config.reminderEmailTemplate;
+                }
+                if (settingsData.config.companyLogo) {
+                    companyLogo = settingsData.config.companyLogo;
+                }
+                if (settingsData.config.reminderHoursBefore) {
+                    reminderHoursBefore = settingsData.config.reminderHoursBefore;
                 }
             }
         } catch (e) {
@@ -178,7 +187,8 @@ export async function GET(request: Request) {
                     appointmentType,
                     duration,
                     timezone,
-                    emailTemplate
+                    emailTemplate,
+                    companyLogo
                 );
 
                 // Mark reminder as sent

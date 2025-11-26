@@ -103,7 +103,8 @@ export async function getClients(includeArchived: boolean = false) {
             currentMedications: metadata.currentMedications || '',
             doctorInfo: metadata.doctorInfo || undefined,
             archived: client.archived || false,
-            archivedAt: client.archived_at || undefined
+            archivedAt: client.archived_at || undefined,
+            createdAt: client.created_at || undefined
         };
     });
 }

@@ -5,9 +5,10 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { Users, Mic, Calendar, DollarSign, FileText, Bell, X, Link as LinkIcon, Archive } from "lucide-react";
+import Image from "next/image";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 const sidebarItems = [
     {
@@ -60,11 +61,55 @@ const sidebarItems = [
     },
 ];
 
-const SidebarContent = ({ onNavigate }: { onNavigate?: () => void }) => {
+const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?: () => void; companyLogo?: string; logoVersion?: number }) => {
     const pathname = usePathname();
+    // Always use company logo if it's set and not empty, otherwise use default
+    // Add cache-busting timestamp to force reload of latest logo
+    const logoSrc = useMemo(() => {
+        let src = (companyLogo && companyLogo.trim() !== "") ? companyLogo : "/logo.png";
+        if (src.startsWith('http') || src.includes('supabase.co')) {
+            // Remove any existing timestamp query params and add a new one with version
+            const url = new URL(src);
+            url.searchParams.set('v', (logoVersion || 0).toString());
+            url.searchParams.set('t', Date.now().toString());
+            return url.toString();
+        }
+        return src;
+    }, [companyLogo, logoVersion]);
 
     return (
         <>
+            {/* Logo */}
+            <div className="px-4 py-4">
+                <Link href="/dashboard" className="flex items-center">
+                    {logoSrc.startsWith('http') || logoSrc.includes('supabase.co') ? (
+                        <img
+                            src={logoSrc}
+                            alt="My Practice Helper"
+                            key={`company-logo-${companyLogo || 'default'}`}
+                            className="w-1/2 h-auto object-contain mx-auto"
+                            onError={(e) => {
+                                console.error('Sidebar logo failed to load:', logoSrc);
+                                // Fallback to default logo if image fails to load
+                                (e.target as HTMLImageElement).src = "/logo.png";
+                            }}
+                            onLoad={() => {
+                                console.log('Sidebar logo loaded successfully:', logoSrc);
+                            }}
+                        />
+                    ) : (
+                        <Image
+                            src={logoSrc}
+                            alt="My Practice Helper"
+                            width={90}
+                            height={30}
+                            className="w-1/2 h-auto mx-auto"
+                            priority
+                            key={`company-logo-${companyLogo || 'default'}`}
+                        />
+                    )}
+                </Link>
+            </div>
             <div className="flex-1 overflow-auto py-2">
                 <nav className="grid items-start px-4 text-sm lg:text-base font-medium">
                     {sidebarItems.map((item) => (
@@ -105,7 +150,53 @@ export function Sidebar() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [touchStart, setTouchStart] = useState<number | null>(null);
     const [touchEnd, setTouchEnd] = useState<number | null>(null);
+    const [companyLogo, setCompanyLogo] = useState<string | undefined>(undefined);
+    const [logoVersion, setLogoVersion] = useState(0); // Version counter to force refresh
     const pathname = usePathname();
+
+    // Fetch company logo from settings and refresh periodically
+    useEffect(() => {
+        const fetchCompanyLogo = async (forceRefresh: boolean = false) => {
+            try {
+                const response = await fetch('/api/settings');
+                if (response.ok) {
+                    const data = await response.json();
+                    // The API returns the config directly, so companyLogo is at the root level
+                    const newLogo = (data.companyLogo && data.companyLogo.trim() !== "") ? data.companyLogo : undefined;
+                    
+                    // Only update if logo changed or if forcing refresh
+                    if (newLogo !== companyLogo || forceRefresh) {
+                        setCompanyLogo(newLogo);
+                        // Increment version to force image refresh when logo changes
+                        if (forceRefresh || newLogo !== companyLogo) {
+                            setLogoVersion(prev => prev + 1);
+                            console.log('Logo updated, incrementing version. New logo:', newLogo);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching company logo:', error);
+            }
+        };
+        
+        // Fetch immediately
+        fetchCompanyLogo();
+        
+        // Refresh every 2 seconds to catch logo updates quickly
+        const interval = setInterval(() => fetchCompanyLogo(false), 2000);
+        
+        // Listen for custom event when logo is updated
+        const handleLogoUpdate = () => {
+            console.log('Logo update event received, forcing refresh...');
+            fetchCompanyLogo(true);
+        };
+        window.addEventListener('logo-updated', handleLogoUpdate);
+        
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('logo-updated', handleLogoUpdate);
+        };
+    }, [companyLogo]);
 
     // Close mobile menu when route changes
     useEffect(() => {
@@ -151,7 +242,7 @@ export function Sidebar() {
             {/* Desktop Sidebar */}
             <div className="hidden border-r bg-muted/40 md:block md:w-64 lg:w-72 h-[calc(100vh-4rem)] sticky top-16">
                 <div className="flex h-full max-h-screen flex-col gap-2">
-                    <SidebarContent />
+                    <SidebarContent companyLogo={companyLogo} logoVersion={logoVersion} />
                 </div>
             </div>
 
@@ -169,7 +260,7 @@ export function Sidebar() {
                         <SheetDescription className="sr-only">Navigation menu</SheetDescription>
                     </SheetHeader>
                     <div className="flex h-full flex-col overflow-hidden">
-                        <SidebarContent onNavigate={() => setIsMobileOpen(false)} />
+                        <SidebarContent onNavigate={() => setIsMobileOpen(false)} companyLogo={companyLogo} logoVersion={logoVersion} />
                     </div>
                 </SheetContent>
             </Sheet>

@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import fs from 'fs';
 import path from 'path';
+import { supabase } from './supabase';
 
 // Create SMTP transporter for IONOS
 function createTransporter() {
@@ -170,7 +171,8 @@ export async function sendReminderEmail(
     appointmentType: string,
     duration: number,
     timezone?: string,
-    customTemplate?: { subject: string; htmlBody: string; textBody: string }
+    customTemplate?: { subject: string; htmlBody: string; textBody: string },
+    companyLogo?: string // Optional company logo path from settings
 ): Promise<void> {
     const transporter = createTransporter();
     const smtpFrom = process.env.SMTP_FROM || process.env.SMTP_USER;
@@ -193,32 +195,199 @@ export async function sendReminderEmail(
     const attachments: any[] = [];
     let logoCid = null;
     
+    console.log('[Email] ===== STARTING LOGO PROCESSING =====');
+    console.log('[Email] Company logo parameter:', companyLogo || 'NOT PROVIDED');
+    
     try {
-        const logoPath = path.join(process.cwd(), 'public', 'logo.png');
-        if (fs.existsSync(logoPath)) {
-            logoCid = 'logo@algarve-therapy';
-            attachments.push({
-                filename: 'logo.png',
-                path: logoPath,
-                cid: logoCid, // Content-ID for inline image
-            });
-            if (process.env.NODE_ENV === 'development') {
-                console.log('[Email] Logo attached with CID:', logoCid);
+        let logoBuffer: Buffer | null = null;
+        let logoFilename = 'logo.png';
+        let contentType = 'image/png';
+        let logoFound = false;
+        
+        // Determine which logo to use: company logo from settings, or fallback to default logo.png
+        if (companyLogo) {
+            console.log('[Email] Company logo provided:', companyLogo);
+            
+            // Check if companyLogo is a Supabase Storage URL or local path
+            if (companyLogo.startsWith('http') || companyLogo.includes('supabase.co/storage')) {
+                // It's a Supabase Storage URL - download it
+                try {
+                    // Extract filename from URL (e.g., company-logo.png)
+                    // Handle URLs like: https://xxx.supabase.co/storage/v1/object/public/documents/company-logo.png
+                    let filename = 'company-logo.png';
+                    if (companyLogo.includes('/documents/')) {
+                        filename = companyLogo.split('/documents/')[1].split('?')[0];
+                    } else {
+                        const urlParts = companyLogo.split('/');
+                        filename = urlParts[urlParts.length - 1].split('?')[0];
+                    }
+                    
+                    console.log('[Email] Extracted filename from URL:', filename);
+                    
+                    // Download from Supabase Storage 'documents' bucket
+                    const { data, error } = await supabase.storage
+                        .from('documents')
+                        .download(filename);
+                    
+                    if (!error && data) {
+                        const arrayBuffer = await data.arrayBuffer();
+                        logoBuffer = Buffer.from(arrayBuffer);
+                        logoFilename = filename;
+                        logoFound = true;
+                        
+                        // Determine content type from file extension
+                        const ext = filename.split('.').pop()?.toLowerCase();
+                        if (ext === 'jpg' || ext === 'jpeg') {
+                            contentType = 'image/jpeg';
+                        } else if (ext === 'gif') {
+                            contentType = 'image/gif';
+                        } else if (ext === 'webp') {
+                            contentType = 'image/webp';
+                        }
+                        
+                        console.log('[Email] ✓ Logo downloaded from Supabase Storage:', filename, `(${logoBuffer.length} bytes)`);
+                    } else {
+                        console.warn('[Email] ✗ Failed to download logo from Supabase:', error?.message || 'Unknown error');
+                    }
+                } catch (error) {
+                    console.error('[Email] ✗ Error downloading logo from Supabase:', error);
+                }
+            } else {
+                // It's a local path - try to read from filesystem
+                const logoFile = companyLogo.startsWith('/') ? companyLogo.slice(1) : companyLogo;
+                const logoPath = path.join(process.cwd(), 'public', logoFile);
+                
+                console.log('[Email] Trying local logo path:', logoPath);
+                
+                if (fs.existsSync(logoPath)) {
+                    logoBuffer = fs.readFileSync(logoPath);
+                    logoFilename = logoFile;
+                    logoFound = true;
+                    
+                    // Determine content type from file extension
+                    const ext = logoFile.split('.').pop()?.toLowerCase();
+                    if (ext === 'jpg' || ext === 'jpeg') {
+                        contentType = 'image/jpeg';
+                    } else if (ext === 'gif') {
+                        contentType = 'image/gif';
+                    } else if (ext === 'webp') {
+                        contentType = 'image/webp';
+                    }
+                    
+                    console.log('[Email] ✓ Logo loaded from local path:', logoPath, `(${logoBuffer.length} bytes)`);
+                } else {
+                    console.warn('[Email] ✗ Local logo file not found:', logoPath);
+                }
             }
+        }
+        
+        // Fallback to default logo.png if company logo not set or not found
+        if (!logoFound) {
+            console.log('[Email] Company logo not found, trying default logo...');
+            const defaultLogoPath = path.join(process.cwd(), 'public', 'logo.png');
+            console.log('[Email] Default logo path:', defaultLogoPath);
+            console.log('[Email] Current working directory:', process.cwd());
+            
+            if (fs.existsSync(defaultLogoPath)) {
+                logoBuffer = fs.readFileSync(defaultLogoPath);
+                logoFilename = 'logo.png';
+                contentType = 'image/png';
+                logoFound = true;
+                console.log('[Email] ✓ Default logo loaded:', defaultLogoPath, `(${logoBuffer.length} bytes)`);
+            } else {
+                console.warn('[Email] ✗ Default logo file not found:', defaultLogoPath);
+                // List public directory to see what's there
+                const publicDir = path.join(process.cwd(), 'public');
+                if (fs.existsSync(publicDir)) {
+                    const files = fs.readdirSync(publicDir);
+                    console.log('[Email] Files in public directory:', files.filter(f => f.endsWith('.png') || f.endsWith('.jpg') || f.endsWith('.gif')));
+                } else {
+                    console.warn('[Email] Public directory does not exist:', publicDir);
+                }
+            }
+        }
+        
+        if (logoBuffer && logoFound) {
+            // Use a simpler CID format that's more compatible with email clients
+            // CID should NOT include angle brackets or cid: prefix - nodemailer handles that
+            logoCid = 'company-logo';
+            
+            attachments.push({
+                filename: logoFilename,
+                content: logoBuffer, // Use buffer instead of path for better reliability
+                cid: logoCid, // Content-ID for inline image (just the identifier, no cid: prefix)
+                contentDisposition: 'inline', // Ensure it's treated as inline attachment
+                contentType: contentType, // Explicitly set content type
+            });
+            
+            console.log('[Email] ✓ Logo attached successfully');
+            console.log('[Email]   - CID:', logoCid);
+            console.log('[Email]   - Filename:', logoFilename);
+            console.log('[Email]   - Size:', logoBuffer.length, 'bytes');
+            console.log('[Email]   - Content-Type:', contentType);
         } else {
-            console.warn('[Email] Logo file not found at:', logoPath);
+            console.warn('[Email] ✗ No logo found - email will be sent without logo attachment');
         }
     } catch (error) {
-        console.error('[Email] Error reading logo file:', error);
+        console.error('[Email] ✗ Error processing logo:', error);
     }
 
     // Replace logo placeholder with CID reference
     let finalHtml = html;
     if (logoCid) {
-        finalHtml = html.replace(/\{\{logoUrl\}\}/g, `cid:${logoCid}`);
+        // Replace {{logoUrl}} with cid: reference for inline image
+        const cidReference = `cid:${logoCid}`;
+        finalHtml = html.replace(/\{\{logoUrl\}\}/g, cidReference);
+        
+        // Ensure img tags are properly formatted (some email clients don't like self-closing tags)
+        // Convert <img ... /> to <img ...> for better compatibility
+        finalHtml = finalHtml.replace(/<img([^>]*)\s*\/>/gi, '<img$1>');
+        
+        // Verify the img tag exists and is properly formatted
+        const imgTagRegex = /<img([^>]*)\s+src="cid:[^"]*"([^>]*)>/i;
+        const imgMatch = finalHtml.match(imgTagRegex);
+        
+        if (!imgMatch) {
+            // If img tag is broken, try to fix it
+            // Look for cid: that's not in an img tag
+            const cidIndex = finalHtml.indexOf(cidReference);
+            if (cidIndex > -1) {
+                // Check if it's inside an img tag
+                const beforeCid = finalHtml.substring(Math.max(0, cidIndex - 100), cidIndex);
+                const afterCid = finalHtml.substring(cidIndex, Math.min(finalHtml.length, cidIndex + 50));
+                
+                if (!beforeCid.includes('<img') || !afterCid.includes('>')) {
+                    console.warn('[Email] ⚠ CID found but img tag appears broken. Attempting to fix...');
+                    // Try to reconstruct the img tag
+                    finalHtml = finalHtml.replace(
+                        new RegExp(cidReference.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
+                        `<img src="${cidReference}" alt="Company Logo" style="max-width: 150px; width: 150px; height: auto; display: block; margin: 0 auto;">`
+                    );
+                }
+            }
+        }
+        
+        // Debug logging
+        console.log('[Email] Logo replacement completed');
+        console.log('[Email] CID reference:', cidReference);
+        const finalImgMatch = finalHtml.match(/<img[^>]*src="cid:[^"]*"[^>]*>/i);
+        if (finalImgMatch) {
+            console.log('[Email] ✓ Final img tag:', finalImgMatch[0]);
+        } else {
+            console.warn('[Email] ⚠ No valid img tag found after replacement');
+            // Log context around CID
+            const cidPos = finalHtml.indexOf('cid:');
+            if (cidPos > -1) {
+                const context = finalHtml.substring(Math.max(0, cidPos - 100), Math.min(finalHtml.length, cidPos + 150));
+                console.log('[Email] Context around CID:', context);
+            }
+        }
     } else {
-        // Remove logo div if logo not found
+        // Remove logo div if logo not found to avoid showing broken image or CID text
         finalHtml = html.replace(/<div[^>]*>\s*<img[^>]*src="\{\{logoUrl\}\}"[^>]*>\s*<\/div>/gi, '');
+        // Also remove any standalone img tags with the placeholder
+        finalHtml = finalHtml.replace(/<img[^>]*src="\{\{logoUrl\}\}"[^>]*>/gi, '');
+        console.log('[Email] Logo not found - removed logo placeholder from HTML');
     }
 
     const mailOptions: any = {
@@ -228,17 +397,63 @@ export async function sendReminderEmail(
         html: finalHtml, // HTML email body only - no plain text
     };
 
-    // Add attachments if we have them
+    // Add attachments if we have them - CRITICAL: attachments must be added for inline images
     if (attachments.length > 0) {
         mailOptions.attachments = attachments;
+        console.log('[Email] ✓ Attachments added to mailOptions:', attachments.length);
+    } else {
+        console.warn('[Email] ⚠ WARNING: No attachments to add - logo will not display!');
+        // If we have a logoCid but no attachment, something went wrong
+        if (logoCid) {
+            console.error('[Email] ✗ ERROR: logoCid is set but no attachment was created!');
+        }
     }
 
-    // Log for debugging (only in development)
-    if (process.env.NODE_ENV === 'development') {
-        console.log('[Email] Sending HTML email');
-        console.log('[Email] HTML length:', finalHtml.length, 'characters');
-        console.log('[Email] Attachments:', attachments.length);
+    // Log for debugging (always log to help debug issues)
+    console.log('[Email] ===== EMAIL SEND DEBUG =====');
+    console.log('[Email] Sending HTML email');
+    console.log('[Email] HTML length:', finalHtml.length, 'characters');
+    console.log('[Email] Attachments count:', attachments.length);
+    console.log('[Email] Logo CID:', logoCid);
+    
+    if (attachments.length > 0) {
+        console.log('[Email] Attachment details:');
+        attachments.forEach((att, idx) => {
+            console.log(`[Email]   Attachment ${idx + 1}:`, {
+                filename: att.filename,
+                cid: att.cid,
+                contentType: att.contentType,
+                contentDisposition: att.contentDisposition,
+                contentSize: att.content ? `${att.content.length} bytes` : 'N/A'
+            });
+        });
+    } else {
+        console.warn('[Email] ⚠ NO ATTACHMENTS - Logo will not display!');
     }
+    
+    console.log('[Email] Mail options:', {
+        from: mailOptions.from,
+        to: mailOptions.to,
+        subject: mailOptions.subject,
+        hasHtml: !!mailOptions.html,
+        htmlLength: mailOptions.html?.length,
+        attachmentsCount: mailOptions.attachments?.length || 0,
+    });
+    
+    // Check if CID is in HTML
+    if (logoCid && finalHtml.includes(`cid:${logoCid}`)) {
+        console.log('[Email] ✓ CID found in HTML');
+        const imgMatch = finalHtml.match(/<img[^>]*src="cid:[^"]*"[^>]*>/i);
+        if (imgMatch) {
+            console.log('[Email] ✓ Valid img tag found:', imgMatch[0].substring(0, 100));
+        } else {
+            console.warn('[Email] ⚠ CID in HTML but no valid img tag found!');
+        }
+    } else if (logoCid) {
+        console.warn('[Email] ⚠ Logo CID set but not found in HTML!');
+    }
+    
+    console.log('[Email] ============================');
 
     await transporter.sendMail(mailOptions);
 }

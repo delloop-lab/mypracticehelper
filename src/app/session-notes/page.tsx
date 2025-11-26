@@ -345,7 +345,7 @@ function SessionNotesContent() {
                 <Card className="mb-6">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <Filter className="h-5 w-5" />
+                            <Filter className="h-5 w-5 text-purple-500" />
                             Filter & Search
                         </CardTitle>
                     </CardHeader>
@@ -355,7 +355,7 @@ function SessionNotesContent() {
                             <div className="space-y-2">
                                 <Label htmlFor="search">Search</Label>
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
                                     <Input
                                         id="search"
                                         placeholder="Search notes..."
@@ -478,7 +478,7 @@ function SessionNotesContent() {
                                                                 size="icon"
                                                                 onClick={() => handleEdit(note)}
                                                             >
-                                                                <Edit className="h-4 w-4" />
+                                                                <Edit className="h-4 w-4 text-blue-500" />
                                                             </Button>
                                                             <Button
                                                                 variant="ghost"

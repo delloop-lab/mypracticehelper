@@ -6,3 +6,4 @@ CREATE INDEX IF NOT EXISTS idx_clients_metadata ON clients USING gin (metadata);
 
 
 
+

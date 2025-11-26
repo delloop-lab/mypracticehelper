@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { Button } from "@/components/ui/button";
@@ -45,9 +46,9 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between px-4 md:px-8">
-        <div className="flex items-center">
-          <Link href="/" className="flex items-center">
+      <div className="flex h-16 items-center justify-between">
+        <div className="flex items-center pl-[50px]">
+          <Link href="/dashboard" className="flex items-center">
             <Image
               src="/logo.png"
               alt="My Practice Helper"
@@ -66,7 +67,7 @@ export function Navbar() {
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
             </SheetHeader>
-            <Link href="/" className="flex items-center px-6" onClick={() => setIsOpen(false)}>
+            <Link href="/dashboard" className="flex items-center px-6" onClick={() => setIsOpen(false)}>
               <Image
                 src="/logo.png"
                 alt="My Practice Helper"
@@ -123,6 +124,17 @@ export function Navbar() {
                     Settings
                   </Link>
                 </SheetClose>
+                <SheetClose asChild>
+                  <Link href="/help" className="flex items-center py-2 text-lg font-medium">
+                    <HelpCircle className="h-5 w-5 mr-2" />
+                    Help
+                  </Link>
+                </SheetClose>
+                <SheetClose asChild>
+                  <Link href="/contact" className="flex items-center py-2 text-lg font-medium">
+                    Contact
+                  </Link>
+                </SheetClose>
               </div>
               <div className="mt-auto border-t px-6 py-4">
                 <div className="text-xs text-muted-foreground text-center">
@@ -133,7 +145,7 @@ export function Navbar() {
           </SheetContent>
         </Sheet>
 
-        <div className="flex items-center justify-between space-x-2 md:justify-end">
+        <div className="flex items-center justify-between space-x-2 md:justify-end pr-4 md:pr-8">
           <div className="w-full flex-1 md:w-auto md:flex-none">
             {/* Add search or other items here if needed */}
           </div>
@@ -151,6 +163,20 @@ export function Navbar() {
                   <NavigationMenuLink asChild>
                     <Link href="/settings" className={navigationMenuTriggerStyle()}>
                       Settings
+                    </Link>
+                  </NavigationMenuLink>
+                </NavigationMenuItem>
+                <NavigationMenuItem>
+                  <NavigationMenuLink asChild>
+                    <Link href="/help" className={navigationMenuTriggerStyle()}>
+                      Help
+                    </Link>
+                  </NavigationMenuLink>
+                </NavigationMenuItem>
+                <NavigationMenuItem>
+                  <NavigationMenuLink asChild>
+                    <Link href="/contact" className={navigationMenuTriggerStyle()}>
+                      Contact
                     </Link>
                   </NavigationMenuLink>
                 </NavigationMenuItem>

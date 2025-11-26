@@ -261,13 +261,13 @@ export function DocumentStorage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Button size="sm" variant="ghost">
-                                            <Eye className="h-4 w-4" />
+                                            <Eye className="h-4 w-4 text-blue-500" />
                                         </Button>
                                         <Button size="sm" variant="ghost">
-                                            <Download className="h-4 w-4" />
+                                            <Download className="h-4 w-4 text-purple-500" />
                                         </Button>
                                         <Button size="sm" variant="ghost">
-                                            <Share2 className="h-4 w-4" />
+                                            <Share2 className="h-4 w-4 text-purple-500" />
                                         </Button>
                                         <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600">
                                             <Trash2 className="h-4 w-4" />

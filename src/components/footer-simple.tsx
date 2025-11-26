@@ -8,10 +8,10 @@ export function FooterSimple() {
                     <p>
                         © 2025{" "}
                         <a
-                            href="mailto:lou@schillaci.me"
+                            href="mailto:help@mypracticehelper.com"
                             className="text-primary hover:underline font-medium"
                         >
-                            Lou Schillaci
+                            My Practice Helper
                         </a>
                         . All rights reserved.
                     </p>

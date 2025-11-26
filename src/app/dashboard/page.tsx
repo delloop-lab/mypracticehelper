@@ -164,7 +164,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 <div className="rounded-lg border bg-card p-6">
                     <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-muted-foreground">Today's Sessions</p>
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <Calendar className="h-4 w-4 text-blue-500" />
                     </div>
                     <p className="mt-2 text-3xl font-bold">{stats.todaySessions}</p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -175,7 +175,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 <div className="rounded-lg border bg-card p-6">
                     <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-muted-foreground">Active Clients</p>
-                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <Users className="h-4 w-4 text-blue-500" />
                     </div>
                     <p className="mt-2 text-3xl font-bold">{stats.activeClients}</p>
                     <p className="text-xs text-muted-foreground mt-1">Total clients</p>
@@ -184,7 +184,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 <div className="rounded-lg border bg-card p-6">
                     <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-muted-foreground">Revenue ({getRevenuePeriodLabel()})</p>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <DollarSign className="h-4 w-4 text-pink-500" />
                     </div>
                     <p className="mt-2 text-3xl font-bold">€{stats.revenue.toLocaleString()}</p>
                     <div className="mt-2 flex gap-1">
@@ -218,7 +218,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 <div className="rounded-lg border bg-card p-6">
                     <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-muted-foreground">Recordings</p>
-                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <FileText className="h-4 w-4 text-green-500" />
                     </div>
                     <p className="mt-2 text-3xl font-bold">{stats.recordings}</p>
                     <p className="text-xs text-muted-foreground mt-1">Voice notes saved</p>
@@ -232,7 +232,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
                                 <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2">
-                                    <FileText className="h-5 w-5" />
+                                    <FileText className="h-5 w-5 text-green-500" />
                                     Action Required: {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Need{reminders.length === 1 ? 's' : ''} Notes
                                 </h3>
                                 <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
@@ -260,7 +260,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             className="w-full justify-start gap-2"
                             onClick={() => router.push('/reminders')}
                         >
-                            <FileText className="h-4 w-4" />
+                            <FileText className="h-4 w-4 text-green-500" />
                             View Reminders
                         </Button>
                         <Button
@@ -268,7 +268,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             className="w-full justify-start gap-2"
                             onClick={() => onNavigate("schedule")}
                         >
-                            <Calendar className="h-4 w-4" />
+                            <Calendar className="h-4 w-4 text-blue-500" />
                             Schedule New Appointment
                         </Button>
                         <Button
@@ -276,7 +276,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             className="w-full justify-start gap-2"
                             onClick={() => onNavigate("notes")}
                         >
-                            <Mic className="h-4 w-4" />
+                            <Mic className="h-4 w-4 text-purple-500" />
                             Record Session Notes
                         </Button>
                         <Button
@@ -284,16 +284,8 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             className="w-full justify-start gap-2"
                             onClick={() => onNavigate("clients", "add")}
                         >
-                            <Users className="h-4 w-4" />
+                            <Users className="h-4 w-4 text-blue-500" />
                             Add New Client
-                        </Button>
-                        <Button
-                            variant="outline"
-                            className="w-full justify-start gap-2"
-                            onClick={() => onNavigate("billing")}
-                        >
-                            <DollarSign className="h-4 w-4" />
-                            Create Invoice
                         </Button>
                     </div>
                 </div>

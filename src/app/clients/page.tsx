@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
+import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc } from "lucide-react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientImportExport } from "@/components/client-import-export";
@@ -72,6 +72,7 @@ interface Client {
     relationships?: ClientRelationship[];
     archived?: boolean; // Whether client is archived
     archivedAt?: string; // When client was archived
+    createdAt?: string; // Date when client was added
     // Extended personal/medical fields
     dateOfBirth?: string;
     mailingAddress?: string;
@@ -149,6 +150,178 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         return reciprocalMap[type] || type;
     };
     const [showBulkImport, setShowBulkImport] = useState(false);
+    const [showSearch, setShowSearch] = useState(true); // Default to showing search
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchField, setSearchField] = useState<string>("all"); // "all", "name", "email", "phone", "dateAdded", etc.
+    const [dateAddedFilter, setDateAddedFilter] = useState<{ from?: string; to?: string }>({});
+    const [sortBy, setSortBy] = useState<string>("name-asc"); // "name-asc", "name-desc", "dateAdded-asc", "dateAdded-desc"
+
+    // Comprehensive search and filter logic
+    const filteredClients = useMemo(() => {
+        let filtered = clients;
+
+        // Filter by search query
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim();
+            filtered = filtered.filter(client => {
+                // Search in all fields if "all" is selected
+                if (searchField === "all") {
+                    const searchableText = [
+                        client.name || '',
+                        client.firstName || '',
+                        client.lastName || '',
+                        client.email || '',
+                        client.phone || '',
+                        client.preferredName || '',
+                        client.notes || '',
+                        client.mailingAddress || '',
+                        client.medicalConditions || '',
+                        client.currentMedications || '',
+                        client.emergencyContact?.name || '',
+                        client.emergencyContact?.phone || '',
+                        client.doctorInfo?.name || '',
+                        client.doctorInfo?.phone || '',
+                        client.dateOfBirth || '',
+                        client.currency || '',
+                        client.sessionFee?.toString() || '',
+                        client.createdAt ? new Date(client.createdAt).toLocaleDateString() : '',
+                    ].join(' ').toLowerCase();
+
+                    return searchableText.includes(query);
+                } else {
+                    // Search in specific field
+                    switch (searchField) {
+                        case "name":
+                            return (
+                                (client.name || '').toLowerCase().includes(query) ||
+                                (client.firstName || '').toLowerCase().includes(query) ||
+                                (client.lastName || '').toLowerCase().includes(query) ||
+                                (client.preferredName || '').toLowerCase().includes(query)
+                            );
+                        case "email":
+                            return (client.email || '').toLowerCase().includes(query);
+                        case "phone":
+                            return (
+                                (client.phone || '').toLowerCase().includes(query) ||
+                                (client.emergencyContact?.phone || '').toLowerCase().includes(query) ||
+                                (client.doctorInfo?.phone || '').toLowerCase().includes(query)
+                            );
+                        case "notes":
+                            return (client.notes || '').toLowerCase().includes(query);
+                        case "dateOfBirth":
+                            return (client.dateOfBirth || '').toLowerCase().includes(query);
+                        case "address":
+                            return (client.mailingAddress || '').toLowerCase().includes(query);
+                        case "medical":
+                            return (
+                                (client.medicalConditions || '').toLowerCase().includes(query) ||
+                                (client.currentMedications || '').toLowerCase().includes(query)
+                            );
+                        case "dateAdded":
+                            if (client.createdAt) {
+                                const dateStr = new Date(client.createdAt).toLocaleDateString().toLowerCase();
+                                return dateStr.includes(query);
+                            }
+                            return false;
+                        default:
+                            return true;
+                    }
+                }
+            });
+        }
+
+        // Filter by date added range
+        if (dateAddedFilter.from || dateAddedFilter.to) {
+            filtered = filtered.filter(client => {
+                if (!client.createdAt) return false;
+                const clientDate = new Date(client.createdAt);
+                const fromDate = dateAddedFilter.from ? new Date(dateAddedFilter.from) : null;
+                const toDate = dateAddedFilter.to ? new Date(dateAddedFilter.to) : null;
+
+                if (fromDate && clientDate < fromDate) return false;
+                if (toDate) {
+                    // Include the entire day
+                    const toDateEnd = new Date(toDate);
+                    toDateEnd.setHours(23, 59, 59, 999);
+                    if (clientDate > toDateEnd) return false;
+                }
+                return true;
+            });
+        }
+
+        // Sort based on selected option
+        const sorted = [...filtered].sort((a, b) => {
+            switch (sortBy) {
+                case "name-asc":
+                    // Sort alphabetically by name (A-Z)
+                    const nameA = (a.firstName && a.lastName) 
+                        ? `${a.firstName} ${a.lastName}`.toLowerCase().trim()
+                        : (a.name || '').toLowerCase().trim();
+                    const nameB = (b.firstName && b.lastName)
+                        ? `${b.firstName} ${b.lastName}`.toLowerCase().trim()
+                        : (b.name || '').toLowerCase().trim();
+                    return nameA.localeCompare(nameB);
+                
+                case "name-desc":
+                    // Sort reverse alphabetically by name (Z-A)
+                    const nameA_desc = (a.firstName && a.lastName) 
+                        ? `${a.firstName} ${a.lastName}`.toLowerCase().trim()
+                        : (a.name || '').toLowerCase().trim();
+                    const nameB_desc = (b.firstName && b.lastName)
+                        ? `${b.firstName} ${b.lastName}`.toLowerCase().trim()
+                        : (b.name || '').toLowerCase().trim();
+                    return nameB_desc.localeCompare(nameA_desc);
+                
+                case "dateAdded-asc":
+                    // Sort by date added (oldest first)
+                    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return dateA - dateB;
+                
+                case "dateAdded-desc":
+                    // Sort by date added (newest first)
+                    const dateA_desc = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    const dateB_desc = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    return dateB_desc - dateA_desc;
+                
+                case "firstName-asc":
+                    // Sort by first name (A-Z)
+                    const firstNameA = (a.firstName || a.name?.split(' ')[0] || '').toLowerCase().trim();
+                    const firstNameB = (b.firstName || b.name?.split(' ')[0] || '').toLowerCase().trim();
+                    return firstNameA.localeCompare(firstNameB);
+                
+                case "firstName-desc":
+                    // Sort by first name (Z-A)
+                    const firstNameA_desc = (a.firstName || a.name?.split(' ')[0] || '').toLowerCase().trim();
+                    const firstNameB_desc = (b.firstName || b.name?.split(' ')[0] || '').toLowerCase().trim();
+                    return firstNameB_desc.localeCompare(firstNameA_desc);
+                
+                case "lastName-asc":
+                    // Sort by last name (A-Z)
+                    const lastNameA = (a.lastName || a.name?.split(' ').slice(1).join(' ') || '').toLowerCase().trim();
+                    const lastNameB = (b.lastName || b.name?.split(' ').slice(1).join(' ') || '').toLowerCase().trim();
+                    return lastNameA.localeCompare(lastNameB);
+                
+                case "lastName-desc":
+                    // Sort by last name (Z-A)
+                    const lastNameA_desc = (a.lastName || a.name?.split(' ').slice(1).join(' ') || '').toLowerCase().trim();
+                    const lastNameB_desc = (b.lastName || b.name?.split(' ').slice(1).join(' ') || '').toLowerCase().trim();
+                    return lastNameB_desc.localeCompare(lastNameA_desc);
+                
+                default:
+                    // Default to alphabetical
+                    const nameA_default = (a.firstName && a.lastName) 
+                        ? `${a.firstName} ${a.lastName}`.toLowerCase().trim()
+                        : (a.name || '').toLowerCase().trim();
+                    const nameB_default = (b.firstName && b.lastName)
+                        ? `${b.firstName} ${b.lastName}`.toLowerCase().trim()
+                        : (b.name || '').toLowerCase().trim();
+                    return nameA_default.localeCompare(nameB_default);
+            }
+        });
+
+        return sorted;
+    }, [clients, searchQuery, searchField, dateAddedFilter, sortBy]);
 
     useEffect(() => {
         if (autoOpenAddDialog) {
@@ -1317,7 +1490,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         {/* Notes */}
                                         <div className="space-y-2">
                                             <Label htmlFor="notes">
-                                                <FileText className="inline h-4 w-4 mr-1" />
+                                                <FileText className="inline h-4 w-4 mr-1 text-green-500" />
                                                 Notes
                                             </Label>
                                             <Textarea
@@ -1334,9 +1507,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         <div className="space-y-2">
                                             <div className="flex items-center justify-between">
                                                 <Label className="flex items-center gap-2 cursor-pointer" onClick={() => setIsDocumentsExpanded(!isDocumentsExpanded)}>
-                                                    <File className="h-4 w-4" />
+                                                    <File className="h-4 w-4 text-blue-500" />
                                                     Documents ({formData.documents?.length || 0})
-                                                    {isDocumentsExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                                                    {isDocumentsExpanded ? <ChevronDown className="h-3 w-3 text-blue-500" /> : <ChevronRight className="h-3 w-3 text-blue-500" />}
                                                 </Label>
                                             </div>
 
@@ -1353,7 +1526,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             htmlFor="file-upload"
                                                             className="flex items-center gap-2 px-3 py-1.5 text-xs border rounded-md cursor-pointer hover:bg-muted"
                                                         >
-                                                            <Upload className="h-3 w-3" />
+                                                            <Upload className="h-3 w-3 text-purple-500" />
                                                             Upload Document
                                                         </Label>
                                                     </div>
@@ -1363,7 +1536,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             {formData.documents.map((doc, index) => (
                                                                 <div key={index} className="flex items-center justify-between p-2 border rounded-md bg-muted/50 text-sm">
                                                                     <div className="flex items-center gap-2 overflow-hidden">
-                                                                        <File className="h-3 w-3 flex-shrink-0" />
+                                                                        <File className="h-3 w-3 flex-shrink-0 text-blue-500" />
                                                                         <a href={doc.url} target="_blank" rel="noopener noreferrer" className="hover:underline truncate">
                                                                             {doc.name}
                                                                         </a>
@@ -1850,37 +2023,207 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 />
             </div >
 
-            {/* Bulk Import/Export - Collapsible - Only show for active clients */}
-            {activeTab === 'active' && (
-                <Card className="mb-6" key="bulk-import-export">
-                    <CardHeader
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => setShowBulkImport(!showBulkImport)}
-                    >
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <FileSpreadsheet className="h-5 w-5 text-primary" />
-                                <CardTitle>Bulk Client Import/Export</CardTitle>
+            {/* Comprehensive Search & Filter and Bulk Import/Export - Horizontal when collapsed */}
+            {clients.length > 0 && (
+                <div className={`mb-6 flex gap-4 transition-all ${
+                    (!showSearch && (activeTab === 'archived' || !showBulkImport)) ? 'flex-row' : 'flex-col'
+                }`}>
+                    {/* Comprehensive Search & Filter */}
+                    <Card className={`transition-all ${
+                        (!showSearch && (activeTab === 'archived' || !showBulkImport)) 
+                            ? 'w-auto min-w-[200px] max-w-[300px]' 
+                            : 'w-full'
+                    } ${!showSearch ? 'py-1' : ''}`}>
+                        <CardHeader
+                            className={`cursor-pointer hover:bg-muted/50 transition-colors ${!showSearch ? 'py-2 px-4' : ''}`}
+                            onClick={() => setShowSearch(!showSearch)}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Filter className={`${!showSearch ? 'h-3 w-3' : 'h-5 w-5'} text-purple-500`} />
+                                    <CardTitle className={!showSearch ? 'text-sm font-medium' : ''}>Search & Filter Clients</CardTitle>
+                                </div>
+                                <Button variant="ghost" size={!showSearch ? "sm" : "sm"} className={!showSearch ? 'h-7 px-2 text-xs' : ''}>
+                                    {showSearch ? "Hide" : "Show"}
+                                </Button>
                             </div>
-                            <Button variant="ghost" size="sm">
-                                {showBulkImport ? "Hide" : "Show"}
-                            </Button>
+                            {showSearch && (
+                                <CardDescription>
+                                    Search across all client fields including name, email, phone, notes, medical information, and date added
+                                </CardDescription>
+                            )}
+                        </CardHeader>
+                        {showSearch && (
+                            <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {/* Search Query */}
+                            <div className="space-y-2">
+                                <Label htmlFor="search">Search</Label>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
+                                    <Input
+                                        id="search"
+                                        placeholder="Search clients..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-10"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Search Field */}
+                            <div className="space-y-2">
+                                <Label htmlFor="search-field">Search In</Label>
+                                <Select value={searchField} onValueChange={setSearchField}>
+                                    <SelectTrigger id="search-field">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Fields</SelectItem>
+                                        <SelectItem value="name">Name</SelectItem>
+                                        <SelectItem value="email">Email</SelectItem>
+                                        <SelectItem value="phone">Phone</SelectItem>
+                                        <SelectItem value="notes">Notes</SelectItem>
+                                        <SelectItem value="dateOfBirth">Date of Birth</SelectItem>
+                                        <SelectItem value="address">Address</SelectItem>
+                                        <SelectItem value="medical">Medical Info</SelectItem>
+                                        <SelectItem value="dateAdded">Date Added</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Date Added Filter - From */}
+                            <div className="space-y-2">
+                                <Label htmlFor="date-added-from">Date Added (From)</Label>
+                                <Input
+                                    id="date-added-from"
+                                    type="date"
+                                    value={dateAddedFilter.from || ''}
+                                    onChange={(e) => setDateAddedFilter({ ...dateAddedFilter, from: e.target.value })}
+                                />
+                            </div>
                         </div>
-                        <CardDescription>
-                            Import multiple clients from Excel or export existing clients
-                        </CardDescription>
-                    </CardHeader>
-                    {showBulkImport && (
-                        <CardContent>
-                            <ClientImportExport />
-                        </CardContent>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {/* Date Added Filter - To */}
+                            <div className="space-y-2">
+                                <Label htmlFor="date-added-to">Date Added (To)</Label>
+                                <Input
+                                    id="date-added-to"
+                                    type="date"
+                                    value={dateAddedFilter.to || ''}
+                                    onChange={(e) => setDateAddedFilter({ ...dateAddedFilter, to: e.target.value })}
+                                />
+                            </div>
+
+                            {/* Clear Filters */}
+                            <div className="space-y-2 flex items-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setSearchQuery("");
+                                        setSearchField("all");
+                                        setDateAddedFilter({});
+                                        setSortBy("name-asc");
+                                    }}
+                                    className="w-full"
+                                >
+                                    Clear Filters
+                                </Button>
+                            </div>
+
+                            {/* Results Count */}
+                            <div className="space-y-2 flex items-end">
+                                <p className="text-sm text-muted-foreground">
+                                    Showing {filteredClients.length} of {clients.length} {activeTab === 'archived' ? 'archived' : 'active'} clients
+                                </p>
+                            </div>
+                        </div>
+                            </CardContent>
+                        )}
+                    </Card>
+
+                    {/* Bulk Import/Export - Collapsible - Only show for active clients */}
+                    {activeTab === 'active' && (
+                        <Card className={`transition-all ${
+                            (!showSearch && !showBulkImport) 
+                                ? 'w-auto min-w-[200px] max-w-[300px]' 
+                                : 'w-full'
+                        } ${!showBulkImport ? 'py-1' : ''}`} key="bulk-import-export">
+                            <CardHeader
+                                className={`cursor-pointer hover:bg-muted/50 transition-colors ${!showBulkImport ? 'py-2 px-4' : ''}`}
+                                onClick={() => setShowBulkImport(!showBulkImport)}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <FileSpreadsheet className={`${!showBulkImport ? 'h-3 w-3' : 'h-5 w-5'} text-primary`} />
+                                        <CardTitle className={!showBulkImport ? 'text-sm font-medium' : ''}>Bulk Client Import/Export</CardTitle>
+                                    </div>
+                                    <Button variant="ghost" size={!showBulkImport ? "sm" : "sm"} className={!showBulkImport ? 'h-7 px-2 text-xs' : ''}>
+                                        {showBulkImport ? "Hide" : "Show"}
+                                    </Button>
+                                </div>
+                                {showBulkImport && (
+                                    <CardDescription>
+                                        Import multiple clients from Excel or export existing clients
+                                    </CardDescription>
+                                )}
+                            </CardHeader>
+                            {showBulkImport && (
+                                <CardContent>
+                                    <ClientImportExport />
+                                </CardContent>
+                            )}
+                        </Card>
                     )}
-                </Card>
+                </div>
+            )}
+
+            {/* Sort - Always visible, positioned before client cards */}
+            {clients.length > 0 && (
+                <div className="mb-4 flex items-center gap-4">
+                    <Label htmlFor="sort" className="text-sm font-medium whitespace-nowrap">Sort By:</Label>
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                        <SelectTrigger id="sort" className="w-[250px]">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="name-asc">Full Name (A-Z)</SelectItem>
+                            <SelectItem value="name-desc">Full Name (Z-A)</SelectItem>
+                            <SelectItem value="firstName-asc">First Name (A-Z)</SelectItem>
+                            <SelectItem value="firstName-desc">First Name (Z-A)</SelectItem>
+                            <SelectItem value="lastName-asc">Last Name (A-Z)</SelectItem>
+                            <SelectItem value="lastName-desc">Last Name (Z-A)</SelectItem>
+                            <SelectItem value="dateAdded-desc">Date Added (Newest)</SelectItem>
+                            <SelectItem value="dateAdded-asc">Date Added (Oldest)</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             )}
 
             {/* Clients List */}
             {
-                clients.length === 0 ? (
+                filteredClients.length === 0 && clients.length > 0 ? (
+                    <Card>
+                        <CardContent className="flex flex-col items-center justify-center py-16">
+                            <Search className="h-16 w-16 text-blue-500 mb-4 opacity-50" />
+                            <h3 className="text-lg font-medium mb-2">No clients found</h3>
+                            <p className="text-muted-foreground text-center max-w-md mb-6">
+                                Try adjusting your search or filter criteria
+                            </p>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setSearchQuery("");
+                                    setSearchField("all");
+                                    setDateAddedFilter({});
+                                }}
+                            >
+                                Clear Filters
+                            </Button>
+                        </CardContent>
+                    </Card>
+                ) : clients.length === 0 ? (
                     <Card>
                         <CardContent className="flex flex-col items-center justify-center py-16">
                             <User className="h-16 w-16 text-muted-foreground mb-4 opacity-20" />
@@ -1901,8 +2244,12 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         </CardContent>
                     </Card>
                 ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {clients.map((client, index) => (
+                    <div className={`grid gap-4 transition-all ${
+                        !showSearch && (!showBulkImport || activeTab === 'archived') 
+                            ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6' 
+                            : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+                    }`}>
+                        {filteredClients.map((client, index) => (
                             <motion.div
                                 key={client.id}
                                 initial={{ opacity: 0, scale: 0.95 }}

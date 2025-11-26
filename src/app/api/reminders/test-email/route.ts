@@ -15,8 +15,9 @@ export async function POST(request: Request) {
             );
         }
 
-        // Get timezone from settings
+        // Get timezone and company logo from settings
         let timezone = 'UTC';
+        let companyLogo: string | undefined = undefined;
         try {
             const { data: settingsData } = await supabase
                 .from('settings')
@@ -24,11 +25,16 @@ export async function POST(request: Request) {
                 .eq('id', 'default')
                 .single();
             
-            if (settingsData?.config?.timezone) {
-                timezone = settingsData.config.timezone;
+            if (settingsData?.config) {
+                if (settingsData.config.timezone) {
+                    timezone = settingsData.config.timezone;
+                }
+                if (settingsData.config.companyLogo) {
+                    companyLogo = settingsData.config.companyLogo;
+                }
             }
         } catch (e) {
-            console.warn('[Test Email] Could not load timezone setting, using UTC');
+            console.warn('[Test Email] Could not load settings, using defaults');
         }
 
         // Create a test appointment date (24 hours from now)
@@ -43,7 +49,8 @@ export async function POST(request: Request) {
             'Therapy Session', // Test appointment type
             60, // Test duration
             timezone,
-            template // Use the custom template from settings
+            template, // Use the custom template from settings
+            companyLogo // Use company logo from settings
         );
 
         return NextResponse.json({

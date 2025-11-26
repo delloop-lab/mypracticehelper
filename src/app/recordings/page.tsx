@@ -395,7 +395,7 @@ function RecordingsContent() {
                     <Card className="mb-6">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Filter className="h-5 w-5" />
+                                <Filter className="h-5 w-5 text-purple-500" />
                                 Filter & Search
                             </CardTitle>
                         </CardHeader>
@@ -405,7 +405,7 @@ function RecordingsContent() {
                                 <div className="space-y-2">
                                     <Label htmlFor="search">Search</Label>
                                     <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
                                         <Input
                                             id="search"
                                             placeholder="Search transcripts..."
@@ -475,7 +475,7 @@ function RecordingsContent() {
                     ) : filteredAndSortedRecordings.length === 0 ? (
                         <Card>
                             <CardContent className="flex flex-col items-center justify-center py-16">
-                                <Search className="h-16 w-16 text-muted-foreground mb-4" />
+                                <Search className="h-16 w-16 text-blue-500 mb-4" />
                                 <h3 className="text-xl font-semibold mb-2">No matching recordings</h3>
                                 <p className="text-muted-foreground text-center max-w-md">
                                     Try adjusting your search or filters
@@ -516,16 +516,16 @@ function RecordingsContent() {
                                                                 className="h-6 w-6"
                                                                 onClick={() => handleEditClient(recording)}
                                                             >
-                                                                <Edit className="h-3 w-3" />
+                                                                <Edit className="h-3 w-3 text-blue-500" />
                                                             </Button>
                                                         </CardTitle>
                                                         <CardDescription className="flex items-center gap-4 mt-2">
                                                             <span className="flex items-center gap-1">
-                                                                <Calendar className="h-4 w-4" />
+                                                                <Calendar className="h-4 w-4 text-blue-500" />
                                                                 {formatDate(recording.date)}
                                                             </span>
                                                             <span className="flex items-center gap-1">
-                                                                <Clock className="h-4 w-4" />
+                                                                <Clock className="h-4 w-4 text-green-500" />
                                                                 {formatDuration(recording.duration)}
                                                             </span>
                                                         </CardDescription>
@@ -537,9 +537,9 @@ function RecordingsContent() {
                                                             onClick={() => handlePlay(recording.id)}
                                                         >
                                                             {playingId === recording.id ? (
-                                                                <Pause className="h-4 w-4 text-primary" />
+                                                                <Pause className="h-4 w-4 text-green-500" />
                                                             ) : (
-                                                                <Play className="h-4 w-4 text-primary" />
+                                                                <Play className="h-4 w-4 text-green-500" />
                                                             )}
                                                         </Button>
                                                         <Button
@@ -547,7 +547,7 @@ function RecordingsContent() {
                                                             size="icon"
                                                             onClick={() => handleDownload(recording)}
                                                         >
-                                                            <Download className="h-4 w-4" />
+                                                            <Download className="h-4 w-4 text-purple-500" />
                                                         </Button>
                                                         <Button
                                                             variant="outline"
