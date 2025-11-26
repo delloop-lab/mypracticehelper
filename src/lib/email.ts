@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
 
 // Create SMTP transporter for IONOS
 function createTransporter() {
@@ -187,17 +189,43 @@ export async function sendReminderEmail(
         customTemplate
     );
 
-    // Replace logo placeholder with actual URL if present
-    const baseUrl = getBaseUrl();
-    const logoUrl = `${baseUrl}/logo.png`;
-    const finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoUrl);
+    // Replace logo placeholder with CID reference for embedded image
+    const finalHtml = html.replace(/\{\{logoUrl\}\}/g, 'cid:logo');
 
-    await transporter.sendMail({
+    // Prepare attachments with logo embedded
+    const attachments: any[] = [];
+    
+    // Try to read logo file and attach it
+    try {
+        const logoPath = path.join(process.cwd(), 'public', 'logo.png');
+        if (fs.existsSync(logoPath)) {
+            attachments.push({
+                filename: 'logo.png',
+                path: logoPath,
+                cid: 'logo', // Content-ID used in HTML: <img src="cid:logo">
+            });
+        } else {
+            console.warn('[Email] Logo file not found at:', logoPath);
+        }
+    } catch (error) {
+        console.error('[Email] Error reading logo file:', error);
+    }
+
+    const mailOptions = {
         from: `"${smtpFromName}" <${smtpFrom}>`,
         to: to,
         subject: subject || 'Appointment Reminder', // Ensure subject is always set
-        html: finalHtml,
-        text: text,
-    });
+        html: finalHtml, // HTML email body
+        text: text, // Plain text fallback
+        attachments: attachments.length > 0 ? attachments : undefined,
+    };
+
+    // Log for debugging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+        console.log('[Email] Sending HTML email with', attachments.length, 'attachments');
+        console.log('[Email] HTML length:', finalHtml.length, 'characters');
+    }
+
+    await transporter.sendMail(mailOptions);
 }
 
