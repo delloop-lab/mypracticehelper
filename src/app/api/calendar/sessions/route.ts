@@ -171,14 +171,22 @@ export async function GET(request: Request) {
 
                     // Build event lines with proper formatting
                     // Use UTC format (Z suffix) - Google Calendar will convert based on calendar timezone
+                    // Include CREATED and LAST-MODIFIED for better Google Calendar compatibility
+                    const created = session.created_at ? formatDateToICS(new Date(session.created_at)) : dtStamp;
+                    const lastModified = session.updated_at ? formatDateToICS(new Date(session.updated_at)) : dtStamp;
+                    
                     const eventLines: string[] = [
                         'BEGIN:VEVENT',
                         `UID:${uid}`,
                         `DTSTAMP:${dtStamp}`,
+                        `CREATED:${created}`,
+                        `LAST-MODIFIED:${lastModified}`,
                         `DTSTART:${dtStart}`,
                         `DTEND:${dtEnd}`,
                         `SUMMARY:${escapeICS(summary)}`,
                         `DESCRIPTION:${escapeICS(description)}`,
+                        'STATUS:CONFIRMED',
+                        'SEQUENCE:0',
                         'END:VEVENT',
                     ];
 
@@ -227,6 +235,7 @@ export async function GET(request: Request) {
             'METHOD:PUBLISH',
             'X-WR-CALNAME:Therapy Sessions',
             `X-WR-TIMEZONE:${timezone}`, // Inform Google Calendar of the intended timezone
+            'X-WR-CALDESC:Therapy session appointments',
             events,
             'END:VCALENDAR',
         ];
