@@ -80,7 +80,7 @@ export async function POST() {
         
         // Convert sessions to appointments format
         const appointments = (allSessions || []).map((session: any) => {
-            let metadata = {};
+            let metadata: any = {};
             try {
                 if (session.metadata && typeof session.metadata === 'object') {
                     metadata = session.metadata;
