@@ -25,25 +25,22 @@ const DEFAULT_SETTINGS = {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-        <h1 style="color: #0069ff; margin-top: 0;">Appointment Reminder</h1>
+    <!-- Logo centered at top -->
+    <div style="text-align: center; margin-bottom: 30px;">
+        <img src="{{logoUrl}}" alt="Algarve Therapy Centre" style="max-width: 200px; height: auto;" />
     </div>
     
-    <p>Dear {{clientName}},</p>
+    <p>Hi {{clientName}},</p>
     
-    <p>This is a friendly reminder that you have an appointment scheduled for:</p>
+    <p>This is a quick reminder about your {{appointmentType}} scheduled for {{dateTime}}. The session will run for {{duration}}.</p>
     
-    <div style="background-color: #e7f3ff; padding: 15px; border-left: 4px solid #0069ff; margin: 20px 0;">
-        <p style="margin: 0; font-size: 18px; font-weight: bold;">{{dateTime}}</p>
-        <p style="margin: 5px 0 0 0; color: #666;">{{appointmentType}} • {{duration}}</p>
-    </div>
+    <p>If you need to reschedule, just let me know.</p>
     
-    <p>If you need to reschedule or cancel, please contact me as soon as possible.</p>
+    <p>See you then,</p>
     
-    <p>I look forward to seeing you tomorrow.</p>
-    
-    <p>Best regards,<br>
-    <strong>Claire Schillaci</strong></p>
+    <p>Claire<br>
+    <strong>Algarve Therapy Centre</strong><br>
+    Tel: 937596665</p>
     
     <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
     <p style="font-size: 12px; color: #999; margin: 0;">
@@ -53,19 +50,17 @@ const DEFAULT_SETTINGS = {
 </html>`,
         textBody: `Appointment Reminder
 
-Dear {{clientName}},
+Hi {{clientName}},
 
-This is a friendly reminder that you have an appointment scheduled for:
+This is a quick reminder about your {{appointmentType}} scheduled for {{dateTime}}. The session will run for {{duration}}.
 
-{{dateTime}}
-{{appointmentType}} • {{duration}}
+If you need to reschedule, just let me know.
 
-If you need to reschedule or cancel, please contact me as soon as possible.
+See you then,
 
-I look forward to seeing you tomorrow.
-
-Best regards,
-Claire Schillaci
+Claire
+Algarve Therapy Centre
+Tel: 937596665
 
 ---
 This is an automated reminder. Please do not reply to this email.`,

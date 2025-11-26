@@ -69,10 +69,15 @@ export function createReminderEmail(
             date: formattedDate,
             appointmentType,
             duration: durationText,
+            logoUrl: '{{logoUrl}}', // Will be replaced in sendReminderEmail
         };
 
+        const subject = customTemplate.subject 
+            ? replacePlaceholders(customTemplate.subject, replacements)
+            : `Reminder: Your appointment tomorrow - ${formattedDate}`;
+
         return {
-            subject: replacePlaceholders(customTemplate.subject, replacements),
+            subject: subject,
             html: replacePlaceholders(customTemplate.htmlBody, replacements),
             text: replacePlaceholders(customTemplate.textBody, replacements),
         };
@@ -142,6 +147,19 @@ This is an automated reminder. Please do not reply to this email.
     return { subject, html, text };
 }
 
+// Get base URL for logo in emails
+function getBaseUrl(): string {
+    // In production, use the actual domain
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+        return process.env.NEXT_PUBLIC_APP_URL;
+    }
+    if (process.env.VERCEL_URL) {
+        return `https://${process.env.VERCEL_URL}`;
+    }
+    // Fallback for local development
+    return 'http://localhost:3000';
+}
+
 // Send reminder email
 export async function sendReminderEmail(
     to: string,
@@ -169,11 +187,16 @@ export async function sendReminderEmail(
         customTemplate
     );
 
+    // Replace logo placeholder with actual URL if present
+    const baseUrl = getBaseUrl();
+    const logoUrl = `${baseUrl}/logo.png`;
+    const finalHtml = html.replace(/\{\{logoUrl\}\}/g, logoUrl);
+
     await transporter.sendMail({
         from: `"${smtpFromName}" <${smtpFrom}>`,
         to: to,
-        subject: subject,
-        html: html,
+        subject: subject || 'Appointment Reminder', // Ensure subject is always set
+        html: finalHtml,
         text: text,
     });
 }
