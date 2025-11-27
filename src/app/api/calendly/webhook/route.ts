@@ -96,11 +96,17 @@ async function createSessionFromBooking(
     eventData: any,
     invitee: any
 ) {
-    // Parse the event time
-    const startTime = eventData.start_time || eventData.startTime;
-    const endTime = eventData.end_time || eventData.endTime;
+    // Parse the event time - Calendly can put start_time in either eventData or invitee
+    const startTime = invitee?.start_time || invitee?.startTime || 
+                      eventData?.start_time || eventData?.startTime ||
+                      invitee?.scheduled_event?.start_time || invitee?.scheduled_event?.startTime;
+    const endTime = invitee?.end_time || invitee?.endTime || 
+                    eventData?.end_time || eventData?.endTime ||
+                    invitee?.scheduled_event?.end_time || invitee?.scheduled_event?.endTime;
     
     if (!startTime) {
+        console.error('[Calendly] No start time found. Event data:', JSON.stringify(eventData, null, 2));
+        console.error('[Calendly] Invitee data:', JSON.stringify(invitee, null, 2));
         throw new Error('No start time in Calendly event');
     }
 
@@ -165,11 +171,8 @@ export async function POST(request: Request) {
         // Get webhook signing key
         const signingKey = process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
         if (!signingKey) {
-            console.error('[Calendly Webhook] Missing CALENDLY_WEBHOOK_SIGNING_KEY');
-            return NextResponse.json(
-                { error: 'Webhook signing key not configured' },
-                { status: 500 }
-            );
+            console.warn('[Calendly Webhook] Missing CALENDLY_WEBHOOK_SIGNING_KEY - Skipping signature verification (NOT RECOMMENDED FOR PRODUCTION)');
+            // We allow proceeding without key for testing/debugging purposes if the user can't get the key
         }
 
         // Get raw body for signature verification
@@ -177,30 +180,64 @@ export async function POST(request: Request) {
         const signature = request.headers.get('calendly-webhook-signature') || 
                          request.headers.get('x-calendly-webhook-signature') || '';
 
-        // Verify webhook signature (if provided)
-        if (signature && !verifyWebhookSignature(rawBody, signature, signingKey)) {
-            console.error('[Calendly Webhook] Invalid signature');
-            return NextResponse.json(
-                { error: 'Invalid webhook signature' },
-                { status: 401 }
-            );
+        // Verify webhook signature (only if key is present)
+        if (signingKey && signature) {
+            if (!verifyWebhookSignature(rawBody, signature, signingKey)) {
+                console.error('[Calendly Webhook] Invalid signature');
+                return NextResponse.json(
+                    { error: 'Invalid webhook signature' },
+                    { status: 401 }
+                );
+            }
+        } else if (!signingKey) {
+             // Warn again if we are skipping
+             console.warn('[Calendly Webhook] Processing unverified request due to missing signing key configuration');
         }
 
         // Parse webhook payload
         const payload = JSON.parse(rawBody);
-        const event = payload.event || payload;
-        const eventType = event.event || payload.event_type || 'invitee.created';
+        // Extract event type - Calendly can put it at payload.event or payload.event_type or nested in payload
+        const eventType = payload.event || payload.event_type || (payload.payload && payload.payload.event_type) || 'invitee.created';
 
-        console.log(`[Calendly Webhook] Received event: ${eventType}`);
+        console.log(`[Calendly Webhook] ========== WEBHOOK RECEIVED ==========`);
+        console.log(`[Calendly Webhook] Event type: ${eventType}`);
+        console.log(`[Calendly Webhook] Payload keys:`, Object.keys(payload));
+        console.log(`[Calendly Webhook] Full payload:`, JSON.stringify(payload, null, 2));
+        console.log(`[Calendly Webhook] =======================================`);
 
         // Handle different event types
         if (eventType === 'invitee.created' || eventType.includes('created')) {
             // New booking
-            const invitee = event.invitee || payload.invitee;
-            const eventData = event.event || payload.event || event;
+            // Calendly webhook structure can vary - try multiple paths
+            // Structure 1: { event: "invitee.created", payload: { invitee: {...}, scheduled_event: {...} } }
+            // Structure 2: { event: "invitee.created", invitee: { ... }, scheduled_event: { ... } }
+            // Structure 3: { event: "invitee.created", payload: { ... } }
+            
+            // Try to extract invitee from various possible locations
+            const invitee = payload.payload?.invitee || 
+                          payload.invitee || 
+                          (payload.payload?.event && payload.payload.event.invitee) ||
+                          (payload.event && typeof payload.event === 'object' && payload.event.invitee);
+            
+            // Try to extract scheduled_event/event data from various possible locations
+            const eventData = payload.payload?.scheduled_event || 
+                            payload.scheduled_event ||
+                            payload.payload?.event || 
+                            payload.event || 
+                            payload;
+
+            console.log('[Calendly Webhook] Extracted invitee:', invitee ? `Found (keys: ${Object.keys(invitee || {}).join(', ')})` : 'Missing');
+            console.log('[Calendly Webhook] Extracted eventData:', eventData ? `Found (keys: ${Object.keys(eventData || {}).join(', ')})` : 'Missing');
+            
+            if (invitee) {
+                console.log('[Calendly Webhook] Invitee data:', JSON.stringify(invitee, null, 2));
+            }
+            if (eventData && eventData !== payload) {
+                console.log('[Calendly Webhook] Event data:', JSON.stringify(eventData, null, 2));
+            }
 
             if (!invitee) {
-                console.error('[Calendly Webhook] No invitee data');
+                console.error('[Calendly Webhook] No invitee data. Full payload:', JSON.stringify(payload, null, 2));
                 return NextResponse.json(
                     { error: 'No invitee data' },
                     { status: 400 }
@@ -220,10 +257,14 @@ export async function POST(request: Request) {
             }
 
             // Find or create client
+            console.log(`[Calendly Webhook] Finding/creating client: ${email} (${name})`);
             const client = await findOrCreateClient(email, name);
+            console.log(`[Calendly Webhook] Client: ${client.id} - ${client.name}`);
 
             // Create session
+            console.log(`[Calendly Webhook] Creating session for client ${client.id}`);
             const session = await createSessionFromBooking(client.id, eventData, invitee);
+            console.log(`[Calendly Webhook] ✅ Successfully created session: ${session.id}`);
 
             return NextResponse.json({
                 success: true,

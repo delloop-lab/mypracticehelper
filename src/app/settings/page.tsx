@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, ExternalLink } from "lucide-react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 interface AppointmentTypeSettings {
     name: string;
@@ -554,6 +555,23 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                 />
                                 <p className="text-xs text-muted-foreground">
                                     Enter your Calendly scheduling page URL. This will be used for client booking links.
+                                </p>
+                            </div>
+                            <div className="pt-4 border-t space-y-2">
+                                <Link href="/webhook-setup">
+                                    <Button variant="default" className="w-full">
+                                        <ExternalLink className="mr-2 h-4 w-4" />
+                                        Setup Calendly Webhook
+                                    </Button>
+                                </Link>
+                                <Link href="/webhook-status">
+                                    <Button variant="outline" className="w-full">
+                                        <ExternalLink className="mr-2 h-4 w-4" />
+                                        Check Webhook Status & Debug
+                                    </Button>
+                                </Link>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                    Use the setup tool to configure webhooks, or check status to view recent activity.
                                 </p>
                             </div>
                         </CardContent>

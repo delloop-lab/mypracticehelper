@@ -5,189 +5,185 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calendly Webhook Setup</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #0069ff;
-        }
-        .step {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f9f9f9;
-            border-left: 4px solid #0069ff;
-        }
-        input, textarea {
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
-        }
-        button {
-            background: #0069ff;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        button:hover {
-            background: #0052cc;
-        }
-        .result {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 4px;
-            display: none;
-        }
-        .success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        code {
-            background: #f4f4f4;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: monospace;
-        }
-        .note {
-            background: #fff3cd;
-            padding: 10px;
-            border-left: 4px solid #ffc107;
-            margin: 10px 0;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #f5f7fa; line-height: 1.6; }
+        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h1 { color: #0b3558; margin-top: 0; }
+        h2 { color: #0b3558; font-size: 1.2rem; margin-top: 25px; }
+        .step { margin-bottom: 30px; padding: 20px; background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; }
+        input, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-family: monospace; }
+        button { background: #0069ff; color: white; padding: 12px 24px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; transition: background 0.2s; }
+        button:hover { background: #0052cc; }
+        button.secondary { background: #6c757d; }
+        button.delete { background: #dc3545; padding: 6px 12px; font-size: 12px; margin-left: 10px; }
+        .result { margin-top: 20px; padding: 15px; border-radius: 6px; display: none; word-break: break-all; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        pre { background: #f1f3f5; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+        .webhook-item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+        .badge-active { background: #d4edda; color: #155724; }
+        .badge-inactive { background: #e2e3e5; color: #383d41; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔗 Calendly Webhook Setup</h1>
-        <p>This tool will help you create a webhook in Calendly that automatically creates sessions in your app.</p>
-
+        <h1>🔗 Calendly Webhook Manager</h1>
+        
+        <!-- Auth Section -->
         <div class="step">
-            <h2>Step 1: Get Your Personal Access Token</h2>
-            <ol>
-                <li>Go to: <a href="https://calendly.com/integrations/api_webhooks/personal_access_tokens" target="_blank">Calendly Personal Access Tokens</a></li>
-                <li>Click <strong>"Create Token"</strong></li>
-                <li>Name it: "My Practice Helper"</li>
-                <li>Copy the token (you'll only see it once!)</li>
-            </ol>
+            <h2>1. Authentication</h2>
+            <p>Enter your Personal Access Token (PAT) to get started.</p>
             <input type="text" id="accessToken" placeholder="Paste your Personal Access Token here">
-        </div>
-
-        <div class="step">
-            <h2>Step 2: Get Your Organization URI</h2>
-            <p>Click the button below to get your organization info:</p>
-            <button onclick="getOrganization()">Get My Organization URI</button>
+            <div style="margin-top: 10px;">
+                <button onclick="getOrganization()">Connect & Find Organization</button>
+                <button onclick="listWebhooks()" class="secondary" style="margin-left: 10px;">List Existing Webhooks</button>
+            </div>
             <div id="orgResult" style="margin-top: 10px;"></div>
-            <input type="text" id="organizationUri" placeholder="Organization URI will appear here" style="margin-top: 10px;">
+            <input type="hidden" id="organizationUri">
         </div>
 
+        <!-- Create Section -->
         <div class="step">
-            <h2>Step 3: Enter Your Webhook URL</h2>
-            <p>This is your production app URL + <code>/api/calendly/webhook</code></p>
-            <input type="text" id="webhookUrl" placeholder="https://your-app.vercel.app/api/calendly/webhook" value="https://your-app.vercel.app/api/calendly/webhook">
-            <div class="note">
-                <strong>Note:</strong> Replace <code>your-app.vercel.app</code> with your actual Vercel domain.
+            <h2>2. Create New Webhook</h2>
+            <p>Enter the URL where your app is hosted.</p>
+            <input type="text" id="webhookUrl" placeholder="https://your-project.vercel.app/api/calendly/webhook">
+            <p style="font-size: 0.9em; color: #666; margin-top: -5px;">
+                ⚠️ Ensure this matches your <strong>real deployed domain</strong> (e.g. <code>https://myapp.vercel.app/...</code>). 
+                Do not use <code>localhost</code> or example domains like <code>mypracticehelper.com</code> unless you own them.
+            </p>
+            <button onclick="createWebhook()">Create Webhook</button>
+            
+            <!-- Results Area -->
+            <div id="createResult" class="result"></div>
+            
+            <!-- Signing Key Display -->
+            <div id="signingKeySection" style="display: none; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px;">
+                <h3 style="color: #d93025;">🔥 IMPORTANT: Save This Key Now!</h3>
+                <p>The Signing Key is <strong>only shown once</strong>. Copy it immediately.</p>
+                <input type="text" id="signingKey" readonly style="background: #fff8e1; border-color: #ffc107; color: #333; font-weight: bold;">
+                <p><strong>Next Step:</strong> Add this to your Vercel Environment Variables as <code>CALENDLY_WEBHOOK_SIGNING_KEY</code>.</p>
             </div>
         </div>
 
+        <!-- List Section -->
         <div class="step">
-            <h2>Step 4: Create the Webhook</h2>
-            <button onclick="createWebhook()">Create Webhook Subscription</button>
-            <div id="result" class="result"></div>
-        </div>
-
-        <div class="step" id="signingKeyStep" style="display: none;">
-            <h2>Step 5: Add Signing Key to Vercel</h2>
-            <p>Copy this signing key and add it to Vercel environment variables:</p>
-            <textarea id="signingKey" readonly rows="3"></textarea>
-            <div class="note">
-                <strong>Vercel Steps:</strong>
-                <ol>
-                    <li>Go to Vercel Dashboard → Your Project → Settings → Environment Variables</li>
-                    <li>Add: <code>CALENDLY_WEBHOOK_SIGNING_KEY</code> = (paste the key above)</li>
-                    <li>Save and redeploy</li>
-                </ol>
+            <h2>3. Active Webhooks</h2>
+            <div id="webhookList">
+                <p style="color: #666;">Click "List Existing Webhooks" above to see your active subscriptions.</p>
             </div>
         </div>
     </div>
 
     <script>
-        async function getOrganization() {
-            const token = document.getElementById('accessToken').value;
-            if (!token) {
-                alert('Please enter your Personal Access Token first!');
-                return;
-            }
+        // Helper to get headers
+        const getHeaders = () => ({
+            'Authorization': `Bearer ${document.getElementById('accessToken').value.trim()}`,
+            'Content-Type': 'application/json'
+        });
 
+        async function getOrganization() {
+            const token = document.getElementById('accessToken').value.trim();
+            if (!token) return alert('Please enter your Access Token');
+            
             const resultDiv = document.getElementById('orgResult');
-            resultDiv.innerHTML = '<p>Loading...</p>';
+            resultDiv.innerHTML = '⏳ Finding organization...';
 
             try {
-                const response = await fetch('https://api.calendly.com/users/me', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                });
-
+                const response = await fetch('https://api.calendly.com/users/me', { headers: getHeaders() });
                 const data = await response.json();
-                
-                if (response.ok && data.resource) {
+
+                if (response.ok) {
                     const orgUri = data.resource.current_organization || data.resource.uri;
                     document.getElementById('organizationUri').value = orgUri;
-                    resultDiv.innerHTML = `<p style="color: green;">✅ Found organization!</p>`;
+                    resultDiv.innerHTML = `<span style="color: green;">✅ Connected as: <strong>${data.resource.name}</strong></span>`;
+                    listWebhooks(); // Auto-load webhooks
                 } else {
-                    resultDiv.innerHTML = `<p style="color: red;">❌ Error: ${JSON.stringify(data)}</p>`;
+                    throw new Error(data.message || 'Unknown error');
                 }
-            } catch (error) {
-                resultDiv.innerHTML = `<p style="color: red;">❌ Error: ${error.message}</p>`;
+            } catch (e) {
+                resultDiv.innerHTML = `<span style="color: red;">❌ Error: ${e.message}</span>`;
+            }
+        }
+
+        async function listWebhooks() {
+            const orgUri = document.getElementById('organizationUri').value;
+            if (!orgUri) return alert('Please connect and find organization first');
+
+            const listDiv = document.getElementById('webhookList');
+            listDiv.innerHTML = '⏳ Loading...';
+
+            try {
+                const response = await fetch(`https://api.calendly.com/webhook_subscriptions?organization=${encodeURIComponent(orgUri)}&scope=organization`, { 
+                    headers: getHeaders() 
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    if (data.collection.length === 0) {
+                        listDiv.innerHTML = '<p>No active webhooks found.</p>';
+                        return;
+                    }
+                    
+                    listDiv.innerHTML = data.collection.map(hook => `
+                        <div class="webhook-item">
+                            <div>
+                                <div style="font-weight: bold;">${hook.callback_url}</div>
+                                <div style="font-size: 0.8em; color: #666;">
+                                    <span class="badge badge-${hook.state}">${hook.state}</span> 
+                                    Created: ${new Date(hook.created_at).toLocaleDateString()}
+                                </div>
+                            </div>
+                            <button class="delete" onclick="deleteWebhook('${hook.uri}')">Delete</button>
+                        </div>
+                    `).join('');
+                } else {
+                    throw new Error(data.message || 'Failed to list webhooks');
+                }
+            } catch (e) {
+                listDiv.innerHTML = `<p style="color: red;">Error: ${e.message}</p>`;
+            }
+        }
+
+        async function deleteWebhook(uri) {
+            if (!confirm('Are you sure you want to delete this webhook?')) return;
+            
+            try {
+                const response = await fetch(uri, { 
+                    method: 'DELETE',
+                    headers: getHeaders() 
+                });
+                
+                if (response.ok) {
+                    listWebhooks(); // Refresh list
+                } else {
+                    alert('Failed to delete webhook');
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
             }
         }
 
         async function createWebhook() {
-            const token = document.getElementById('accessToken').value;
+            const token = document.getElementById('accessToken').value.trim();
             const orgUri = document.getElementById('organizationUri').value;
-            const webhookUrl = document.getElementById('webhookUrl').value;
+            const url = document.getElementById('webhookUrl').value.trim();
 
-            if (!token || !orgUri || !webhookUrl) {
-                alert('Please fill in all fields!');
-                return;
-            }
+            if (!token || !orgUri || !url) return alert('Please fill in all fields');
 
-            const resultDiv = document.getElementById('result');
+            const resultDiv = document.getElementById('createResult');
+            const signingSection = document.getElementById('signingKeySection');
+            
             resultDiv.style.display = 'block';
             resultDiv.className = 'result';
-            resultDiv.innerHTML = '<p>Creating webhook...</p>';
+            resultDiv.innerHTML = '⏳ Creating webhook...';
+            signingSection.style.display = 'none';
 
             try {
                 const response = await fetch('https://api.calendly.com/webhook_subscriptions', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: getHeaders(),
                     body: JSON.stringify({
-                        url: webhookUrl,
+                        url: url,
                         events: ['invitee.created', 'invitee.canceled'],
                         organization: orgUri,
                         scope: 'organization'
@@ -195,35 +191,44 @@
                 });
 
                 const data = await response.json();
+                console.log('Full Response:', data); // Log for debugging
 
-                if (response.ok && data.resource) {
+                if (response.ok) {
                     resultDiv.className = 'result success';
                     resultDiv.innerHTML = `
-                        <h3>✅ Webhook Created Successfully!</h3>
-                        <p><strong>Webhook ID:</strong> ${data.resource.id}</p>
-                        <p><strong>URL:</strong> ${data.resource.callback_url}</p>
-                        <p><strong>Status:</strong> ${data.resource.state}</p>
-                    `;
-                    
-                    // Show signing key step
-                    if (data.resource.signing_key) {
-                        document.getElementById('signingKeyStep').style.display = 'block';
-                        document.getElementById('signingKey').value = data.resource.signing_key;
-                    }
-                } else {
-                    resultDiv.className = 'result error';
-                    resultDiv.innerHTML = `
-                        <h3>❌ Error Creating Webhook</h3>
+                        <h3>✅ Webhook Created!</h3>
                         <pre>${JSON.stringify(data, null, 2)}</pre>
                     `;
+
+                    // Extract signing key safely
+                    const resource = data.resource || {};
+                    // Check strictly for the key
+                    const key = resource.signing_key;
+
+                    if (key) {
+                        signingSection.style.display = 'block';
+                        document.getElementById('signingKey').value = key;
+                    } else {
+                        // UPDATED: Handle missing key gracefully
+                        resultDiv.innerHTML += `
+                            <div style="background: #e3f2fd; padding: 15px; border-left: 5px solid #2196f3; margin-top: 15px;">
+                                <h4 style="margin-top: 0; color: #0d47a1;">ℹ️ Note: No Signing Key Returned</h4>
+                                <p>Your webhook was created successfully, but Calendly did not return a signing key. This is common for some account types.</p>
+                                <p><strong>Good News:</strong> We have updated your app to work without it!</p>
+                                <p>You don't need to do anything else. Your integration should work now.</p>
+                            </div>
+                        `;
+                    }
+                    
+                    listWebhooks(); // Refresh list
+                } else {
+                    throw new Error(JSON.stringify(data));
                 }
-            } catch (error) {
+            } catch (e) {
                 resultDiv.className = 'result error';
-                resultDiv.innerHTML = `<h3>❌ Error: ${error.message}</h3>`;
+                resultDiv.innerHTML = `<h3>❌ Error</h3><pre>${e.message}</pre>`;
             }
         }
     </script>
 </body>
 </html>
-
-

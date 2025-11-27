@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase';
 
 export async function GET() {
     try {
-        // Fetch both session notes and recordings with transcripts
-        const [notesResult, recordingsResult] = await Promise.all([
+        // Fetch session notes, recordings with transcripts, and sessions (including Calendly appointments)
+        const [notesResult, recordingsResult, sessionsResult] = await Promise.all([
             supabase
                 .from('session_notes')
                 .select('*')
@@ -17,13 +17,19 @@ export async function GET() {
                 `)
                 .not('transcript', 'is', null)
                 .neq('transcript', '')
-                .order('created_at', { ascending: false })
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('sessions')
+                .select('*')
+                .order('date', { ascending: false })
         ]);
 
         const notesData = notesResult.data || [];
         const notesError = notesResult.error;
         const recordingsData = recordingsResult.data || [];
         const recordingsError = recordingsResult.error;
+        const sessionsData = sessionsResult.data || [];
+        const sessionsError = sessionsResult.error;
 
         if (notesError) {
             console.error('Error fetching session notes:', notesError);
@@ -31,12 +37,16 @@ export async function GET() {
         if (recordingsError) {
             console.error('Error fetching recordings:', recordingsError);
         }
+        if (sessionsError) {
+            console.error('Error fetching sessions:', sessionsError);
+        }
 
-        // Get all unique client IDs from both sources
+        // Get all unique client IDs from all sources
         const allClientIds = [
             ...new Set([
                 ...notesData.map((n: any) => n.client_id).filter(Boolean),
-                ...recordingsData.map((r: any) => r.client_id).filter(Boolean)
+                ...recordingsData.map((r: any) => r.client_id).filter(Boolean),
+                ...sessionsData.map((s: any) => s.client_id).filter(Boolean)
             ])
         ];
 
@@ -59,20 +69,13 @@ export async function GET() {
             }
         }
 
-        // Fetch sessions to get dates
+        // Build sessions map for session notes that reference sessions
         let sessionsMap: Record<string, string> = {};
         if (sessionIds.length > 0) {
-            const { data: sessionsData } = await supabase
-                .from('sessions')
-                .select('id, date')
-                .in('id', sessionIds);
-            
-            if (sessionsData) {
-                sessionsMap = sessionsData.reduce((acc: Record<string, string>, session: any) => {
-                    acc[session.id] = session.date;
-                    return acc;
-                }, {});
-            }
+            const sessionIdsFromNotes = sessionsData.filter((s: any) => sessionIds.includes(s.id));
+            sessionIdsFromNotes.forEach((session: any) => {
+                sessionsMap[session.id] = session.date;
+            });
         }
 
         // Map session notes to frontend format
@@ -171,6 +174,64 @@ export async function GET() {
             };
         });
 
+        // Map sessions (appointments) to session notes format
+        // Only include sessions that don't already have session notes
+        const sessionsWithNotes = new Set(notesData.map((n: any) => n.session_id).filter(Boolean));
+        const mappedSessions = sessionsData
+            .filter((session: any) => {
+                // Include all sessions, but prioritize showing those without notes
+                // This ensures Calendly appointments appear even if no notes exist yet
+                return true;
+            })
+            .map((session: any) => {
+                const clientId = session.client_id;
+                const clientName = clientId && clientsMap[clientId] 
+                    ? clientsMap[clientId] 
+                    : 'Unknown Client';
+                
+                // Check if this session has notes
+                const hasNotes = sessionsWithNotes.has(session.id);
+                
+                // Get metadata
+                let metadata = {};
+                try {
+                    if (session.metadata && typeof session.metadata === 'object') {
+                        metadata = session.metadata;
+                    }
+                } catch (e) {
+                    metadata = {};
+                }
+                
+                // Build content from session notes or session info
+                let content = '';
+                if (hasNotes) {
+                    // If session has notes, the notes will be shown separately
+                    // But we still show the session as a placeholder
+                    content = `Session scheduled: ${session.type || 'Therapy Session'}\n${session.notes || ''}`;
+                } else {
+                    // Show session details for appointments without notes
+                    const source = (metadata as any).source || 'manual';
+                    const isCalendly = source === 'calendly';
+                    content = isCalendly 
+                        ? `📅 Booked via Calendly\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes\n${session.notes || ''}`
+                        : `📅 Scheduled Session\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes\n${session.notes || ''}`;
+                }
+                
+                return {
+                    id: `session-${session.id}`, // Prefix to avoid conflicts
+                    clientName: clientName,
+                    clientId: clientId,
+                    sessionDate: session.date || session.created_at || new Date().toISOString(),
+                    content: content,
+                    createdDate: session.created_at || session.date || new Date().toISOString(),
+                    attachments: [],
+                    source: 'session', // Mark as session/appointment
+                    sessionId: session.id, // Keep original session ID
+                    hasNotes: hasNotes, // Flag to indicate if notes exist
+                    metadata: metadata
+                };
+            });
+
         // Deduplicate all notes by ID to prevent duplicate keys
         const notesMap = new Map<string, any>();
         
@@ -192,13 +253,24 @@ export async function GET() {
                 }
             }
         });
+        
+        // Add sessions (appointments) - these will show Calendly bookings
+        // Only add sessions that don't already have notes (to avoid duplicates)
+        mappedSessions.forEach((session: any) => {
+            if (session.id && !session.hasNotes) {
+                // Only add sessions without existing notes to avoid showing duplicates
+                if (!notesMap.has(session.id)) {
+                    notesMap.set(session.id, session);
+                }
+            }
+        });
 
         // Convert map to array and sort by created date (newest first)
         const allNotes = Array.from(notesMap.values()).sort((a, b) => {
             return new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime();
         });
 
-        console.log(`Returning ${allNotes.length} total notes (${mappedSessionNotes.length} session notes + ${mappedRecordingNotes.length} recordings, ${uniqueRecordings.length} unique recordings)`);
+        console.log(`Returning ${allNotes.length} total notes (${mappedSessionNotes.length} session notes + ${mappedRecordingNotes.length} recordings + ${mappedSessions.length} sessions, ${uniqueRecordings.length} unique recordings)`);
         return NextResponse.json(allNotes);
     } catch (error) {
         console.error('Error fetching session notes:', error);
