@@ -196,6 +196,7 @@ export async function POST(request: Request) {
 
         // Parse webhook payload
         const payload = JSON.parse(rawBody);
+        const event = payload.event || payload;
         // Extract event type - Calendly can put it at payload.event or payload.event_type or nested in payload
         const eventType = payload.event || payload.event_type || (payload.payload && payload.payload.event_type) || 'invitee.created';
 
@@ -277,10 +278,19 @@ export async function POST(request: Request) {
 
         } else if (eventType === 'invitee.canceled' || eventType.includes('canceled')) {
             // Cancellation - mark session as canceled if found
-            const invitee = event.invitee || payload.invitee;
+            // Calendly webhook structure can vary - try multiple paths
+            const invitee = payload.payload?.invitee || 
+                          payload.invitee || 
+                          (event && typeof event === 'object' && event.invitee);
+            const eventData = payload.payload?.scheduled_event || 
+                            payload.scheduled_event ||
+                            payload.payload?.event || 
+                            (event && typeof event === 'object' ? event.event : null) ||
+                            payload.event || 
+                            payload;
             const email = extractEmail(invitee);
-            const eventData = event.event || payload.event || event;
-            const startTime = eventData.start_time || eventData.startTime;
+            const startTime = invitee?.start_time || invitee?.startTime || 
+                            eventData?.start_time || eventData?.startTime;
 
             if (email && startTime) {
                 const startDate = new Date(startTime);
