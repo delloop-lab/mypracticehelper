@@ -8,6 +8,8 @@ export async function GET(request: Request) {
         // Check authentication (handles both new and fallback methods)
         const { userId, isFallback, userEmail } = await checkAuthentication(request);
         
+        console.log('[Recordings API] Authentication check:', { userId, isFallback, userEmail });
+        
         // If fallback auth, show legacy recordings (recordings without user_id)
         if (isFallback && userEmail === 'claire@claireschillaci.com') {
             console.log('[Recordings API] Fallback auth detected, showing legacy recordings (no user_id)');
@@ -16,12 +18,16 @@ export async function GET(request: Request) {
         }
         
         if (!userId) {
+            console.error('[Recordings API] Unauthorized - no userId');
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        console.log('[Recordings API] Fetching recordings for userId:', userId);
         const recordings = await getRecordings(userId);
+        console.log('[Recordings API] Found recordings:', recordings.length);
         return NextResponse.json(recordings);
     } catch (error) {
+        console.error('[Recordings API] Error:', error);
         return NextResponse.json({ error: 'Failed to fetch recordings' }, { status: 500 });
     }
 }

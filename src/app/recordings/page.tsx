@@ -143,9 +143,15 @@ function RecordingsContent() {
 
     const loadRecordings = async () => {
         try {
-            const response = await fetch('/api/recordings');
+            const response = await fetch('/api/recordings', {
+                credentials: 'include', // Include cookies for authentication
+            });
+            
+            console.log('[Recordings] Fetch response status:', response.status);
+            
             if (response.ok) {
                 const data = await response.json();
+                console.log('[Recordings] Received data:', { count: data.length, data });
                 // Remove duplicates by ID (keep first occurrence)
                 const uniqueRecordings: Recording[] = Array.from(
                     new Map((data as Recording[]).map((r: Recording) => [r.id, r])).values()
@@ -156,6 +162,9 @@ function RecordingsContent() {
                 }
                 setRecordings(uniqueRecordings);
                 setRefreshKey(prev => prev + 1);
+            } else {
+                const errorText = await response.text();
+                console.error('[Recordings] Failed to load recordings:', response.status, errorText);
             }
         } catch (error) {
             console.error('Error loading recordings:', error);
