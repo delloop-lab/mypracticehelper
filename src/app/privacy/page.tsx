@@ -117,7 +117,7 @@ export default function PrivacyPage() {
                 <section>
                     <h2 className="text-2xl font-semibold mb-4">8. Security</h2>
                     <p className="text-muted-foreground leading-relaxed">
-                        We implement appropriate technical and organisational measures to protect personal data from unauthorised access, alteration, disclosure, or destruction.
+                        We implement appropriate technical and organisational measures to protect personal data from unauthorised access, alteration, disclosure, or destruction. However, users should be aware that if they upload sensitive information, including health or therapy notes, MyPracticeHelper cannot guarantee against data loss or unauthorized access. Users acknowledge that any such data is uploaded at their own risk, and MyPracticeHelper is not liable for any loss, theft, or exposure of sensitive data.
                     </p>
                 </section>
 
