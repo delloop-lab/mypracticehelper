@@ -220,3 +220,4 @@ UNION ALL
 SELECT 'custom_reminder_templates', COUNT(*), COUNT(user_id), ROUND(100.0 * COUNT(user_id) / NULLIF(COUNT(*), 0), 2) FROM custom_reminder_templates
 ORDER BY table_name;
 
+

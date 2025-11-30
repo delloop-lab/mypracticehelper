@@ -28,3 +28,4 @@ chmod +x .git/hooks/pre-commit
 echo "✅ Git pre-commit hook installed for automatic version bumping"
 
 
+

@@ -77,3 +77,4 @@ CREATE POLICY "Allow all operations on settings" ON settings
 -- rowsecurity should be 'f' (false) for all tables
 -- ============================================================================
 
+

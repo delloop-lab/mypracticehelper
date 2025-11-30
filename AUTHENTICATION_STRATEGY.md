@@ -185,3 +185,4 @@ const { data } = await supabase
 
 **Action:** Disable RLS for now, migrate to Supabase Auth later when you need its features.
 
+

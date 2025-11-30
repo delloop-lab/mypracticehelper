@@ -119,3 +119,4 @@ DROP TABLE IF EXISTS users;
 - **What if I make a mistake?** Step 1 is safe and reversible (see rollback plan)
 - **When can I test?** After Step 1, the app works normally. Full testing after Step 2.
 
+

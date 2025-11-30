@@ -57,3 +57,4 @@ FROM sessions
 WHERE COALESCE(metadata->>'paymentStatus', 'unpaid') = 'unpaid'
    OR metadata->>'paymentStatus' IS NULL;
 
+

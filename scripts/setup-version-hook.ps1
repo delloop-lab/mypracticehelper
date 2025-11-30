@@ -34,3 +34,4 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 Write-Host "✅ Git pre-commit hook installed for automatic version bumping" -ForegroundColor Green
 
 
+

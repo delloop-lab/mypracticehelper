@@ -166,6 +166,70 @@ export default function TermsPage() {
                         </a>
                     </p>
                 </section>
+
+                <section>
+                    <h2 className="text-2xl font-semibold mb-4">18. Cookie Policy</h2>
+                    <p className="text-muted-foreground leading-relaxed mb-4">
+                        MyPracticeHelper uses cookies and similar technologies to ensure the proper functioning of the website, improve user experience, and analyse site usage. By using the Platform, you agree to our use of cookies as described below.
+                    </p>
+                    
+                    <h3 className="text-xl font-semibold mb-3 mt-6">Types of Cookies</h3>
+                    <ul className="list-disc list-inside space-y-2 text-muted-foreground ml-4 mb-4">
+                        <li><strong>Essential Cookies:</strong> Necessary for the Platform to operate, such as keeping you logged in and remembering session information.</li>
+                        <li><strong>Analytics Cookies:</strong> Help us understand how users interact with the Platform, allowing us to improve performance and usability.</li>
+                        <li><strong>Optional/Marketing Cookies:</strong> Used for personalisation or advertising purposes, if any third-party services are added.</li>
+                    </ul>
+
+                    <h3 className="text-xl font-semibold mb-3 mt-6">Managing Cookies</h3>
+                    <p className="text-muted-foreground leading-relaxed mb-4">
+                        You can control cookies via your browser settings. Disabling essential cookies may affect functionality. For analytics or marketing cookies, you can opt out by adjusting your browser preferences or through the cookie banner provided.
+                    </p>
+
+                    <h3 className="text-xl font-semibold mb-3 mt-6">Consent</h3>
+                    <p className="text-muted-foreground leading-relaxed">
+                        When you first visit MyPracticeHelper, a banner will appear asking you to accept our cookie usage. By continuing to use the Platform, you consent to our cookie practices.
+                    </p>
+                </section>
+
+                <section>
+                    <h2 className="text-2xl font-semibold mb-4">19. Disclaimer</h2>
+                    <p className="text-muted-foreground leading-relaxed mb-4">
+                        MyPracticeHelper is a software platform that provides tools to assist therapists and wellness professionals in managing their practice. It is not a healthcare provider, and we do not deliver therapy, counselling, or any medical advice.
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed mb-4">
+                        All therapeutic services are delivered solely by the independent therapists using the Platform.
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed mb-4">
+                        Any messages, notes, or data uploaded to the Platform are at the user's own risk. MyPracticeHelper is not responsible for the content, loss, or unauthorized access to such data.
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed mb-4">
+                        The Platform is intended for administrative, scheduling, and communication purposes only. Do not use it for emergency or crisis situations.
+                    </p>
+                    <p className="text-muted-foreground leading-relaxed">
+                        Users must seek professional medical or mental health advice directly from qualified professionals outside the Platform for urgent or sensitive issues.
+                    </p>
+                </section>
+
+                <section>
+                    <h2 className="text-2xl font-semibold mb-4">20. Contact</h2>
+                    <p className="text-muted-foreground leading-relaxed mb-2">
+                        For any questions regarding this Cookie Policy or Disclaimer, please contact us at:
+                    </p>
+                    <div className="space-y-2 text-muted-foreground">
+                        <p>
+                            Email:{" "}
+                            <a 
+                                href="mailto:help@mypracticehelper.com" 
+                                className="text-primary hover:underline font-medium"
+                            >
+                                help@mypracticehelper.com
+                            </a>
+                        </p>
+                        <p>
+                            Address: 202/1101 Hay Street, West Perth, 6005 Australia
+                        </p>
+                    </div>
+                </section>
             </div>
         </div>
     );

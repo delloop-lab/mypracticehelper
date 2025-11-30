@@ -121,3 +121,4 @@ After deployment, test:
 
 All endpoints now filter by `user_id`. The system is ready for multiple therapists with complete data isolation!
 
+

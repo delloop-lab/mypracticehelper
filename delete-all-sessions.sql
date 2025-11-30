@@ -32,3 +32,4 @@ SELECT COUNT(*) as total_sessions FROM sessions;
 -- ALTERNATIVE: Delete sessions without user_id (legacy sessions)
 -- DELETE FROM sessions WHERE user_id IS NULL;
 
+

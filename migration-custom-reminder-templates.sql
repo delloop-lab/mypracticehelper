@@ -30,3 +30,4 @@ CREATE INDEX IF NOT EXISTS idx_custom_reminder_templates_enabled ON custom_remin
 --   Example for 'client_field': { "field": "email", "operator": "is_empty" }
 -- ============================================================================
 
+
