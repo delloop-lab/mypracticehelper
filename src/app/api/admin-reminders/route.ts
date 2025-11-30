@@ -130,7 +130,17 @@ export async function PUT(request: Request) {
  */
 export async function POST(request: Request) {
     try {
-        const userId = await getCurrentUserId(request);
+        // Check authentication (handles both new and fallback methods)
+        const { userId, isFallback } = await checkAuthentication(request);
+        
+        // For fallback auth, reject creation
+        if (isFallback) {
+            return NextResponse.json({ 
+                error: 'User account not found. Please run the database migration to create your user account.',
+                requiresMigration: true
+            }, { status: 403 });
+        }
+        
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
