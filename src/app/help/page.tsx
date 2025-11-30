@@ -29,7 +29,7 @@ export default function HelpPage() {
                         <ul className="space-y-2 text-sm text-muted-foreground">
                             <li>• Add new clients with contact details</li>
                             <li>• Track client sessions and documents</li>
-                            <li>• Mark new client forms as signed</li>
+                            <li>• Mark required forms as signed</li>
                             <li>• Archive or delete clients</li>
                         </ul>
                     </CardContent>
@@ -108,7 +108,7 @@ export default function HelpPage() {
                     <CardContent>
                         <ul className="space-y-2 text-sm text-muted-foreground">
                             <li>• Track sessions awaiting notes</li>
-                            <li>• Monitor unsigned client forms</li>
+                            <li>• Monitor unsigned client</li>
                             <li>• View unpaid sessions</li>
                             <li>• Create custom reminders</li>
                         </ul>
@@ -148,7 +148,7 @@ export default function HelpPage() {
                         <div>
                             <h3 className="font-semibold mb-2">How do I add a new client?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Go to the Clients page and click the "Add New Client" button. Fill in the client's information including name, email, phone, and any other relevant details. You can also import clients from a CSV file.
+                                Go to the Clients page and click the "Add New Client" button. Fill in the client's information including name, email, phone, and any other relevant details. You can also import clients from an .xlsx file.
                             </p>
                         </div>
 
@@ -246,7 +246,7 @@ export default function HelpPage() {
                             <div>
                                 <h3 className="font-semibold mb-1">Import and export data</h3>
                                 <p className="text-sm text-muted-foreground">
-                                    You can import clients from CSV files and export your data for backup or migration purposes. Look for the import/export options in the Clients page.
+                                    You can import clients from .xlsx files and export your data for backup or migration purposes. Look for the import/export options in the Clients page.
                                 </p>
                             </div>
                         </div>
