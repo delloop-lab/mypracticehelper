@@ -65,6 +65,8 @@ function parseDateOfBirth(dateString: string): string | null {
 
 interface ClientImportData {
     name: string;
+    firstName?: string;
+    lastName?: string;
     email?: string;
     phone?: string;
     dateOfBirth?: string;
