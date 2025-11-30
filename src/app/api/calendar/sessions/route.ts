@@ -68,14 +68,26 @@ export async function GET(request: Request) {
         // Fetch sessions from the past 30 days and future to ensure Google Calendar shows them
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysAgoISO = thirtyDaysAgo.toISOString();
+        
+        console.log('[Calendar ICS] Fetching sessions from:', thirtyDaysAgoISO);
         
         const { data: sessions, error: sessionsError } = await supabase
             .from('sessions')
             .select('*')
-            .gte('date', thirtyDaysAgo.toISOString()) // Only get sessions from last 30 days onwards
+            .gte('date', thirtyDaysAgoISO) // Only get sessions from last 30 days onwards
             .order('date', { ascending: true });
 
         console.log('[Calendar ICS] Fetched sessions:', sessions?.length || 0);
+        
+        // Log Calendly sessions specifically to debug
+        if (sessions && sessions.length > 0) {
+            const calendlySessions = sessions.filter((s: any) => s.metadata?.source === 'calendly');
+            console.log('[Calendar ICS] Calendly sessions in fetched data:', calendlySessions.length);
+            calendlySessions.forEach((s: any) => {
+                console.log('[Calendar ICS] Calendly session:', s.id, 'Date:', s.date, 'Type:', typeof s.date);
+            });
+        }
         
         if (sessionsError) {
             console.error('[Calendar ICS] Error fetching sessions:', sessionsError);
@@ -122,8 +134,12 @@ export async function GET(request: Request) {
             .filter((session: any) => {
                 // Filter out sessions without valid dates
                 if (!session.date) {
-                    console.warn('[Calendar ICS] Session missing date:', session.id);
+                    console.warn('[Calendar ICS] Session missing date:', session.id, 'Metadata:', session.metadata);
                     return false;
+                }
+                // Log Calendly sessions for debugging
+                if (session.metadata?.source === 'calendly') {
+                    console.log('[Calendar ICS] Including Calendly session:', session.id, 'Date:', session.date);
                 }
                 return true;
             })
@@ -132,22 +148,42 @@ export async function GET(request: Request) {
                     // Parse the date - Supabase returns ISO strings with timezone
                     let start: Date;
                     const dateStr = session.date;
+                    let normalizedDate = dateStr; // For error logging
                     
-                    // If date doesn't have timezone info, assume it's already UTC (from Supabase)
-                    // Supabase stores TIMESTAMP WITH TIME ZONE, so dates should have timezone
-                    if (typeof dateStr === 'string' && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
-                        // Date format like "2025-01-15T14:00:00" - add Z to indicate UTC
-                        start = new Date(dateStr + 'Z');
+                    // Handle different date formats from Supabase
+                    // Supabase can return: "2025-11-28T11:30:00+00:00" or "2025-11-28 11:30:00+00" (space instead of T)
+                    // Manual bookings might be: "2025-11-28T11:30:00" (no timezone)
+                    if (typeof dateStr === 'string') {
+                        // Replace space with T if it's in the format "2025-11-28 11:30:00+00"
+                        // This handles Supabase's TIMESTAMP WITH TIME ZONE format
+                        normalizedDate = dateStr;
+                        if (dateStr.includes(' ') && !dateStr.includes('T')) {
+                            // Format: "2025-11-28 11:30:00+00" -> "2025-11-28T11:30:00+00:00"
+                            normalizedDate = dateStr.replace(' ', 'T');
+                            // Ensure timezone format is correct (+00 -> +00:00)
+                            if (normalizedDate.match(/[+-]\d{2}$/)) {
+                                normalizedDate = normalizedDate + ':00';
+                            }
+                        } else if (dateStr.includes('T') && !dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+                            // Format like "2025-11-28T11:30:00" (has T but no timezone) - assume UTC
+                            normalizedDate = dateStr + 'Z';
+                        } else if (!dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+                            // Format like "2025-01-15T14:00:00" without timezone - assume UTC and add Z
+                            normalizedDate = dateStr + 'Z';
+                        }
+                        start = new Date(normalizedDate);
                     } else {
                         start = new Date(dateStr);
+                        normalizedDate = String(dateStr);
                     }
                     
                     // Validate date
                     if (isNaN(start.getTime())) {
-                        console.warn('[Calendar ICS] Invalid date for session:', session.id, session.date);
+                        console.warn('[Calendar ICS] Invalid date for session:', session.id, 'Raw date:', session.date, 'Normalized:', normalizedDate);
                         return null;
                     }
                     
+                    // Log all sessions for debugging
                     console.log(`[Calendar ICS] Session ${session.id}: ${session.date} -> ${start.toISOString()} (UTC)`);
                     
                     const durationMinutes = session.duration || 60;
@@ -162,17 +198,33 @@ export async function GET(request: Request) {
                         ? clientMap.get(session.client_id) || 'Client Session'
                         : 'Client Session';
 
-                    const summary = `${clientName} – Therapy Session`;
+                    // Truncate long values to prevent lines exceeding 998 chars (RFC 5545 limit)
+                    // But don't fold - Google Calendar handles long lines better than folded ones
+                    const maxSummaryLength = 200; // Safe limit for SUMMARY field
+                    const maxDescriptionLength = 500; // Safe limit for DESCRIPTION field
+                    
+                    let summary = `${clientName} – Therapy Session`;
+                    if (summary.length > maxSummaryLength) {
+                        summary = summary.substring(0, maxSummaryLength - 3) + '...';
+                    }
+                    
                     const uid = `${session.id}@mypracticehelper`;
 
                     const descriptionLines: string[] = [];
                     descriptionLines.push(`Session type: ${session.type || 'Session'}`);
                     if (session.notes) {
                         descriptionLines.push('');
-                        descriptionLines.push(session.notes);
+                        let notes = session.notes;
+                        if (notes.length > maxDescriptionLength) {
+                            notes = notes.substring(0, maxDescriptionLength - 3) + '...';
+                        }
+                        descriptionLines.push(notes);
                     }
 
-                    const description = descriptionLines.join('\n');
+                    let description = descriptionLines.join('\n');
+                    if (description.length > maxDescriptionLength) {
+                        description = description.substring(0, maxDescriptionLength - 3) + '...';
+                    }
 
                     // Build event lines with proper formatting
                     // Use UTC format (Z suffix) - Google Calendar will convert based on calendar timezone
@@ -192,11 +244,13 @@ export async function GET(request: Request) {
                         `DESCRIPTION:${escapeICS(description)}`,
                         'STATUS:CONFIRMED',
                         'SEQUENCE:0',
+                        'TRANSP:OPAQUE', // Required for Google Calendar
                         'END:VEVENT',
                     ];
 
-                    // Fold long lines and join with CRLF
-                    return eventLines.map(foldLine).join('\r\n');
+                    // Join with CRLF - don't fold lines as it can break Google Calendar parsing
+                    // Google Calendar handles long lines better than folded lines
+                    return eventLines.join('\r\n');
                 } catch (error) {
                     console.error('[Calendar ICS] Error processing session:', session.id, error);
                     return null;
@@ -245,17 +299,35 @@ export async function GET(request: Request) {
             'END:VCALENDAR',
         ];
 
-        const ical = calendarLines.map(foldLine).join('\r\n') + '\r\n';
+        // Don't fold lines - Google Calendar handles long lines better
+        // RFC 5545 allows up to 998 characters per line, and Google Calendar is fine with that
+        const ical = calendarLines.join('\r\n') + '\r\n';
 
-        console.log('[Calendar ICS] Returning ICS file, length:', ical.length);
+        // Verify no lines are folded (check for continuation lines starting with space)
+        const hasFoldedLines = ical.includes('\r\n ');
+        if (hasFoldedLines) {
+            console.error('[Calendar ICS] WARNING: Detected folded lines in output!');
+        }
         
-        return new NextResponse(ical, {
+        // Log first few lines to verify format
+        const firstLines = ical.split('\r\n').slice(0, 10);
+        console.log('[Calendar ICS] First 10 lines:', firstLines);
+        console.log('[Calendar ICS] Returning ICS file, length:', ical.length, 'hasFoldedLines:', hasFoldedLines);
+        
+        // Convert to Buffer to ensure raw bytes are sent without any processing
+        const icalBuffer = Buffer.from(ical, 'utf-8');
+        
+        return new NextResponse(icalBuffer, {
             status: 200,
             headers: {
                 'Content-Type': 'text/calendar; charset=utf-8',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Content-Disposition': 'inline; filename="therapy-sessions.ics"',
+                'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
                 'Pragma': 'no-cache',
                 'Expires': '0',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET',
+                'Content-Length': icalBuffer.length.toString(),
             },
         });
     } catch (error) {

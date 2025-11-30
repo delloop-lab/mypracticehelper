@@ -179,16 +179,54 @@ export function VoiceNotes() {
         }
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mr = new MediaRecorder(stream);
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                } 
+            });
+            
+            // Determine the best MIME type for this browser
+            let mimeType = "audio/webm";
+            const options: any = {};
+            
+            if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+                mimeType = "audio/webm;codecs=opus";
+            } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+                mimeType = "audio/webm";
+            } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+                mimeType = "audio/mp4";
+            } else if (MediaRecorder.isTypeSupported("audio/m4a")) {
+                mimeType = "audio/m4a";
+            }
+            
+            options.mimeType = mimeType;
+            console.log("Using MediaRecorder with MIME type:", mimeType);
+            console.log("Browser:", navigator.userAgent);
+            
+            const mr = new MediaRecorder(stream, options);
             mediaRecorderRef.current = mr;
+            
+            // Reset audio chunks for new recording
+            audioChunksRef.current = [];
+            
             mr.ondataavailable = (e) => {
-                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+                if (e.data.size > 0) {
+                    audioChunksRef.current.push(e.data);
+                    console.log("Audio chunk received:", e.data.size, "bytes, Total chunks:", audioChunksRef.current.length);
+                }
             };
             mr.onstop = () => {
                 stream.getTracks().forEach((t) => t.stop());
+                console.log("MediaRecorder stopped. Total audio chunks:", audioChunksRef.current.length);
             };
-            mr.start();
+            mr.onerror = (e: any) => {
+                console.error("MediaRecorder error:", e);
+                setError("Error during recording: " + (e.error?.message || "Unknown error"));
+            };
+            mr.start(1000); // Collect data every second
+            console.log("MediaRecorder started with MIME type:", mr.mimeType);
         } catch (e: any) {
             console.error("Audio error:", e);
             let errorMessage = "Could not access microphone.";
@@ -251,7 +289,19 @@ export function VoiceNotes() {
 
         // Wait a bit longer to ensure final transcript is captured
         setTimeout(() => {
-            const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+            // Determine the best MIME type based on browser support
+            let mimeType = "audio/webm";
+            if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+                mimeType = "audio/webm;codecs=opus";
+            } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+                mimeType = "audio/webm";
+            } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+                mimeType = "audio/mp4";
+            } else if (MediaRecorder.isTypeSupported("audio/m4a")) {
+                mimeType = "audio/m4a";
+            }
+            
+            const blob = new Blob(audioChunksRef.current, { type: mimeType });
             const url = URL.createObjectURL(blob);
             setAudioBlob(blob);
             setAudioURL(url);
@@ -268,10 +318,18 @@ export function VoiceNotes() {
             console.log("Stopping recording with transcript:", currentTranscript);
             console.log("Transcript length:", currentTranscript.length);
             console.log("Transcript state:", transcript);
+            console.log("Transcript ref:", transcriptRef.current);
+            console.log("Audio blob type:", mimeType, "Size:", blob.size, "bytes");
+            console.log("Browser:", navigator.userAgent);
+            
+            // If no transcript and we have audio, always use OpenAI fallback
+            if (!currentTranscript && blob.size > 0) {
+                console.log("No transcript from WebKit Speech Recognition, will use OpenAI Whisper fallback");
+            }
             
             // Pass the transcript to processTranscript
             processTranscript(currentTranscript, blob);
-        }, 1000); // Increased timeout to allow final results to be captured
+        }, 1500); // Increased timeout to 1.5 seconds to allow final results to be captured
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -326,6 +384,56 @@ export function VoiceNotes() {
         }
 
         // Handle cases where we still have no transcript text
+        // For manual recordings with empty transcript, fall back to OpenAI Whisper API
+        if (!baseText && text !== "__FILE_UPLOAD__") {
+            console.log("Manual recording has no transcript, falling back to OpenAI Whisper API...");
+            console.log("Blob details - Type:", blob.type, "Size:", blob.size, "bytes");
+            
+            // Check if blob is valid
+            if (blob.size === 0) {
+                console.error("Audio blob is empty, cannot transcribe");
+                setIsProcessing(false);
+                setError("Recording failed - no audio data captured. Please try again.");
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                // Create a File object with proper name and type for better API handling
+                const audioFile = new File([blob], `recording-${Date.now()}.${blob.type.includes('webm') ? 'webm' : blob.type.includes('mp4') ? 'm4a' : 'wav'}`, {
+                    type: blob.type || 'audio/webm'
+                });
+                formData.append("file", audioFile);
+                
+                console.log("Sending audio to OpenAI Whisper API - File type:", audioFile.type, "Size:", audioFile.size);
+
+                const response = await fetch("/api/audio/transcribe-upload", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                console.log("OpenAI API response status:", response.status, response.statusText);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    baseText = (data.transcript as string) || "";
+                    console.log("Manual recording transcribed via OpenAI Whisper. Length:", baseText.length);
+                    if (baseText) {
+                        console.log("Transcript preview:", baseText.substring(0, 100));
+                    }
+                } else {
+                    const errorText = await response.text();
+                    console.error("OpenAI transcription API failed for manual recording:", errorText);
+                    console.error("Response status:", response.status);
+                    // Continue with empty transcript - will show "No transcript captured"
+                }
+            } catch (err: any) {
+                console.error("Error calling OpenAI transcription API for manual recording:", err);
+                console.error("Error details:", err.message, err.stack);
+                // Continue with empty transcript - will show "No transcript captured"
+            }
+        }
+
         let formattedText: string;
         if (!baseText) {
             // If this was a file upload, treat it as a hard error instead of saving a useless recording
@@ -538,7 +646,7 @@ export function VoiceNotes() {
                     <CardTitle className="flex items-center gap-2">
                         <Mic className="h-5 w-5 text-primary" /> Voice Notes
                     </CardTitle>
-                    <CardDescription>Record session notes with automatic transcription (Chrome/Edge only).</CardDescription>
+                    <CardDescription>Record Clinical Notes with automatic transcription (Chrome/Edge only).</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex flex-col items-center justify-center py-8">

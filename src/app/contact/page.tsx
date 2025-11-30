@@ -91,12 +91,12 @@ export default function ContactPage() {
                                 <h3 className="font-semibold text-base mb-2">Phone</h3>
                                 <div className="space-y-1.5 text-sm text-muted-foreground">
                                     <div>
-                                        <span className="text-xs font-medium text-foreground uppercase">Europe:</span>
-                                        <p className="text-base">+351 937 596 665</p>
+                                        <span className="text-xs font-medium text-foreground uppercase">Australia:</span>
+                                        <p className="text-base">+61 412 900 002</p>
                                     </div>
                                     <div>
-                                        <span className="text-xs font-medium text-foreground uppercase">Australia:</span>
-                                        <p className="text-base">0412 900 002</p>
+                                        <span className="text-xs font-medium text-foreground uppercase">Europe:</span>
+                                        <p className="text-base">+351 937 596 665</p>
                                     </div>
                                 </div>
                             </div>

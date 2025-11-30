@@ -37,9 +37,10 @@ interface SessionNote {
     createdDate: string;
     transcript?: string; // Raw/natural transcript (for recordings)
     attachments?: { name: string; url: string }[];
-    source?: 'session_note' | 'recording'; // Indicates if note came from session_notes table or recordings table
+    source?: 'session_note' | 'recording' | 'session'; // Indicates if note came from session_notes table, recordings table, or sessions table
     recordingId?: string; // Original recording ID if source is 'recording'
     audioURL?: string | null; // Audio URL if source is 'recording'
+    sessionId?: string; // Original session ID if source is 'session'
 }
 
 type SortOption = 'date-desc' | 'date-asc' | 'client-asc' | 'client-desc' | 'session-desc' | 'session-asc';
@@ -50,10 +51,11 @@ function SessionNotesContent() {
     const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedClient, setSelectedClient] = useState<string>("all");
+    const [selectedSource, setSelectedSource] = useState<string>("all"); // Filter by source type
     const [sortBy, setSortBy] = useState<SortOption>('date-desc');
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [editingNote, setEditingNote] = useState<SessionNote | null>(null);
-    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; noteId: string | null }>({ isOpen: false, noteId: null });
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; note: SessionNote | null }>({ isOpen: false, note: null });
     const [formData, setFormData] = useState({
         clientName: "",
         clientId: undefined as string | undefined,
@@ -181,6 +183,16 @@ function SessionNotesContent() {
             filtered = filtered.filter(n => n.clientName === selectedClient);
         }
 
+        // Filter by source type
+        if (selectedSource !== "all") {
+            filtered = filtered.filter(n => {
+                if (selectedSource === "session_note") {
+                    return n.source === 'session_note' || n.source === undefined;
+                }
+                return n.source === selectedSource;
+            });
+        }
+
         // Sort
         const sorted = [...filtered].sort((a, b) => {
             switch (sortBy) {
@@ -202,7 +214,7 @@ function SessionNotesContent() {
         });
 
         return sorted;
-    }, [notes, searchQuery, selectedClient, sortBy]);
+    }, [notes, searchQuery, selectedClient, selectedSource, sortBy]);
 
     const formatDate = (dateString: string): string => {
         const date = new Date(dateString);
@@ -272,18 +284,88 @@ function SessionNotesContent() {
 
     const handleDeleteClick = (id: string) => {
         const note = notes.find(n => n.id === id);
-        if (note?.source === 'recording') {
-            alert('Voice note recordings cannot be deleted from this page. Please go to Voice Notes to manage recordings.');
+        if (note?.source === 'session') {
+            alert('This is a session/appointment, not a session note. Sessions cannot be deleted from this page. Please go to Schedule to manage sessions.');
             return;
         }
-        setDeleteConfirm({ isOpen: true, noteId: id });
+        if (note) {
+            setDeleteConfirm({ isOpen: true, note: note });
+        }
     };
 
-    const handleDelete = () => {
-        if (!deleteConfirm.noteId) return;
-        const updatedNotes = notes.filter(n => n.id !== deleteConfirm.noteId);
-        saveNotes(updatedNotes);
-        setDeleteConfirm({ isOpen: false, noteId: null });
+    const handleDelete = async () => {
+        if (!deleteConfirm.note) return;
+
+        // Don't delete sessions from this page
+        if (deleteConfirm.note.source === 'session') {
+            alert('This is a session/appointment, not a session note. Sessions cannot be deleted from this page. Please go to Schedule to manage sessions.');
+            setDeleteConfirm({ isOpen: false, note: null });
+            return;
+        }
+
+        // Handle recording deletion
+        if (deleteConfirm.note.source === 'recording' && deleteConfirm.note.recordingId) {
+            console.log('[Session Notes] Attempting to delete recording:', {
+                id: deleteConfirm.note.recordingId,
+                clientName: deleteConfirm.note.clientName,
+                sessionDate: deleteConfirm.note.sessionDate
+            });
+
+            try {
+                const response = await fetch(`/api/recordings?id=${encodeURIComponent(deleteConfirm.note.recordingId)}`, {
+                    method: 'DELETE',
+                });
+
+                if (response.ok) {
+                    console.log('[Session Notes] Successfully deleted recording');
+                    // Remove from local state and reload notes
+                    const updatedNotes = notes.filter(n => n.id !== deleteConfirm.note!.id);
+                    setNotes(updatedNotes);
+                    // Reload to ensure sync with server
+                    await loadNotes();
+                    setDeleteConfirm({ isOpen: false, note: null });
+                } else {
+                    const error = await response.json();
+                    console.error('[Session Notes] Delete recording failed:', error);
+                    alert(`Failed to delete recording: ${error.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error deleting recording:', error);
+                alert(`Failed to delete recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            return;
+        }
+
+        // Delete actual session notes (source === 'session_note' or undefined)
+        console.log('[Session Notes] Attempting to delete note:', {
+            id: deleteConfirm.note.id,
+            clientName: deleteConfirm.note.clientName,
+            sessionDate: deleteConfirm.note.sessionDate,
+            source: deleteConfirm.note.source
+        });
+
+        try {
+            const response = await fetch(`/api/session-notes?id=${encodeURIComponent(deleteConfirm.note.id)}`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                console.log('[Session Notes] Successfully deleted note');
+                // Remove from local state and reload notes
+                const updatedNotes = notes.filter(n => n.id !== deleteConfirm.note!.id);
+                setNotes(updatedNotes);
+                // Reload to ensure sync with server
+                await loadNotes();
+                setDeleteConfirm({ isOpen: false, note: null });
+            } else {
+                const error = await response.json();
+                console.error('[Session Notes] Delete failed:', error);
+                alert(`Failed to delete session note: ${error.error || 'Unknown error'}\n\nNote ID: ${deleteConfirm.note.id}\n\nIf this note was never saved to the database, it may not be deletable.`);
+            }
+        } catch (error) {
+            console.error('Error deleting session note:', error);
+            alert(`Failed to delete session note: ${error instanceof Error ? error.message : 'Unknown error'}\n\nPlease check the browser console for details.`);
+        }
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -350,7 +432,7 @@ function SessionNotesContent() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             {/* Search */}
                             <div className="space-y-2">
                                 <Label htmlFor="search">Search</Label>
@@ -378,6 +460,21 @@ function SessionNotesContent() {
                                         {clientNames.map(name => (
                                             <SelectItem key={name} value={name}>{name}</SelectItem>
                                         ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Source Type Filter */}
+                            <div className="space-y-2">
+                                <Label htmlFor="source-filter">Filter by Type</Label>
+                                <Select value={selectedSource} onValueChange={setSelectedSource}>
+                                    <SelectTrigger id="source-filter">
+                                        <SelectValue placeholder="All Types" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Types</SelectItem>
+                                        <SelectItem value="session_note">Session Notes Only</SelectItem>
+                                        <SelectItem value="session">Sessions Only</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -472,24 +569,22 @@ function SessionNotesContent() {
                                                 </div>
                                                 <div className="flex gap-2">
                                                     {note.source !== 'recording' && (
-                                                        <>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                onClick={() => handleEdit(note)}
-                                                            >
-                                                                <Edit className="h-4 w-4 text-blue-500" />
-                                                            </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                onClick={() => handleDeleteClick(note.id)}
-                                                                className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </Button>
-                                                        </>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleEdit(note)}
+                                                        >
+                                                            <Edit className="h-4 w-4 text-blue-500" />
+                                                        </Button>
                                                     )}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => handleDeleteClick(note.id)}
+                                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
                                                     {note.source === 'recording' && note.audioURL && (
                                                         <Button
                                                             variant="ghost"
@@ -698,10 +793,17 @@ function SessionNotesContent() {
             {/* Delete Confirmation Dialog */}
             <DeleteConfirmationDialog
                 open={deleteConfirm.isOpen}
-                onOpenChange={(open) => setDeleteConfirm({ isOpen: open, noteId: deleteConfirm.noteId })}
+                onOpenChange={(open) => setDeleteConfirm({ isOpen: open, note: deleteConfirm.note })}
                 onConfirm={handleDelete}
-                title="Delete Session Note"
-                description="Are you sure you want to delete this session note? This action cannot be undone."
+                title={deleteConfirm.note?.source === 'recording' ? "Delete Recording" : "Delete Session Note"}
+                description={
+                    deleteConfirm.note
+                        ? deleteConfirm.note.source === 'recording'
+                            ? `Are you sure you want to delete the recording from ${new Date(deleteConfirm.note.sessionDate).toLocaleDateString()}${deleteConfirm.note.clientName ? ` for ${deleteConfirm.note.clientName}` : ''}? This will permanently remove the audio file and transcript. This action cannot be undone.`
+                            : `Are you sure you want to delete the session note for ${deleteConfirm.note.clientName} from ${new Date(deleteConfirm.note.sessionDate).toLocaleDateString()}? This action cannot be undone.`
+                        : "Are you sure you want to delete this item? This action cannot be undone."
+                }
+                itemName={deleteConfirm.note ? `${deleteConfirm.note.clientName || 'Unnamed'} - ${new Date(deleteConfirm.note.sessionDate).toLocaleDateString()}` : undefined}
             />
         </div>
     );

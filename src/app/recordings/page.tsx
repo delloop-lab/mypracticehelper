@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceNotes } from "@/components/voice-notes";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 
 interface NoteSection {
     title: string;
@@ -57,6 +58,7 @@ function RecordingsContent() {
     const [editClientName, setEditClientName] = useState("");
     const [editClientId, setEditClientId] = useState<string | undefined>(undefined);
     const [refreshKey, setRefreshKey] = useState(0);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; recording: Recording | null }>({ isOpen: false, recording: null });
     // Default to "history" for SSR, then update to "new" on mobile after hydration
     const [activeTab, setActiveTab] = useState("history");
 
@@ -270,24 +272,33 @@ function RecordingsContent() {
         document.body.removeChild(a);
     };
 
-    const handleDelete = async (id: string) => {
-        try {
-            // Optimistically update UI
-            const updatedRecordings = recordings.filter(r => r.id !== id);
-            setRecordings(updatedRecordings);
+    const handleDeleteClick = (recording: Recording) => {
+        setDeleteConfirm({ isOpen: true, recording });
+    };
 
-            // Delete from backend so it doesn't reappear
-            const response = await fetch(`/api/recordings?id=${encodeURIComponent(id)}`, {
+    const handleDelete = async () => {
+        if (!deleteConfirm.recording) return;
+
+        try {
+            const response = await fetch(`/api/recordings?id=${encodeURIComponent(deleteConfirm.recording.id)}`, {
                 method: 'DELETE',
             });
 
-            if (!response.ok) {
-                console.error('Failed to delete recording on server');
+            if (response.ok) {
+                // Remove from local state
+                const updatedRecordings = recordings.filter(r => r.id !== deleteConfirm.recording!.id);
+                setRecordings(updatedRecordings);
+                setDeleteConfirm({ isOpen: false, recording: null });
+            } else {
+                const error = await response.json();
+                console.error('Failed to delete recording:', error);
+                alert(`Failed to delete recording: ${error.error || 'Unknown error'}`);
                 // Reload from server to keep data consistent
                 await loadRecordings();
             }
         } catch (error) {
             console.error('Error deleting recording:', error);
+            alert(`Failed to delete recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
             await loadRecordings();
         }
     };
@@ -363,7 +374,7 @@ function RecordingsContent() {
             <div className="mb-8">
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Voice Notes</h1>
                 <p className="text-sm sm:text-base text-muted-foreground">
-                    Record new sessions or manage your past recordings
+                    Record Clinical Notes with automatic AI transcription and clinical analysis
                 </p>
             </div>
 
@@ -379,7 +390,10 @@ function RecordingsContent() {
                     </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="new" className="space-y-4">
+                <TabsContent value="new" className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight">New Recording</h2>
+                    </div>
                     <VoiceNotes />
                 </TabsContent>
 
@@ -465,7 +479,7 @@ function RecordingsContent() {
                                 <FileAudio className="h-16 w-16 text-muted-foreground mb-4" />
                                 <h3 className="text-xl font-semibold mb-2">No recordings yet</h3>
                                 <p className="text-muted-foreground text-center max-w-md">
-                                    Your session recordings will appear here. Switch to the "New Recording" tab to create your first recording.
+                                    Clinical Notes recordings will appear here. Switch to the "New Recording" tab to create Clinical Note
                                 </p>
                                 <Button className="mt-6" onClick={() => setActiveTab("new")}>
                                     Start Recording
@@ -552,7 +566,7 @@ function RecordingsContent() {
                                                         <Button
                                                             variant="outline"
                                                             size="icon"
-                                                            onClick={() => handleDelete(recording.id)}
+                                                            onClick={() => handleDeleteClick(recording)}
                                                         >
                                                             <Trash2 className="h-4 w-4 text-red-500" />
                                                         </Button>
@@ -682,6 +696,20 @@ function RecordingsContent() {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+
+                    {/* Delete Confirmation Dialog */}
+                    <DeleteConfirmationDialog
+                        open={deleteConfirm.isOpen}
+                        onOpenChange={(open) => setDeleteConfirm({ isOpen: open, recording: deleteConfirm.recording })}
+                        onConfirm={handleDelete}
+                        title="Delete Recording"
+                        description={
+                            deleteConfirm.recording
+                                ? `Are you sure you want to delete the recording from ${new Date(deleteConfirm.recording.date).toLocaleDateString()}${deleteConfirm.recording.clientName ? ` for ${deleteConfirm.recording.clientName}` : ''}? This will permanently remove the audio file and transcript. This action cannot be undone.`
+                                : "Are you sure you want to delete this recording? This action cannot be undone."
+                        }
+                        itemName={deleteConfirm.recording ? `${deleteConfirm.recording.clientName || 'Unnamed'} - ${new Date(deleteConfirm.recording.date).toLocaleDateString()}` : undefined}
+                    />
                 </TabsContent>
             </Tabs>
         </div>

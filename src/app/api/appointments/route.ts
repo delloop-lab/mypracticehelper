@@ -1,16 +1,95 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { checkAuthentication } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
-        console.log('[Appointments API] Starting fetch...');
+        // Check authentication (handles both new and fallback methods)
+        const { userId, isFallback, userEmail } = await checkAuthentication(request);
         
-        // First, check if sessions table exists and has data
+        // If fallback auth, show legacy data (sessions without user_id)
+        if (isFallback && userEmail === 'claire@claireschillaci.com') {
+            console.log('[Appointments API] Fallback auth detected, showing legacy sessions (no user_id)');
+            const { data: allSessions, error: allSessionsError } = await supabase
+                .from('sessions')
+                .select('*')
+                .is('user_id', null)
+                .order('date', { ascending: false });
+            
+            if (allSessionsError) {
+                console.error('[Appointments API] Error fetching sessions:', allSessionsError);
+                return NextResponse.json([]);
+            }
+            
+            // Get all clients without user_id for mapping
+            const { data: allClients } = await supabase
+                .from('clients')
+                .select('id, name')
+                .is('user_id', null);
+            const clientMap = new Map((allClients || []).map((c: any) => [c.id, c.name]));
+            
+            // Filter out cancelled sessions (double-check in case metadata filter didn't catch all)
+            const validSessions = (allSessions || []).filter((session: any) => {
+                let metadata = {};
+                try {
+                    if (session.metadata && typeof session.metadata === 'object') {
+                        metadata = session.metadata;
+                    }
+                } catch (e) {
+                    metadata = {};
+                }
+                const status = (metadata as any).status?.toLowerCase() || '';
+                // Exclude cancelled sessions - ensures revenue calculations are accurate
+                return status !== 'cancelled' && status !== 'canceled';
+            });
+            
+            const appointments = validSessions.map((session: any) => {
+                let metadata = {};
+                try {
+                    if (session.metadata && typeof session.metadata === 'object') {
+                        metadata = session.metadata;
+                    }
+                } catch (e) {
+                    metadata = {};
+                }
+                
+                const clientName = session.client_id ? (clientMap.get(session.client_id) || 'Unassigned') : 'Unassigned';
+                
+                return {
+                    id: session.id,
+                    clientName: clientName,
+                    date: session.date,
+                    time: new Date(session.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    duration: session.duration,
+                    type: session.type,
+                    status: (metadata as any).status || 'confirmed',
+                    notes: session.notes,
+                    clinicalNotes: '',
+                    fee: (metadata as any).fee,
+                    currency: (metadata as any).currency,
+                    paymentStatus: (metadata as any).paymentStatus || 'unpaid',
+                    paymentMethod: (metadata as any).paymentMethod
+                };
+            });
+            
+            return NextResponse.json(appointments);
+        }
+        
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        console.log('[Appointments API] Starting fetch for user:', userId);
+        
+        // Fetch sessions filtered by user_id
+        // Note: We filter cancelled sessions in JavaScript after fetching
+        // because Supabase JSONB filtering can be complex with null checks
         const { data: allSessions, error: allSessionsError } = await supabase
             .from('sessions')
             .select('*')
+            .eq('user_id', userId)
             .order('date', { ascending: false });
 
         if (allSessionsError) {
@@ -35,17 +114,17 @@ export async function GET() {
             return NextResponse.json([]);
         }
 
-        // Get all clients first for manual mapping (more reliable than join)
-        const { data: allClients } = await supabase.from('clients').select('id, name');
+        // Get all clients for this user for manual mapping
+        const { data: allClients } = await supabase
+            .from('clients')
+            .select('id, name')
+            .eq('user_id', userId);
         const clientMap = new Map((allClients || []).map((c: any) => [c.id, c.name]));
         console.log(`[Appointments API] Loaded ${allClients?.length || 0} clients for mapping`);
 
-        // Fetch all sessions (including those with null client_id)
-        // Don't use join - manually map client names to avoid filtering out unassigned sessions
-        const { data: sessionsWithClients, error: joinError } = await supabase
-            .from('sessions')
-            .select('*')
-            .order('date', { ascending: false });
+        // Sessions already filtered by user_id above, so use allSessions
+        const sessionsWithClients = allSessions;
+        const joinError = allSessionsError;
 
         if (joinError) {
             console.error('[Appointments API] Error fetching sessions:', joinError);
@@ -67,7 +146,22 @@ export async function GET() {
             );
         }
 
-        const appointments = sessionsWithClients?.map(session => {
+        // Filter out cancelled sessions (double-check in case metadata filter didn't catch all)
+        const validSessions = (sessionsWithClients || []).filter((session: any) => {
+            let metadata = {};
+            try {
+                if (session.metadata && typeof session.metadata === 'object') {
+                    metadata = session.metadata;
+                }
+            } catch (e) {
+                metadata = {};
+            }
+            const status = (metadata as any).status?.toLowerCase() || '';
+            // Exclude cancelled sessions - ensures revenue calculations are accurate
+            return status !== 'cancelled' && status !== 'canceled';
+        });
+        
+        const appointments = validSessions.map(session => {
             // Handle metadata - it might be null, undefined, or an object
             let metadata = {};
             try {
@@ -105,7 +199,7 @@ export async function GET() {
                 paymentStatus: (metadata as any).paymentStatus || 'unpaid',
                 paymentMethod: (metadata as any).paymentMethod
             };
-        }) || [];
+        });
 
         console.log(`[Appointments API] Fetched ${sessionsWithClients?.length || 0} sessions, mapped to ${appointments.length} appointments`);
         if (appointments.length > 0) {
@@ -126,24 +220,48 @@ export async function GET() {
 
 export async function POST(request: Request) {
     try {
+        console.log('[Appointments API POST] Starting POST request');
+        
+        // Check authentication (handles both new and fallback methods)
+        const { userId, isFallback } = await checkAuthentication(request);
+        console.log('[Appointments API POST] Authentication check - userId:', userId, 'isFallback:', isFallback);
+        
+        if (!userId) {
+            console.error('[Appointments API POST] Unauthorized - no userId');
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        
+        // Reject write operations for fallback users (they need to run migration)
+        if (isFallback) {
+            console.error('[Appointments API POST] Rejected - fallback user needs migration');
+            return NextResponse.json({ 
+                error: 'Please run the migration script to assign your data to your user account before making changes.' 
+            }, { status: 403 });
+        }
+
         const appointments = await request.json();
+        console.log('[Appointments API POST] Received appointments:', appointments.length);
+        console.log('[Appointments API POST] First appointment sample:', appointments[0]);
 
-        // This is tricky because the app sends a list of "Appointment" objects which contain clientName but not clientId directly usually
-        // But let's see if we can map it.
-        // Actually, the app's "Appointment" interface has: id, clientName, date, time, duration...
-        // It doesn't seem to have clientId. This is a flaw in the original local-only design (linking by name?).
+        // Fetch clients for this user only to map names to IDs
+        const { data: clients } = await supabase
+            .from('clients')
+            .select('id, name')
+            .eq('user_id', userId);
 
-        // To save to DB properly, we need client_id.
-        // We might need to look up client_id by name, which is risky.
-        // OR we just save what we can.
-
-        // Ideally, we should update the frontend to include clientId in appointments.
-        // For now, let's try to fetch all clients to map names to IDs.
-
-        const { data: clients } = await supabase.from('clients').select('id, name');
-
-        const records = appointments.map((apt: any) => {
+        console.log('[Appointments API POST] Available clients:', clients?.length || 0);
+        
+        const records = appointments.map((apt: any, index: number) => {
             const client = clients?.find(c => c.name === apt.clientName);
+            console.log(`[Appointments API POST] Processing appointment ${index + 1}/${appointments.length}:`, {
+                id: apt.id,
+                clientName: apt.clientName,
+                clientFound: !!client,
+                clientId: client?.id,
+                date: apt.date,
+                time: apt.time,
+                type: apt.type
+            });
             
             // Combine date and time into a full ISO timestamp
             // If date already includes time (has 'T'), use it as-is
@@ -154,6 +272,7 @@ export async function POST(request: Request) {
                 const timeStr = apt.time.length === 5 ? `${apt.time}:00` : apt.time; // Ensure HH:MM:SS format
                 dateValue = `${apt.date}T${timeStr}`;
             }
+            console.log(`[Appointments API POST] Appointment ${index + 1} - Final dateValue:`, dateValue);
             
             // Store fee, currency, and paymentStatus in metadata JSONB
             const metadata: any = {};
@@ -165,10 +284,11 @@ export async function POST(request: Request) {
             const record: any = {
                 id: apt.id,
                 client_id: client?.id || null, // If we can't find client, it might be orphaned
+                user_id: userId, // Always include user_id
                 date: dateValue, // Full ISO timestamp with time component
-                duration: apt.duration,
-                type: apt.type,
-                notes: apt.notes,
+                duration: apt.duration || 60, // Default duration if not provided
+                type: apt.type || 'Therapy Session', // Default type if not provided
+                notes: apt.notes || '',
                 updated_at: new Date().toISOString()
             };
 
@@ -177,19 +297,31 @@ export async function POST(request: Request) {
                 record.metadata = metadata;
             }
 
+            console.log(`[Appointments API POST] Appointment ${index + 1} - Final record:`, record);
             return record;
         });
 
-        const { error } = await supabase
+        console.log('[Appointments API POST] Total records to upsert:', records.length);
+        console.log('[Appointments API POST] Sample record:', records[0]);
+        
+        const { data, error } = await supabase
             .from('sessions')
-            .upsert(records);
+            .upsert(records)
+            .select();
 
         if (error) {
-            console.error('Supabase error saving appointments:', error);
+            console.error('[Appointments API POST] Supabase error saving appointments:', error);
+            console.error('[Appointments API POST] Error code:', error.code);
+            console.error('[Appointments API POST] Error message:', error.message);
+            console.error('[Appointments API POST] Error details:', error.details);
+            console.error('[Appointments API POST] Error hint:', error.hint);
             throw error;
         }
 
-        return NextResponse.json({ success: true });
+        console.log('[Appointments API POST] Upsert successful. Records affected:', data?.length || 0);
+        console.log('[Appointments API POST] Sample saved record:', data?.[0]);
+        
+        return NextResponse.json({ success: true, recordsAffected: data?.length || 0 });
     } catch (error) {
         console.error('Error saving appointments:', error);
         return NextResponse.json({ error: 'Failed to save appointments' }, { status: 500 });
@@ -198,6 +330,20 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
     try {
+        // Check authentication (handles both new and fallback methods)
+        const { userId, isFallback } = await checkAuthentication(request);
+        
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        
+        // Reject write operations for fallback users (they need to run migration)
+        if (isFallback) {
+            return NextResponse.json({ 
+                error: 'Please run the migration script to assign your data to your user account before making changes.' 
+            }, { status: 403 });
+        }
+
         const body = await request.json();
         const { id, paymentStatus, fee, currency, paymentMethod } = body;
 
@@ -205,11 +351,12 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'Appointment ID is required' }, { status: 400 });
         }
 
-        // Get existing session to preserve metadata
+        // Get existing session to preserve metadata (and verify ownership)
         const { data: existingSession, error: fetchError } = await supabase
             .from('sessions')
             .select('*')
             .eq('id', id)
+            .eq('user_id', userId) // Ensure user owns this session
             .single();
 
         if (fetchError) {
@@ -284,6 +431,20 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
     try {
+        // Check authentication (handles both new and fallback methods)
+        const { userId, isFallback } = await checkAuthentication(request);
+        
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        
+        // Reject write operations for fallback users (they need to run migration)
+        if (isFallback) {
+            return NextResponse.json({ 
+                error: 'Please run the migration script to assign your data to your user account before making changes.' 
+            }, { status: 403 });
+        }
+
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
@@ -294,7 +455,8 @@ export async function DELETE(request: Request) {
         const { error } = await supabase
             .from('sessions')
             .delete()
-            .eq('id', id);
+            .eq('id', id)
+            .eq('user_id', userId); // Ensure user owns this session
 
         if (error) {
             console.error('Supabase error deleting appointment:', error);

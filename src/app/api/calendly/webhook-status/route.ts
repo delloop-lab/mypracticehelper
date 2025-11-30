@@ -3,15 +3,18 @@ import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
         // Check environment variables
         const webhookKey = process.env.CALENDLY_WEBHOOK_SIGNING_KEY;
         const hasWebhookKey = !!webhookKey;
 
-        // Get webhook URL (construct from request)
+        // Get webhook URL (use request headers to detect actual domain)
+        const host = request.headers.get('host') || '';
+        const protocol = request.headers.get('x-forwarded-proto') || 'https';
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
-                       process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+                       (host ? `${protocol}://${host}` : null) ||
+                       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
                        'https://your-app.vercel.app';
         const webhookUrl = `${baseUrl}/api/calendly/webhook`;
 

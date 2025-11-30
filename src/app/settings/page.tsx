@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, ExternalLink } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, Plus, Trash2, Edit, FileText, ClipboardCheck } from "lucide-react";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
@@ -68,15 +69,95 @@ export default function SettingsPage() {
     const [backupMessage, setBackupMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [baseUrl, setBaseUrl] = useState<string>("");
     const [userEmail, setUserEmail] = useState<string>("");
+    const [editedEmail, setEditedEmail] = useState<string>("");
+    const [emailSaveStatus, setEmailSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [firstName, setFirstName] = useState<string>("");
     const [lastName, setLastName] = useState<string>("");
     const [testEmailAddress, setTestEmailAddress] = useState<string>("");
     const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
     const [testEmailMessage, setTestEmailMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
+    const [customReminderTemplates, setCustomReminderTemplates] = useState<any[]>([]);
+    const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+    const [deleteAppointmentTypeConfirm, setDeleteAppointmentTypeConfirm] = useState<{ isOpen: boolean; index: number | null; name: string }>({ isOpen: false, index: null, name: "" });
+    const [newTemplateTitle, setNewTemplateTitle] = useState("");
+    const [newTemplateDescription, setNewTemplateDescription] = useState("");
+    const [selectedTemplateType, setSelectedTemplateType] = useState<string>("");
+    const [isAddingTemplate, setIsAddingTemplate] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<any>(null);
+    const [editTemplateTitle, setEditTemplateTitle] = useState("");
+    const [editTemplateDescription, setEditTemplateDescription] = useState("");
 
     useEffect(() => {
         loadSettings();
+        // Load custom reminder templates
+        const loadTemplates = async () => {
+            setIsLoadingTemplates(true);
+            try {
+                const response = await fetch('/api/custom-reminder-templates');
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Check if default templates exist, if not create them
+                    const hasNewClientForm = data.some((t: any) => 
+                        t.condition_type === 'new_client_form' || 
+                        t.title?.toLowerCase().includes('new client form')
+                    );
+                    const hasSessionNotes = data.some((t: any) => 
+                        t.condition_type === 'session_notes' || 
+                        t.title?.toLowerCase().includes('session') && t.title?.toLowerCase().includes('note')
+                    );
+                    
+                    // Create default templates if they don't exist
+                    const templatesToCreate = [];
+                    if (!hasNewClientForm) {
+                        templatesToCreate.push({
+                            title: "New Client Form Required",
+                            description: "Remind user to have New Client Forms ready for new clients to sign",
+                            conditionType: 'new_client_form',
+                            conditionConfig: { field: 'new_client_form_signed', value: false },
+                            frequency: 'daily',
+                            isEnabled: true
+                        });
+                    }
+                    if (!hasSessionNotes) {
+                        templatesToCreate.push({
+                            title: "Session Awaiting Notes",
+                            description: "Remind user about past sessions that need clinical documentation",
+                            conditionType: 'session_notes',
+                            conditionConfig: { checkPastSessions: true, requireNotes: true },
+                            frequency: 'daily',
+                            isEnabled: true
+                        });
+                    }
+                    
+                    // Create missing templates
+                    for (const template of templatesToCreate) {
+                        try {
+                            const createResponse = await fetch('/api/custom-reminder-templates', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(template)
+                            });
+                            if (createResponse.ok) {
+                                const newTemplate = await createResponse.json();
+                                data.push(newTemplate);
+                            }
+                        } catch (error) {
+                            console.error('Error creating default template:', error);
+                        }
+                    }
+                    
+                    setCustomReminderTemplates(data);
+                }
+            } catch (error) {
+                console.error('Error loading templates:', error);
+            } finally {
+                setIsLoadingTemplates(false);
+            }
+        };
+        loadTemplates();
+        
         if (typeof window !== "undefined") {
             setBaseUrl(window.location.origin);
             // Get user email from localStorage or cookie
@@ -84,6 +165,7 @@ export default function SettingsPage() {
                          document.cookie.split('; ').find(row => row.startsWith('userEmail='))?.split('=')[1] || 
                          "";
             setUserEmail(email);
+            setEditedEmail(email);
             
             // Extract name from email or use default
             if (email === "claire@claireschillaci.com") {
@@ -108,9 +190,16 @@ export default function SettingsPage() {
 
     const loadSettings = async () => {
         try {
-            const response = await fetch('/api/settings');
+            console.log('[Settings] loadSettings called - fetching from API');
+            const response = await fetch(`/api/settings?t=${Date.now()}`); // Add cache-busting
+            console.log('[Settings] loadSettings response status:', response.status);
+            console.log('[Settings] loadSettings response ok:', response.ok);
+            
             if (response.ok) {
                 const data = await response.json();
+                console.log('[Settings] loadSettings received data');
+                console.log('[Settings] loadSettings appointment types count:', data.appointmentTypes?.length || 0);
+                console.log('[Settings] loadSettings appointment types:', data.appointmentTypes);
                 // Ensure reminderEmailTemplate has default values if missing
                 if (!data.reminderEmailTemplate) {
                     data.reminderEmailTemplate = {
@@ -168,7 +257,10 @@ This is an automated reminder. Please do not reply to this email.
 Add this email to your whitelist to ensure it arrives in your inbox safely next time.`,
                     };
                 }
+                console.log('[Settings] loadSettings setting state with data');
+                console.log('[Settings] loadSettings data.appointmentTypes:', data.appointmentTypes);
                 setSettings(data);
+                console.log('[Settings] loadSettings state updated');
             }
         } catch (error) {
             console.error('Error loading settings:', error);
@@ -176,28 +268,102 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
     };
 
     const saveSettings = async () => {
+        console.log('[Settings] saveSettings called');
+        console.log('[Settings] Current settings to save:', settings);
+        console.log('[Settings] Appointment types to save:', settings.appointmentTypes);
+        console.log('[Settings] Appointment types count:', settings.appointmentTypes.length);
+        
         setSaveStatus("saving");
         try {
+            const requestBody = JSON.stringify(settings);
+            console.log('[Settings] Request body length:', requestBody.length);
+            console.log('[Settings] Request body preview:', requestBody.substring(0, 500));
+            
             const response = await fetch('/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings),
+                body: requestBody,
             });
 
+            console.log('[Settings] API Response status:', response.status);
+            console.log('[Settings] API Response ok:', response.ok);
+
             if (response.ok) {
+                const responseData = await response.json().catch(() => ({}));
+                console.log('[Settings] API Response data:', responseData);
+                console.log('[Settings] Save successful!');
                 setSaveStatus("saved");
                 setTimeout(() => setSaveStatus("idle"), 2000);
+            } else {
+                // Handle error response
+                const errorData = await response.json().catch(() => ({ error: 'Failed to save settings' }));
+                console.error('[Settings] API Error Response:', errorData);
+                console.error('[Settings] Response status:', response.status);
+                console.error('[Settings] Response statusText:', response.statusText);
+                alert(`Failed to save settings: ${errorData.error || 'Unknown error'}\n\n${errorData.requiresMigration ? 'Please run the database migration to create your user account.' : ''}`);
+                setSaveStatus("idle");
             }
         } catch (error) {
-            console.error('Error saving settings:', error);
+            console.error('[Settings] Exception caught:', error);
+            console.error('[Settings] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+            console.error('[Settings] Error message:', error instanceof Error ? error.message : String(error));
+            console.error('[Settings] Error stack:', error instanceof Error ? error.stack : 'No stack');
+            alert(`Failed to save settings: ${error instanceof Error ? error.message : 'Unknown error'}`);
             setSaveStatus("idle");
         }
     };
 
+    const handleSaveEmail = async () => {
+        if (!editedEmail || editedEmail === userEmail) return;
+        
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(editedEmail)) {
+            setEmailSaveStatus("error");
+            setTimeout(() => setEmailSaveStatus("idle"), 3000);
+            return;
+        }
+
+        setEmailSaveStatus("saving");
+        try {
+            // Update cookies
+            const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
+            document.cookie = `userEmail=${encodeURIComponent(editedEmail)}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
+            
+            // Update localStorage
+            localStorage.setItem("userEmail", editedEmail);
+            
+            // Store allowed emails list (for login validation)
+            const allowedEmails = JSON.parse(localStorage.getItem("allowedEmails") || "[]");
+            if (!allowedEmails.includes(editedEmail)) {
+                allowedEmails.push(editedEmail);
+                localStorage.setItem("allowedEmails", JSON.stringify(allowedEmails));
+            }
+            
+            // Update state
+            setUserEmail(editedEmail);
+            setEmailSaveStatus("saved");
+            setTimeout(() => setEmailSaveStatus("idle"), 3000);
+        } catch (error) {
+            console.error('Error saving email:', error);
+            setEmailSaveStatus("error");
+            setTimeout(() => setEmailSaveStatus("idle"), 3000);
+        }
+    };
+
     const updateAppointmentType = (index: number, field: keyof AppointmentTypeSettings, value: any) => {
+        console.log('[Settings] updateAppointmentType called:', { index, field, value });
+        console.log('[Settings] Current appointmentTypes:', settings.appointmentTypes);
+        
         const updated = [...settings.appointmentTypes];
+        const oldValue = updated[index][field];
         updated[index] = { ...updated[index], [field]: value };
+        
+        console.log('[Settings] Updated appointmentTypes:', updated);
+        console.log('[Settings] Change:', { index, field, oldValue, newValue: value });
+        
         setSettings({ ...settings, appointmentTypes: updated });
+        console.log('[Settings] State updated. New settings.appointmentTypes:', settings.appointmentTypes);
     };
 
     const addAppointmentType = () => {
@@ -341,15 +507,38 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                             </p>
                             <div className="space-y-2">
                                 <Label htmlFor="userEmail">Email</Label>
-                                <Input
-                                    id="userEmail"
-                                    type="email"
-                                    readOnly
-                                    value={userEmail}
-                                    className="bg-muted"
-                                />
+                                <div className="flex gap-2">
+                                    <Input
+                                        id="userEmail"
+                                        type="email"
+                                        value={editedEmail}
+                                        onChange={(e) => setEditedEmail(e.target.value)}
+                                        placeholder="your@email.com"
+                                        className="flex-1"
+                                    />
+                                    <Button
+                                        type="button"
+                                        onClick={handleSaveEmail}
+                                        disabled={editedEmail === userEmail || emailSaveStatus === "saving" || !editedEmail}
+                                        variant={editedEmail === userEmail ? "outline" : "default"}
+                                    >
+                                        {emailSaveStatus === "saving" ? "Saving..." : emailSaveStatus === "saved" ? "Saved!" : "Save"}
+                                    </Button>
+                                </div>
+                                {emailSaveStatus === "saved" && (
+                                    <p className="text-xs text-green-600 flex items-center gap-1">
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        Email updated successfully. You can now log in with your new email address.
+                                    </p>
+                                )}
+                                {emailSaveStatus === "error" && (
+                                    <p className="text-xs text-red-600 flex items-center gap-1">
+                                        <AlertCircle className="h-3 w-3" />
+                                        Failed to update email. Please try again.
+                                    </p>
+                                )}
                                 <p className="text-xs text-muted-foreground">
-                                    Your email address used for login
+                                    Your email address used for login. You can change this and use the new email to log in.
                                 </p>
                             </div>
                             <div className="space-y-2">
@@ -557,23 +746,6 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                     Enter your Calendly scheduling page URL. This will be used for client booking links.
                                 </p>
                             </div>
-                            <div className="pt-4 border-t space-y-2">
-                                <Link href="/webhook-setup">
-                                    <Button variant="default" className="w-full">
-                                        <ExternalLink className="mr-2 h-4 w-4" />
-                                        Setup Calendly Webhook
-                                    </Button>
-                                </Link>
-                                <Link href="/webhook-status">
-                                    <Button variant="outline" className="w-full">
-                                        <ExternalLink className="mr-2 h-4 w-4" />
-                                        Check Webhook Status & Debug
-                                    </Button>
-                                </Link>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                    Use the setup tool to configure webhooks, or check status to view recent activity.
-                                </p>
-                            </div>
                         </CardContent>
                     </Card>
 
@@ -642,14 +814,24 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                 })
                                 .map(({ type, originalIndex }, displayIndex) => (
                                 <motion.div
-                                    key={`${displayIndex}-${type.name}`}
+                                    key={`appointment-type-${originalIndex}`}
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: displayIndex * 0.05 }}
                                     className="p-4 rounded-lg border bg-card"
                                 >
                                     <div className="flex items-center justify-between mb-3">
-                                        <h4 className="font-semibold">{type.name}</h4>
+                                        <div className="flex-1 mr-4">
+                                            <Label htmlFor={`name-${displayIndex}`} className="text-xs mb-1 block">
+                                                Name
+                                            </Label>
+                                            <Input
+                                                id={`name-${displayIndex}`}
+                                                value={type.name}
+                                                onChange={(e) => updateAppointmentType(originalIndex, 'name', e.target.value)}
+                                                className="font-semibold"
+                                            />
+                                        </div>
                                         <div className="flex items-center gap-3">
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input
@@ -664,12 +846,16 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                 variant="ghost"
                                                 size="sm"
                                                 onClick={() => {
-                                                    const updated = settings.appointmentTypes.filter((_, i) => i !== originalIndex);
-                                                    setSettings({ ...settings, appointmentTypes: updated });
+                                                    // Prevent deletion if only one appointment type remains
+                                                    if (settings.appointmentTypes.length <= 1) {
+                                                        alert('You must have at least one appointment type. Please add another before deleting this one.');
+                                                        return;
+                                                    }
+                                                    setDeleteAppointmentTypeConfirm({ isOpen: true, index: originalIndex, name: type.name });
                                                 }}
                                                 className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                                             >
-                                                ×
+                                                <Trash2 className="h-4 w-4" />
                                             </Button>
                                         </div>
                                     </div>
@@ -1115,6 +1301,377 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                             </Button>
                         </CardContent>
                     </Card>
+
+                    {/* Custom Reminder Templates */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <AlertCircle className="h-5 w-5 text-orange-500" />
+                                Custom Reminder Templates
+                            </CardTitle>
+                            <CardDescription>
+                                Create custom reminders that check conditions daily and remind you until completed.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            {/* Predefined Template Choices */}
+                            <div className="space-y-3">
+                                <h4 className="font-medium text-sm">Quick Start - Choose a Template</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {/* Session Awaiting Notes Template */}
+                                    <Card 
+                                        className={`cursor-pointer hover:border-primary transition-colors ${
+                                            selectedTemplateType === 'session_notes' ? 'border-primary bg-primary/5' : ''
+                                        }`}
+                                        onClick={() => {
+                                            if (selectedTemplateType === 'session_notes') {
+                                                setSelectedTemplateType("");
+                                                setIsAddingTemplate(false);
+                                            } else {
+                                                setSelectedTemplateType('session_notes');
+                                                setIsAddingTemplate(true);
+                                                setNewTemplateTitle("Session Awaiting Notes");
+                                                setNewTemplateDescription("Remind user about past sessions that need clinical documentation");
+                                            }
+                                        }}
+                                    >
+                                        <CardContent className="p-4">
+                                            <div className="flex items-start gap-3">
+                                                <FileText className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+                                                <div className="flex-1">
+                                                    <h5 className="font-semibold text-sm">Session Awaiting Notes</h5>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        Reminds you about past sessions that need clinical documentation
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+
+                                    {/* New Client Form Template */}
+                                    <Card 
+                                        className={`cursor-pointer hover:border-primary transition-colors ${
+                                            selectedTemplateType === 'new_client_form' ? 'border-primary bg-primary/5' : ''
+                                        }`}
+                                        onClick={() => {
+                                            if (selectedTemplateType === 'new_client_form') {
+                                                setSelectedTemplateType("");
+                                                setIsAddingTemplate(false);
+                                            } else {
+                                                setSelectedTemplateType('new_client_form');
+                                                setIsAddingTemplate(true);
+                                                setNewTemplateTitle("New Client Form Required");
+                                                setNewTemplateDescription("Remind user to have New Client Forms ready for new clients to sign");
+                                            }
+                                        }}
+                                    >
+                                        <CardContent className="p-4">
+                                            <div className="flex items-start gap-3">
+                                                <ClipboardCheck className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                                                <div className="flex-1">
+                                                    <h5 className="font-semibold text-sm">New Client Form Required</h5>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        Reminds you about clients who haven't signed their New Client Forms
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                </div>
+                            </div>
+
+                            {/* Existing Templates */}
+                            {isLoadingTemplates ? (
+                                <p className="text-sm text-muted-foreground">Loading templates...</p>
+                            ) : customReminderTemplates.length > 0 ? (
+                                <div className="space-y-3">
+                                    <h4 className="font-medium text-sm">Your Active Reminders</h4>
+                                    <div className="space-y-2">
+                                        {customReminderTemplates.map((template) => (
+                                            <div
+                                                key={template.id}
+                                                className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                                            >
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <h4 className="font-medium">{template.title}</h4>
+                                                        {template.is_enabled ? (
+                                                            <span className="px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+                                                                Active
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded">
+                                                                Disabled
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {template.description && (
+                                                        <p className="text-sm text-muted-foreground mt-1">
+                                                            {template.description}
+                                                        </p>
+                                                    )}
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        Frequency: {template.frequency || 'daily'}
+                                                    </p>
+                                                </div>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => {
+                                                        setEditingTemplate(template);
+                                                        setEditTemplateTitle(template.title);
+                                                        setEditTemplateDescription(template.description || "");
+                                                        setIsAddingTemplate(false);
+                                                        setSelectedTemplateType("");
+                                                    }}
+                                                >
+                                                    <Edit className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        const newStatus = !template.is_enabled;
+                                                        try {
+                                                            const response = await fetch('/api/custom-reminder-templates', {
+                                                                method: 'PUT',
+                                                                headers: { 'Content-Type': 'application/json' },
+                                                                body: JSON.stringify({
+                                                                    id: template.id,
+                                                                    isEnabled: newStatus
+                                                                })
+                                                            });
+                                                            if (response.ok) {
+                                                                setCustomReminderTemplates(customReminderTemplates.map(t =>
+                                                                    t.id === template.id ? { ...t, is_enabled: newStatus } : t
+                                                                ));
+                                                            }
+                                                        } catch (error) {
+                                                            console.error('Error updating template:', error);
+                                                        }
+                                                    }}
+                                                >
+                                                    {template.is_enabled ? 'Disable' : 'Enable'}
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={async () => {
+                                                        if (confirm('Are you sure you want to delete this reminder template?')) {
+                                                            try {
+                                                                const response = await fetch(`/api/custom-reminder-templates?id=${template.id}`, {
+                                                                    method: 'DELETE'
+                                                                });
+                                                                if (response.ok) {
+                                                                    setCustomReminderTemplates(customReminderTemplates.filter(t => t.id !== template.id));
+                                                                }
+                                                            } catch (error) {
+                                                                console.error('Error deleting template:', error);
+                                                            }
+                                                        }
+                                                    }}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {/* Edit Template Form */}
+                            {editingTemplate && (
+                                <div className="pt-4 border-t space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="font-medium">Edit Reminder</h4>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                setEditingTemplate(null);
+                                                setEditTemplateTitle("");
+                                                setEditTemplateDescription("");
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="editTemplateTitle">Reminder Title</Label>
+                                            <Input
+                                                id="editTemplateTitle"
+                                                value={editTemplateTitle}
+                                                onChange={(e) => setEditTemplateTitle(e.target.value)}
+                                                placeholder="Enter reminder title"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="editTemplateDescription">Description</Label>
+                                            <Textarea
+                                                id="editTemplateDescription"
+                                                value={editTemplateDescription}
+                                                onChange={(e) => setEditTemplateDescription(e.target.value)}
+                                                placeholder="Describe what this reminder will do"
+                                                rows={3}
+                                            />
+                                        </div>
+                                        <Button
+                                            onClick={async () => {
+                                                if (!editTemplateTitle.trim()) {
+                                                    alert('Please enter a title');
+                                                    return;
+                                                }
+                                                try {
+                                                    const response = await fetch('/api/custom-reminder-templates', {
+                                                        method: 'PUT',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({
+                                                            id: editingTemplate.id,
+                                                            title: editTemplateTitle,
+                                                            description: editTemplateDescription
+                                                        })
+                                                    });
+                                                    if (response.ok) {
+                                                        const updatedTemplate = await response.json();
+                                                        setCustomReminderTemplates(customReminderTemplates.map(t =>
+                                                            t.id === editingTemplate.id ? updatedTemplate : t
+                                                        ));
+                                                        setEditingTemplate(null);
+                                                        setEditTemplateTitle("");
+                                                        setEditTemplateDescription("");
+                                                    } else {
+                                                        const errorData = await response.json().catch(() => ({}));
+                                                        alert(errorData.error || 'Failed to update template');
+                                                    }
+                                                } catch (error) {
+                                                    console.error('Error updating template:', error);
+                                                    alert('Error updating template');
+                                                }
+                                            }}
+                                            disabled={!editTemplateTitle.trim()}
+                                            className="w-full"
+                                        >
+                                            <Save className="h-4 w-4 mr-2" />
+                                            Save Changes
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Add New Template Form */}
+                            {isAddingTemplate && !editingTemplate && (
+                                <div className="pt-4 border-t space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="font-medium">Create Reminder from Template</h4>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => {
+                                                setIsAddingTemplate(false);
+                                                setSelectedTemplateType("");
+                                                setNewTemplateTitle("");
+                                                setNewTemplateDescription("");
+                                            }}
+                                        >
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="newTemplateTitle">Reminder Title</Label>
+                                            <Input
+                                                id="newTemplateTitle"
+                                                value={newTemplateTitle}
+                                                onChange={(e) => setNewTemplateTitle(e.target.value)}
+                                                placeholder="Enter reminder title"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="newTemplateDescription">Description</Label>
+                                            <Textarea
+                                                id="newTemplateDescription"
+                                                value={newTemplateDescription}
+                                                onChange={(e) => setNewTemplateDescription(e.target.value)}
+                                                placeholder="Describe what this reminder will do"
+                                                rows={3}
+                                            />
+                                        </div>
+                                        <Button
+                                            onClick={async () => {
+                                                if (!newTemplateTitle.trim()) {
+                                                    alert('Please enter a title');
+                                                    return;
+                                                }
+                                                try {
+                                                    let conditionType = 'new_client_form';
+                                                    let conditionConfig: any = { field: 'new_client_form_signed', value: false };
+                                                    
+                                                    if (selectedTemplateType === 'session_notes') {
+                                                        conditionType = 'session_notes';
+                                                        conditionConfig = { checkPastSessions: true, requireNotes: true };
+                                                    }
+                                                    
+                                                    const response = await fetch('/api/custom-reminder-templates', {
+                                                        method: 'POST',
+                                                        headers: { 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({
+                                                            title: newTemplateTitle,
+                                                            description: newTemplateDescription,
+                                                            conditionType: conditionType,
+                                                            conditionConfig: conditionConfig,
+                                                            frequency: 'daily',
+                                                            isEnabled: true
+                                                        })
+                                                    });
+                                                    if (response.ok) {
+                                                        const newTemplate = await response.json();
+                                                        setCustomReminderTemplates([...customReminderTemplates, newTemplate]);
+                                                        setNewTemplateTitle("");
+                                                        setNewTemplateDescription("");
+                                                        setIsAddingTemplate(false);
+                                                        setSelectedTemplateType("");
+                                                    } else {
+                                                        const errorData = await response.json().catch(() => ({}));
+                                                        alert(errorData.error || 'Failed to create template');
+                                                    }
+                                                } catch (error) {
+                                                    console.error('Error creating template:', error);
+                                                    alert('Error creating template');
+                                                }
+                                            }}
+                                            disabled={!newTemplateTitle.trim()}
+                                            className="w-full"
+                                        >
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Create Reminder
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Custom Template (Advanced) */}
+                            {!isAddingTemplate && (
+                                <div className="pt-4 border-t">
+                                    <Button
+                                        variant="outline"
+                                        className="w-full"
+                                        onClick={() => {
+                                            setIsAddingTemplate(true);
+                                            setSelectedTemplateType('custom');
+                                            setNewTemplateTitle("");
+                                            setNewTemplateDescription("");
+                                        }}
+                                    >
+                                        <Plus className="h-4 w-4 mr-2" />
+                                        Create Custom Reminder (Advanced)
+                                    </Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 {/* Backup & Data Tab */}
@@ -1233,6 +1790,43 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                     )}
                 </Button>
             </div>
+
+            {/* Delete Appointment Type Confirmation Dialog */}
+            <DeleteConfirmationDialog
+                open={deleteAppointmentTypeConfirm.isOpen}
+                onOpenChange={(open) => setDeleteAppointmentTypeConfirm({ isOpen: open, index: deleteAppointmentTypeConfirm.index, name: deleteAppointmentTypeConfirm.name })}
+                onConfirm={async () => {
+                    if (deleteAppointmentTypeConfirm.index === null) return;
+                    
+                    const updated = settings.appointmentTypes.filter((_, i) => i !== deleteAppointmentTypeConfirm.index);
+                    setSettings({ ...settings, appointmentTypes: updated });
+                    setDeleteAppointmentTypeConfirm({ isOpen: false, index: null, name: "" });
+                    
+                    // Auto-save after deletion
+                    try {
+                        const updatedSettings = { ...settings, appointmentTypes: updated };
+                        const response = await fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(updatedSettings),
+                        });
+
+                        if (response.ok) {
+                            setSaveStatus("saved");
+                            setTimeout(() => setSaveStatus("idle"), 2000);
+                        } else {
+                            console.error('Failed to save settings after deletion');
+                            alert('Appointment type deleted locally, but failed to save. Please click Save to persist changes.');
+                        }
+                    } catch (error) {
+                        console.error('Error saving settings after deletion:', error);
+                        alert('Appointment type deleted locally, but failed to save. Please click Save to persist changes.');
+                    }
+                }}
+                title="Delete Appointment Type"
+                description={`Are you sure you want to delete "${deleteAppointmentTypeConfirm.name}"? This will remove it from your appointment types. Existing appointments using this type will not be affected.`}
+                itemName={deleteAppointmentTypeConfirm.name}
+            />
         </div>
     );
 }

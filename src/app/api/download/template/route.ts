@@ -3,14 +3,25 @@ import * as XLSX from 'xlsx';
 
 export async function GET() {
     try {
-        const TEMPLATE_HEADERS = ['Name', 'Email', 'Phone', 'Session Fee', 'Currency', 'Notes'];
+        const TEMPLATE_HEADERS = ['First Name', 'Last Name', 'Email', 'Phone', 'DOB', 'AKA'];
         const TEMPLATE_ROWS = [
-            ['John Doe', 'john@example.com', '555-0123', 80, 'EUR', 'Example client notes'],
-            ['Jane Smith', 'jane@example.com', '555-0124', 100, 'USD', 'Another example']
+            ['John', 'Doe', 'john@example.com', '+61 412 900 002', '1985-05-15', 'Johnny'],
+            ['Jane', 'Smith', 'jane@example.com', '+61 412 900 003', '1990-08-22', 'Jane']
         ];
 
         const data = [TEMPLATE_HEADERS, ...TEMPLATE_ROWS];
         const ws = XLSX.utils.aoa_to_sheet(data);
+        
+        // Set column widths for better readability
+        ws['!cols'] = [
+            { wch: 15 }, // First Name
+            { wch: 15 }, // Last Name
+            { wch: 30 }, // Email
+            { wch: 18 }, // Phone
+            { wch: 12 }, // DOB
+            { wch: 15 }  // AKA
+        ];
+        
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Template");
 

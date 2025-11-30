@@ -106,7 +106,7 @@ export function Navbar() {
                 </SheetClose>
                 <SheetClose asChild>
                   <Link href="/session-notes" className="flex items-center py-2 text-lg font-medium">
-                    Session Notes
+                    Sessions
                   </Link>
                 </SheetClose>
                 <SheetClose asChild>

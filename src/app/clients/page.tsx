@@ -24,7 +24,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc } from "lucide-react";
+import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientImportExport } from "@/components/client-import-export";
@@ -73,6 +75,7 @@ interface Client {
     archived?: boolean; // Whether client is archived
     archivedAt?: string; // When client was archived
     createdAt?: string; // Date when client was added
+    newClientFormSigned?: boolean; // Whether new client form has been signed
     // Extended personal/medical fields
     dateOfBirth?: string;
     mailingAddress?: string;
@@ -122,6 +125,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         medicalConditions: "",
         currentMedications: "",
         doctorInfo: { name: "", phone: "" },
+        newClientFormSigned: false,
     });
 
     // Reciprocal Relationship State
@@ -150,7 +154,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         return reciprocalMap[type] || type;
     };
     const [showBulkImport, setShowBulkImport] = useState(false);
-    const [showSearch, setShowSearch] = useState(true); // Default to showing search
+    const [showSearch, setShowSearch] = useState(false); // Hidden by default
     const [searchQuery, setSearchQuery] = useState("");
     const [searchField, setSearchField] = useState<string>("all"); // "all", "name", "email", "phone", "dateAdded", etc.
     const [dateAddedFilter, setDateAddedFilter] = useState<{ from?: string; to?: string }>({});
@@ -392,8 +396,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         try {
             console.log('[Clients Page] Loading clients...', { activeTab });
             
-            // Load clients based on active tab
-            const response = await fetch(activeTab === 'archived' ? '/api/clients?archived=true' : '/api/clients');
+            // Load clients based on active tab with cache-busting and credentials
+            const url = activeTab === 'archived' 
+                ? `/api/clients?archived=true&t=${Date.now()}` 
+                : `/api/clients?t=${Date.now()}`;
+            const response = await fetch(url, {
+                credentials: 'include',
+            });
             const data = response.ok ? await response.json() : [];
             
             console.log(`[Clients Page] ${activeTab === 'archived' ? 'Archived' : 'Active'} clients:`, data.length);
@@ -595,22 +604,36 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                 // Filter notes for this specific session
                 const notesForSession = allNotes.filter((note: any) => {
-                    // For session notes: match by session_id
+                    // For session notes: match by session_id first
                     if (note.session_id === sessionId || note.sessionId === sessionId) {
                         return true;
                     }
                     
+                    // Also match by client ID and date for session notes
+                    const noteClientId = note.clientId || note.client_id;
+                    const sessionClientId = editingClient?.id;
+                    const sessionDate = new Date(session.date).toISOString().split('T')[0];
+                    const noteDate = note.sessionDate ? new Date(note.sessionDate).toISOString().split('T')[0] : null;
+                    
+                    // Match session notes by client ID and date
+                    if (note.source === 'session_note' || !note.source) {
+                        // Match by client ID and date
+                        if (noteClientId && sessionClientId && noteClientId === sessionClientId && noteDate === sessionDate) {
+                            return true;
+                        }
+                        
+                        // Fallback: match by client name and date
+                        if (note.clientName && session.clientName && 
+                            note.clientName.toLowerCase() === session.clientName.toLowerCase() &&
+                            noteDate === sessionDate) {
+                            return true;
+                        }
+                    }
+                    
                     // For recordings: match by client and date
                     if (note.source === 'recording') {
-                        const noteClientId = note.clientId;
-                        const sessionClientId = editingClient?.id;
-                        
                         // Match by client ID first
                         if (noteClientId && sessionClientId && noteClientId === sessionClientId) {
-                            // Try to match by date (session date vs recording date)
-                            const sessionDate = new Date(session.date).toISOString().split('T')[0];
-                            const noteDate = note.sessionDate ? new Date(note.sessionDate).toISOString().split('T')[0] : null;
-                            
                             // If dates match exactly, include it
                             if (noteDate === sessionDate) {
                                 return true;
@@ -631,7 +654,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     return false;
                 });
                 
-                console.log(`Found ${notesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
+                console.log(`[Load Session Notes] Session ID: ${sessionId}, Client: ${session.clientName}, Client ID: ${editingClient?.id}`);
+                console.log(`[Load Session Notes] Total notes available: ${allNotes.length}`);
+                console.log(`[Load Session Notes] Notes for this client:`, allNotes.filter((n: any) => {
+                    const noteClientId = n.clientId || n.client_id;
+                    return noteClientId === editingClient?.id || n.clientName?.toLowerCase() === session.clientName?.toLowerCase();
+                }));
+                console.log(`[Load Session Notes] Found ${notesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
+                console.log(`[Load Session Notes] Matched notes:`, notesForSession);
                 setSessionNotes(notesForSession);
             }
         } catch (error) {
@@ -727,18 +757,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         loadAppointments();
     }, []);
 
-    // Update session count when appointments change and a client is being edited
-    useEffect(() => {
-        if (editingClient) {
-            const actualSessionCount = getClientAppointments(editingClient.name).length;
-            if (formData.sessions !== actualSessionCount) {
-                setFormData(prev => ({
-                    ...prev,
-                    sessions: actualSessionCount
-                }));
-            }
-        }
-    }, [appointments, editingClient]);
+    // Note: Sessions count is now user-editable and won't be auto-updated from appointments
+    // Users can manually set the total number of sessions if needed
 
     const loadAppointments = async () => {
         try {
@@ -833,10 +853,22 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
     const confirmRemoveDocument = () => {
         if (deleteDocumentConfirm.index !== null) {
+            const updatedDocuments = formData.documents?.filter((_, i) => i !== deleteDocumentConfirm.index) || [];
             setFormData(prev => ({
                 ...prev,
-                documents: prev.documents?.filter((_, i) => i !== deleteDocumentConfirm.index) || []
+                documents: updatedDocuments
             }));
+            
+            // Also update the clients array immediately so the counter updates on the card
+            if (editingClient) {
+                const updatedClients = clients.map(c =>
+                    c.id === editingClient.id
+                        ? { ...c, documents: updatedDocuments }
+                        : c
+                );
+                setClients(updatedClients);
+            }
+            
             setDeleteDocumentConfirm({ isOpen: false, index: null });
         }
     };
@@ -950,6 +982,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 medicalConditions: formData.medicalConditions || "",
                 currentMedications: formData.currentMedications || "",
                 doctorInfo: formData.doctorInfo || { name: "", phone: "" },
+                newClientFormSigned: formData.newClientFormSigned || false,
             };
             updatedClientsList = [...clients, savedClient];
         }
@@ -1063,6 +1096,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             medicalConditions: "",
             currentMedications: "",
             doctorInfo: { name: "", phone: "" },
+            newClientFormSigned: false,
         });
         setIsAddDialogOpen(false);
     };
@@ -1073,13 +1107,37 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             return; // Archived clients are view-only in the archived tab
         }
         setEditingClient(client);
-        // Calculate actual session count from appointments
-        const actualSessionCount = getClientAppointments(client.name).length;
+        // Use the stored sessions count from client data, or default to 0
+        // Don't auto-calculate - let user edit it manually if needed
         setFormData({
             ...client,
-            sessions: actualSessionCount // Update with actual count
+            sessions: client.sessions || 0
         });
         setIsAddDialogOpen(true);
+    };
+
+    const handleToggleFormSigned = async (clientId: string, currentStatus: boolean) => {
+        const newStatus = !currentStatus;
+        try {
+            const response = await fetch('/api/clients/toggle-form-signed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientId, signed: newStatus })
+            });
+
+            if (response.ok) {
+                // Update local state
+                setClients(clients.map(c => 
+                    c.id === clientId ? { ...c, newClientFormSigned: newStatus } : c
+                ));
+            } else {
+                console.error('Failed to update form status');
+                alert('Failed to update form status. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error toggling form status:', error);
+            alert('Error updating form status. Please try again.');
+        }
     };
 
     const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, clientId: string | null, action: 'archive' | 'delete' | null }>({ isOpen: false, clientId: null, action: null });
@@ -1209,13 +1267,19 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             try {
                 const response = await fetch(`/api/clients/gdpr-delete?id=${gdprDeleteClientId}`, {
                     method: 'DELETE',
+                    credentials: 'include',
                 });
                 if (response.ok) {
-                    await loadClients();
+                    // Close dialog first
                     setGdprDeleteOpen(false);
                     setGdprDeleteClientId(null);
+                    // Then reload clients with a small delay to ensure deletion is complete
+                    setTimeout(async () => {
+                        await loadClients();
+                    }, 100);
                 } else {
-                    alert('Failed to delete client. Please try again.');
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    alert(`Failed to delete client: ${errorData.error || 'Please try again.'}`);
                 }
             } catch (error) {
                 console.error('Error deleting client:', error);
@@ -1245,6 +1309,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             medicalConditions: "",
             currentMedications: "",
             doctorInfo: { name: "", phone: "" },
+            newClientFormSigned: false,
         });
         // Remove client query parameter from URL to prevent dialog from reopening
         if (searchParams.get('client')) {
@@ -1258,7 +1323,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 <div className="flex-1">
                     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Clients</h1>
                     <p className="text-sm sm:text-base text-muted-foreground mb-4">
-                        Manage your client information and appointments
+                        Manage your clients
                     </p>
                     {/* Tabs for Active/Archived */}
                     <Tabs value={activeTab} onValueChange={(value) => {
@@ -1286,7 +1351,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             Add Client
                         </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col">
                         <DialogHeader>
                             <DialogTitle>
                                 {editingClient ? "Client Details" : "Add New Client"}
@@ -1304,9 +1369,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 <TabsTrigger value="sessions" disabled={!editingClient}>Sessions & Notes</TabsTrigger>
                             </TabsList>
 
-                            <TabsContent value="profile">
-                                <form onSubmit={handleSubmit}>
-                                    <div className="space-y-4 py-4">
+                            <TabsContent value="profile" className="flex flex-col flex-1 min-h-0">
+                                <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+                                    <div className="space-y-4 py-4 flex-1 overflow-y-auto">
                                         {/* Name */}
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
@@ -1607,7 +1672,27 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                         </div>
                                     </div>
-                                    <DialogFooter className="flex sm:justify-between gap-2">
+                                    
+                                    {/* New Client Form Signed */}
+                                    <div className="space-y-2 pt-4 border-t">
+                                        <div className="flex items-center gap-2">
+                                            <Checkbox
+                                                id="newClientFormSigned"
+                                                checked={formData.newClientFormSigned || false}
+                                                onCheckedChange={(checked) => setFormData({ ...formData, newClientFormSigned: checked === true })}
+                                                className="h-4 w-4"
+                                            />
+                                            <Label htmlFor="newClientFormSigned" className="cursor-pointer flex items-center gap-2 text-sm">
+                                                <FileText className="h-4 w-4 text-muted-foreground" />
+                                                <span>New Client Form Signed</span>
+                                            </Label>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground ml-6">
+                                            Check this box when the new client form has been completed and signed. This will stop daily reminders.
+                                        </p>
+                                    </div>
+                                    
+                                    <DialogFooter className="flex sm:justify-between gap-2 mt-2">
                                         {editingClient && (
                                             <div className="flex gap-2">
                                                 {editingClient.archived ? (
@@ -2244,12 +2329,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         </CardContent>
                     </Card>
                 ) : (
-                    <div className={`grid gap-4 transition-all ${
-                        !showSearch && (!showBulkImport || activeTab === 'archived') 
-                            ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6' 
-                            : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
-                    }`}>
-                        {filteredClients.map((client, index) => (
+                    <TooltipProvider>
+                        <div className={`grid gap-4 transition-all ${
+                            !showSearch && (!showBulkImport || activeTab === 'archived') 
+                                ? 'grid-cols-2 md:grid-cols-4 lg:grid-cols-6' 
+                                : 'grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+                        }`}>
+                            {filteredClients.map((client, index) => (
                             <motion.div
                                 key={client.id}
                                 initial={{ opacity: 0, scale: 0.95 }}
@@ -2257,21 +2343,39 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 transition={{ delay: index * 0.05 }}
                             >
                                 <Card
-                                    className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50 group"
+                                    className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50 group relative"
                                     onClick={() => handleEdit(client)}
                                 >
+                                    {/* Warning Icon - Positioned on the right */}
+                                    {!client.newClientFormSigned && (
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div 
+                                                    className="absolute top-2 right-2 z-10"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <AlertTriangle 
+                                                        className="h-4 w-4 text-amber-500 dark:text-amber-400 cursor-help" 
+                                                    />
+                                                </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                                <p>New Client Form not signed</p>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    )}
                                     <CardContent className="px-3 py-1">
                                         <div className="overflow-hidden min-w-0">
                                             <div className="flex items-baseline gap-1.5">
-                                                <p className="font-medium truncate text-sm leading-none">
+                                                <p className="font-medium truncate text-sm leading-none flex-1">
                                                     {client.firstName ? `${client.firstName} ${client.lastName}` : client.name}
                                                 </p>
-                                                {client.preferredName && (
-                                                    <p className="text-[10px] text-muted-foreground truncate shrink-0">
-                                                        "{client.preferredName}"
-                                                    </p>
-                                                )}
                                             </div>
+                                            {client.preferredName && (
+                                                <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                                                    Known as: "{client.preferredName}"
+                                                </p>
+                                            )}
                                             <div className="mt-0.5 space-y-0.5">
                                                 {client.email && (
                                                     <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate">
@@ -2322,7 +2426,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             )}
                                             {/* Stats Row */}
                                             <div className="mt-2 pt-2 border-t flex items-center justify-between text-[10px] text-muted-foreground">
-                                                {(getClientAppointments(client.name).length > 0) ? (
+                                                {((client.sessions || 0) > 0) ? (
                                                     <Link
                                                         href={`/schedule?client=${encodeURIComponent(client.name)}`}
                                                         className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
@@ -2330,7 +2434,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
                                                         <Calendar className="h-3 w-3 text-green-500" />
-                                                        <span>{getClientAppointments(client.name).length}</span>
+                                                        <span>{client.sessions || 0}</span>
                                                     </Link>
                                                 ) : (
                                                     <div
@@ -2388,7 +2492,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 </Card>
                             </motion.div>
                         ))}
-                    </div>
+                        </div>
+                    </TooltipProvider>
                 )
             }
         </div >

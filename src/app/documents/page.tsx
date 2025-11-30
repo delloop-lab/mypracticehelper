@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 
 interface ClientDocument {
     id: string;
@@ -32,6 +33,7 @@ function DocumentsContent() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedClient, setSelectedClient] = useState<string>("all");
     const [sortBy, setSortBy] = useState<SortOption>('date-desc');
+    const [deleteDocumentConfirm, setDeleteDocumentConfirm] = useState<{ isOpen: boolean, document: ClientDocument | null }>({ isOpen: false, document: null });
 
     // Sync client filter from URL
     useEffect(() => {
@@ -114,15 +116,7 @@ function DocumentsContent() {
 
     const saveDocuments = async (updatedDocs: ClientDocument[]) => {
         setDocuments(updatedDocs);
-        try {
-            await fetch('/api/documents', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedDocs),
-            });
-        } catch (error) {
-            console.error('Error saving documents:', error);
-        }
+        // This function is kept for compatibility but documents are now deleted via DELETE endpoint
     };
 
     // Unique client names for filter dropdown
@@ -216,9 +210,37 @@ function DocumentsContent() {
         }
     };
 
-    const handleDelete = (id: string) => {
-        const updated = documents.filter(d => d.id !== id);
-        saveDocuments(updated);
+    const handleDeleteClick = (doc: ClientDocument) => {
+        setDeleteDocumentConfirm({ isOpen: true, document: doc });
+    };
+
+    const confirmDeleteDocument = async () => {
+        const doc = deleteDocumentConfirm.document;
+        if (!doc || !doc.url || !doc.clientName) {
+            console.error('Cannot delete document: missing document, URL, or client name');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/documents?url=${encodeURIComponent(doc.url)}&clientName=${encodeURIComponent(doc.clientName)}`, {
+                method: 'DELETE',
+            });
+
+            if (response.ok) {
+                // Remove from local state and reload documents
+                const updated = documents.filter(d => d.id !== doc.id);
+                setDocuments(updated);
+                // Reload to ensure sync with server
+                await loadDocuments();
+                setDeleteDocumentConfirm({ isOpen: false, document: null });
+            } else {
+                const error = await response.json();
+                alert(`Failed to delete document: ${error.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error deleting document:', error);
+            alert('Failed to delete document. Please try again.');
+        }
     };
 
     return (
@@ -333,7 +355,7 @@ function DocumentsContent() {
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <Button variant="outline" size="icon" onClick={() => handleView(doc)} title="View document"><ExternalLink className="h-4 w-4 text-blue-500" /></Button>
-                                                    <Button variant="outline" size="icon" onClick={() => handleDelete(doc.id)} title="Delete document"><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                                                    <Button variant="outline" size="icon" onClick={() => handleDeleteClick(doc)} title="Delete document"><Trash2 className="h-4 w-4 text-red-500" /></Button>
                                                 </div>
                                             </div>
                                         </CardHeader>
@@ -344,6 +366,18 @@ function DocumentsContent() {
                     </div>
                 )}
             </div>
+
+            {/* Delete Confirmation Dialog */}
+            <DeleteConfirmationDialog
+                open={deleteDocumentConfirm.isOpen}
+                onOpenChange={(open) => {
+                    setDeleteDocumentConfirm({ isOpen: open, document: deleteDocumentConfirm.document });
+                }}
+                onConfirm={confirmDeleteDocument}
+                title="Delete Document"
+                description={`Are you sure you want to delete "${deleteDocumentConfirm.document?.name}"? This will permanently remove the document from ${deleteDocumentConfirm.document?.clientName || "the client"}'s record. This action cannot be undone.`}
+                itemName={deleteDocumentConfirm.document?.name}
+            />
         </div>
     );
 }

@@ -22,21 +22,55 @@ export default function LoginPage() {
         setError("");
         setIsLoading(true);
 
-        // Simple hardcoded authentication
-        if (email === "claire@claireschillaci.com" && password === "22Picnic!") {
-            // Set authentication cookie for 7 days
-            const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
-            document.cookie = `isAuthenticated=true; path=/; max-age=${maxAge}; SameSite=Lax`;
-            document.cookie = `userEmail=${email}; path=/; max-age=${maxAge}; SameSite=Lax`;
+        try {
+            // Try API login first (for database users)
+            const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email: email.trim(), password }),
+            });
 
-            // Also set in localStorage as backup
-            localStorage.setItem("isAuthenticated", "true");
-            localStorage.setItem("userEmail", email);
+            const data = await response.json();
 
-            // Redirect to dashboard
-            router.push("/dashboard");
-        } else {
-            setError("Invalid email or password");
+            if (response.ok && data.success) {
+                // Login successful via API
+                // Cookies are set by the API response
+                // Also set in localStorage for backwards compatibility
+                localStorage.setItem("isAuthenticated", "true");
+                localStorage.setItem("userEmail", data.user.email);
+
+                // Redirect to dashboard
+                setTimeout(() => {
+                    window.location.href = "/dashboard";
+                }, 100);
+            } else {
+                // API login failed - try fallback for backwards compatibility
+                // This allows existing hardcoded login to still work until user is created in DB
+                const correctPassword = "22Picnic!";
+                const originalEmail = "claire@claireschillaci.com";
+                
+                if (email === originalEmail && password === correctPassword) {
+                    // Fallback: Set cookies manually for backwards compatibility
+                    const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
+                    document.cookie = `isAuthenticated=true; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
+                    document.cookie = `userEmail=${encodeURIComponent(email)}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
+                    localStorage.setItem("isAuthenticated", "true");
+                    localStorage.setItem("userEmail", email);
+
+                    setTimeout(() => {
+                        window.location.href = "/dashboard";
+                    }, 100);
+                } else {
+                    // Both API and fallback failed
+                    setError(data.error || "Invalid email or password");
+                    setIsLoading(false);
+                }
+            }
+        } catch (error) {
+            console.error("Login error:", error);
+            setError("An error occurred during login. Please try again.");
             setIsLoading(false);
         }
     };
@@ -73,6 +107,7 @@ export default function LoginPage() {
                                 required
                                 disabled={isLoading}
                                 className="h-10"
+                                autoComplete="email"
                             />
                         </div>
                         <div className="space-y-1.5">
@@ -86,6 +121,7 @@ export default function LoginPage() {
                                     required
                                     disabled={isLoading}
                                     className="h-10 pr-10"
+                                    autoComplete="current-password"
                                 />
                                 <button
                                     type="button"

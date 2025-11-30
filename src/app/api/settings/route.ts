@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { checkAuthentication } from '@/lib/auth';
 
 const DEFAULT_SETTINGS = {
     calendlyUrl: "",
@@ -75,46 +76,201 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
     },
 };
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
-        const { data, error } = await supabase
-            .from('settings')
-            .select('config')
-            .eq('id', 'default')
-            .single();
+        console.log('[Settings API GET] Starting GET request');
+        
+        // Check authentication (handles both new and fallback methods)
+        const { userId, isFallback, userEmail } = await checkAuthentication(request);
+        console.log('[Settings API GET] Authentication check - userId:', userId, 'isFallback:', isFallback, 'userEmail:', userEmail);
+        
+        // If fallback auth, show legacy settings (default or without user_id)
+        if (isFallback && userEmail === 'claire@claireschillaci.com') {
+            console.log('[Settings API GET] Fallback auth detected, showing legacy settings');
+            // Try to get 'default' settings first
+            const { data: defaultData, error: defaultError } = await supabase
+                .from('settings')
+                .select('config')
+                .eq('id', 'default')
+                .single();
 
-        if (error || !data) {
-            console.warn('Settings not found or error, returning defaults:', error);
+            console.log('[Settings API GET] Default settings query result:', { data: defaultData, error: defaultError });
+
+            if (defaultData) {
+                console.log('[Settings API GET] Returning default settings');
+                return NextResponse.json(defaultData.config);
+            }
+
+            // If no default settings, return defaults
+            console.log('[Settings API GET] No default settings found, returning DEFAULT_SETTINGS');
+            return NextResponse.json(DEFAULT_SETTINGS);
+        }
+        
+        if (!userId) {
+            console.error('[Settings API GET] Unauthorized - no userId');
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const settingsId = `user-${userId}`;
+        console.log('[Settings API GET] Looking for settings with user_id:', userId, 'or id:', settingsId);
+
+        // Try to get user-specific settings by user_id first
+        // Use .maybeSingle() or handle array to avoid errors with multiple rows
+        const { data: userSettingsData, error: userError } = await supabase
+            .from('settings')
+            .select('id, user_id, config, updated_at')
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false }); // Get most recent first
+
+        console.log('[Settings API GET] Query by user_id result:', { 
+            dataCount: userSettingsData?.length || 0,
+            error: userError 
+        });
+
+        // Handle duplicate records - use the most recent one
+        let data = null;
+        if (userSettingsData && userSettingsData.length > 0) {
+            // If multiple records found, use the most recent one
+            if (userSettingsData.length > 1) {
+                console.warn(`[Settings API GET] Found ${userSettingsData.length} duplicate settings records for user_id ${userId}. Using most recent.`);
+                // Clean up duplicates in background (don't block the request)
+                supabase
+                    .from('settings')
+                    .delete()
+                    .eq('user_id', userId)
+                    .neq('id', userSettingsData[0].id)
+                    .then(({ error: deleteError }) => {
+                        if (deleteError) {
+                            console.error('[Settings API GET] Error cleaning up duplicates:', deleteError);
+                        } else {
+                            console.log(`[Settings API GET] Cleaned up ${userSettingsData.length - 1} duplicate settings records`);
+                        }
+                    });
+            }
+            data = userSettingsData[0];
+        }
+
+        if (!data) {
+            console.log('[Settings API GET] Settings not found by user_id, trying by id:', settingsId);
+            
+            // Try querying by id as fallback
+            const { data: idData, error: idError } = await supabase
+                .from('settings')
+                .select('id, user_id, config, updated_at')
+                .eq('id', settingsId)
+                .maybeSingle(); // Use maybeSingle to avoid errors
+
+            console.log('[Settings API GET] Query by id result:', { 
+                data: idData ? { id: idData.id, user_id: idData.user_id, hasConfig: !!idData.config, updated_at: idData.updated_at } : null, 
+                error: idError 
+            });
+
+            if (idData && idData.config) {
+                console.log('[Settings API GET] Found settings by id, returning config');
+                console.log('[Settings API GET] Appointment types in loaded config:', idData.config.appointmentTypes?.length || 0);
+                return NextResponse.json(idData.config);
+            }
+
+            // Fallback to 'default' settings for backwards compatibility
+            const { data: defaultData, error: defaultError } = await supabase
+                .from('settings')
+                .select('config')
+                .eq('id', 'default')
+                .maybeSingle();
+
+            console.log('[Settings API GET] Default settings query result:', { data: defaultData, error: defaultError });
+
+            if (defaultData) {
+                console.log('[Settings API GET] Returning default settings');
+                return NextResponse.json(defaultData.config);
+            }
+
+            console.warn('[Settings API GET] Settings not found, returning defaults');
             return NextResponse.json(DEFAULT_SETTINGS);
         }
 
+        console.log('[Settings API GET] Found settings by user_id, returning config');
+        console.log('[Settings API GET] Appointment types in loaded config:', data.config?.appointmentTypes?.length || 0);
+        console.log('[Settings API GET] Sample appointment types:', data.config?.appointmentTypes?.slice(0, 2));
+        
         return NextResponse.json(data.config);
     } catch (error) {
-        console.error('Error reading settings:', error);
+        console.error('[Settings API GET] Exception caught:', error);
+        console.error('[Settings API GET] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+        console.error('[Settings API GET] Error message:', error instanceof Error ? error.message : String(error));
         return NextResponse.json(DEFAULT_SETTINGS);
     }
 }
 
 export async function POST(request: Request) {
     try {
-        const settings = await request.json();
+        console.log('[Settings API POST] Starting POST request');
+        
+        // Check authentication
+        const { userId, isFallback, userEmail } = await checkAuthentication(request);
+        console.log('[Settings API POST] Authentication check - userId:', userId, 'isFallback:', isFallback, 'userEmail:', userEmail);
+        
+        // For fallback auth, we need to create the user first or use a temporary ID
+        // For now, reject saves if user doesn't exist (they need to run migration)
+        if (isFallback) {
+            console.error('[Settings API POST] Rejected - fallback user needs migration');
+            return NextResponse.json({ 
+                error: 'User account not found. Please run the database migration to create your user account.',
+                requiresMigration: true
+            }, { status: 403 });
+        }
+        
+        if (!userId) {
+            console.error('[Settings API POST] Unauthorized - no userId');
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
-        const { error } = await supabase
+        const settings = await request.json();
+        console.log('[Settings API POST] Received settings data');
+        console.log('[Settings API POST] Settings keys:', Object.keys(settings));
+        console.log('[Settings API POST] Appointment types count:', settings.appointmentTypes?.length || 0);
+        console.log('[Settings API POST] Appointment types:', settings.appointmentTypes);
+
+        // Generate a unique ID for user settings (or use user_id as id)
+        const settingsId = `user-${userId}`;
+        console.log('[Settings API POST] Settings ID:', settingsId);
+
+        const upsertData = {
+            id: settingsId,
+            user_id: userId,
+            config: settings,
+            updated_at: new Date().toISOString()
+        };
+        console.log('[Settings API POST] Upsert data prepared:', {
+            id: upsertData.id,
+            user_id: upsertData.user_id,
+            configKeys: Object.keys(upsertData.config),
+            updated_at: upsertData.updated_at
+        });
+
+        const { data, error } = await supabase
             .from('settings')
-            .upsert({
-                id: 'default',
-                config: settings,
-                updated_at: new Date().toISOString()
-            });
+            .upsert(upsertData)
+            .select();
 
         if (error) {
-            console.error('Supabase error saving settings:', error);
+            console.error('[Settings API POST] Supabase error saving settings:', error);
+            console.error('[Settings API POST] Error code:', error.code);
+            console.error('[Settings API POST] Error message:', error.message);
+            console.error('[Settings API POST] Error details:', error.details);
+            console.error('[Settings API POST] Error hint:', error.hint);
             throw error;
         }
 
-        return NextResponse.json({ success: true });
+        console.log('[Settings API POST] Upsert successful. Records affected:', data?.length || 0);
+        console.log('[Settings API POST] Saved settings:', data?.[0]);
+        
+        return NextResponse.json({ success: true, recordsAffected: data?.length || 0 });
     } catch (error) {
-        console.error('Error saving settings:', error);
+        console.error('[Settings API POST] Exception caught:', error);
+        console.error('[Settings API POST] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+        console.error('[Settings API POST] Error message:', error instanceof Error ? error.message : String(error));
+        console.error('[Settings API POST] Error stack:', error instanceof Error ? error.stack : 'No stack');
         return NextResponse.json({ error: 'Failed to save settings' }, { status: 500 });
     }
 }

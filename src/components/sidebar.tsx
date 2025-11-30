@@ -36,7 +36,7 @@ const sidebarItems = [
         color: "text-pink-500",
     },
     {
-        title: "Session Notes",
+        title: "Sessions",
         href: "/session-notes",
         icon: FileText,
         color: "text-green-500",
@@ -66,7 +66,7 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
     // Always use company logo if it's set and not empty, otherwise use default
     // Add cache-busting timestamp to force reload of latest logo
     const logoSrc = useMemo(() => {
-        let src = (companyLogo && companyLogo.trim() !== "") ? companyLogo : "/logo.png";
+        let src = (companyLogo && companyLogo.trim() !== "") ? companyLogo : "/your-logo-here.png";
         if (src.startsWith('http') || src.includes('supabase.co')) {
             // Remove any existing timestamp query params and add a new one with version
             const url = new URL(src);
@@ -91,7 +91,7 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
                             onError={(e) => {
                                 console.error('Sidebar logo failed to load:', logoSrc);
                                 // Fallback to default logo if image fails to load
-                                (e.target as HTMLImageElement).src = "/logo.png";
+                                (e.target as HTMLImageElement).src = "/your-logo-here.png";
                             }}
                             onLoad={() => {
                                 console.log('Sidebar logo loaded successfully:', logoSrc);
@@ -154,38 +154,38 @@ export function Sidebar() {
     const [logoVersion, setLogoVersion] = useState(0); // Version counter to force refresh
     const pathname = usePathname();
 
-    // Fetch company logo from settings and refresh periodically
+    // Fetch company logo from settings (only on mount and when logo-updated event fires)
     useEffect(() => {
         const fetchCompanyLogo = async (forceRefresh: boolean = false) => {
             try {
-                const response = await fetch('/api/settings');
+                const response = await fetch(`/api/settings?t=${Date.now()}`);
                 if (response.ok) {
                     const data = await response.json();
                     // The API returns the config directly, so companyLogo is at the root level
                     const newLogo = (data.companyLogo && data.companyLogo.trim() !== "") ? data.companyLogo : undefined;
                     
-                    // Only update if logo changed or if forcing refresh
-                    if (newLogo !== companyLogo || forceRefresh) {
-                        setCompanyLogo(newLogo);
-                        // Increment version to force image refresh when logo changes
-                        if (forceRefresh || newLogo !== companyLogo) {
-                            setLogoVersion(prev => prev + 1);
-                            console.log('Logo updated, incrementing version. New logo:', newLogo);
+                    setCompanyLogo((currentLogo) => {
+                        // Only update if logo changed or if forcing refresh
+                        if (newLogo !== currentLogo || forceRefresh) {
+                            // Increment version to force image refresh when logo changes
+                            if (forceRefresh || newLogo !== currentLogo) {
+                                setLogoVersion(prev => prev + 1);
+                                console.log('Logo updated, incrementing version. New logo:', newLogo);
+                            }
+                            return newLogo;
                         }
-                    }
+                        return currentLogo;
+                    });
                 }
             } catch (error) {
                 console.error('Error fetching company logo:', error);
             }
         };
         
-        // Fetch immediately
+        // Fetch immediately on mount
         fetchCompanyLogo();
         
-        // Refresh every 2 seconds to catch logo updates quickly
-        const interval = setInterval(() => fetchCompanyLogo(false), 2000);
-        
-        // Listen for custom event when logo is updated
+        // Listen for custom event when logo is updated (no polling needed)
         const handleLogoUpdate = () => {
             console.log('Logo update event received, forcing refresh...');
             fetchCompanyLogo(true);
@@ -193,10 +193,9 @@ export function Sidebar() {
         window.addEventListener('logo-updated', handleLogoUpdate);
         
         return () => {
-            clearInterval(interval);
             window.removeEventListener('logo-updated', handleLogoUpdate);
         };
-    }, [companyLogo]);
+    }, []); // Empty dependency array - only run on mount
 
     // Close mobile menu when route changes
     useEffect(() => {

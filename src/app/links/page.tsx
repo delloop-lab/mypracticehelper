@@ -313,7 +313,7 @@ export default function LinksPage() {
             <div className="flex items-center justify-between mb-8">
                 <div>
                     <h1 className="text-4xl font-bold mb-2">Links</h1>
-                    <p className="text-muted-foreground">Quick access to links you frequently send to clients</p>
+                    <p className="text-muted-foreground">Manage frequently used links</p>
                 </div>
                 <Button onClick={() => handleOpenDialog()} className="bg-green-500 hover:bg-green-600 text-white">
                     <Plus className="h-4 w-4 mr-2" />

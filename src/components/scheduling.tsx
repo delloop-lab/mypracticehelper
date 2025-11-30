@@ -388,7 +388,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     };
 
     const getFilteredAppointments = () => {
-        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const today = now.toISOString().split('T')[0];
         const todayDate = new Date(today);
         todayDate.setHours(0, 0, 0, 0);
 
@@ -397,6 +398,22 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         const filtered = appointments.filter(apt => {
             if (!apt.date) {
                 console.warn('[Scheduling] Appointment missing date:', apt);
+                return false;
+            }
+
+            // Check if appointment has passed
+            // apt.date is already a full ISO timestamp (e.g., "2025-11-25T12:00:00+00:00" or "2025-11-25T12:00:00.000Z")
+            // apt.time is just for display, so we use apt.date directly
+            const aptDateTime = new Date(apt.date);
+            if (isNaN(aptDateTime.getTime())) {
+                console.warn('[Scheduling] Invalid date format:', apt.date);
+                return false;
+            }
+            // Compare dates - if appointment date/time is before now, exclude it
+            // Use getTime() for accurate comparison
+            if (aptDateTime.getTime() < now.getTime()) {
+                // Appointment has passed, exclude it
+                console.log(`[Scheduling] Filtering out past appointment: ${apt.clientName} on ${apt.date} (${aptDateTime.toISOString()} < ${now.toISOString()})`);
                 return false;
             }
 
@@ -415,15 +432,15 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
             if (viewRange === "7days") {
-                // Show appointments from 7 days ago to 7 days ahead
-                return diffDays >= -7 && diffDays <= 7;
+                // Show appointments up to 7 days ahead (already filtered past appointments above)
+                return diffDays <= 7;
             }
             if (viewRange === "30days") {
-                // Show appointments from 30 days ago to 30 days ahead
-                return diffDays >= -30 && diffDays <= 30;
+                // Show appointments up to 30 days ahead (already filtered past appointments above)
+                return diffDays <= 30;
             }
             if (viewRange === "all") {
-                // Show ALL appointments (past and future) - no filtering
+                // Show all future appointments (already filtered past appointments above)
                 return true;
             }
             return false;
@@ -499,19 +516,36 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     };
 
     const handleSaveAppointmentTime = async () => {
-        if (!selectedAppointment || !editedAppointment) return;
+        if (!selectedAppointment || !editedAppointment) {
+            console.log('[Appointment Edit] Missing selectedAppointment or editedAppointment');
+            return;
+        }
+        
+        console.log('[Appointment Edit] Starting save process');
+        console.log('[Appointment Edit] Selected appointment:', {
+            id: selectedAppointment.id,
+            clientName: selectedAppointment.clientName,
+            currentDate: selectedAppointment.date,
+            currentTime: selectedAppointment.time,
+            currentType: selectedAppointment.type
+        });
+        console.log('[Appointment Edit] Edited values:', editedAppointment);
+        
         setBookingError(null);
 
         // Combine date and time into a full ISO timestamp
         const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
         const dateWithTime = `${editedAppointment.date}T${timeStr}`;
+        console.log('[Appointment Edit] Combined date/time:', dateWithTime);
 
         // Check if the edited appointment is in the past
         const appointmentDateTime = new Date(dateWithTime);
         const now = new Date();
+        console.log('[Appointment Edit] Date check - Appointment:', appointmentDateTime, 'Now:', now);
         
         // Compare dates/times (ignore milliseconds)
         if (appointmentDateTime < now) {
+            console.log('[Appointment Edit] ERROR: Cannot reschedule to past');
             setBookingError(
                 `Cannot reschedule appointments to the past. Please select a future date and time.`
             );
@@ -524,6 +558,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             // Allow if it's the same appointment (editing the same slot)
             if (conflictCheck.conflictingAppointment.id !== selectedAppointment.id) {
                 const conflict = conflictCheck.conflictingAppointment;
+                console.log('[Appointment Edit] ERROR: Time conflict detected:', conflict);
                 setBookingError(
                     `Time slot conflicts with existing appointment: ${conflict.clientName} at ${conflict.time} (${conflict.duration} min). Please choose a different time.`
                 );
@@ -531,11 +566,25 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             }
         }
 
-        const updated = appointments.map(apt =>
-            apt.id === selectedAppointment.id
-                ? { ...apt, date: dateWithTime, time: editedAppointment.time, type: editedAppointment.type }
-                : apt
-        );
+        // Update the appointment with new date, time, and type
+        const updated = appointments.map(apt => {
+            if (apt.id === selectedAppointment.id) {
+                // Extract time from dateWithTime for the time field
+                const timeFromDate = new Date(dateWithTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const updatedApt = { 
+                    ...apt, 
+                    date: dateWithTime, // Full ISO timestamp
+                    time: timeFromDate, // HH:MM format for display
+                    type: editedAppointment.type 
+                };
+                console.log('[Appointment Edit] Updated appointment:', updatedApt);
+                return updatedApt;
+            }
+            return apt;
+        });
+
+        console.log('[Appointment Edit] Sending to API - Total appointments:', updated.length);
+        console.log('[Appointment Edit] Updated appointment array:', updated);
 
         try {
             const response = await fetch('/api/appointments', {
@@ -544,15 +593,36 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                 body: JSON.stringify(updated),
             });
 
+            console.log('[Appointment Edit] API Response status:', response.status);
+            console.log('[Appointment Edit] API Response ok:', response.ok);
+
             if (response.ok) {
+                const responseData = await response.json();
+                console.log('[Appointment Edit] API Response data:', responseData);
+                console.log('[Appointment Edit] Save successful, updating local state');
+                
                 setAppointments(updated);
                 setSelectedAppointment({ ...selectedAppointment, date: dateWithTime, time: editedAppointment.time, type: editedAppointment.type });
                 setIsEditingAppointment(false);
                 setEditedAppointment(null);
+                
+                console.log('[Appointment Edit] Reloading appointments from database...');
+                // Reload appointments to ensure sync with database
+                await loadAppointments();
+                console.log('[Appointment Edit] Reload complete');
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to update appointment' }));
+                console.error('[Appointment Edit] API Error Response:', errorData);
+                console.error('[Appointment Edit] Response status:', response.status);
+                console.error('[Appointment Edit] Response statusText:', response.statusText);
+                setBookingError(`Failed to update appointment: ${errorData.error || 'Unknown error'}`);
             }
         } catch (error) {
-            console.error('Error updating appointment:', error);
-            setBookingError('Failed to update appointment. Please try again.');
+            console.error('[Appointment Edit] Exception caught:', error);
+            console.error('[Appointment Edit] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+            console.error('[Appointment Edit] Error message:', error instanceof Error ? error.message : String(error));
+            console.error('[Appointment Edit] Error stack:', error instanceof Error ? error.stack : 'No stack');
+            setBookingError(`Failed to update appointment: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };
 
@@ -938,9 +1008,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                         <Card 
                                             key={appointment.id}
                                             className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
-                                            onClick={() => {
-                                                router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
-                                            }}
+                                            onClick={() => handleViewAppointment(appointment)}
                                         >
                                             <CardContent className="p-2">
                                                 <div className="space-y-0.5">
@@ -1154,11 +1222,12 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                         <Button
                                                             size="sm"
                                                             variant="ghost"
-                                                            onClick={() => {
-                                                                router.push(`/clients?client=${encodeURIComponent(appointment.clientName)}`);
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleViewAppointment(appointment);
                                                             }}
                                                         >
-                                                            View
+                                                            View Details
                                                         </Button>
                                                     </div>
                                                 </CardContent>
@@ -1592,7 +1661,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 </div>
                             )}
 
-                            <div className="flex justify-between items-center pt-4">
+                            <div className="flex justify-between items-center pt-4 border-t">
                                 {isEditingAppointment ? (
                                     <>
                                         <Button
@@ -1614,7 +1683,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                         <Button
                                             variant="destructive"
                                             onClick={() => setIsDeleteConfirmOpen(true)}
+                                            className="flex items-center gap-2"
                                         >
+                                            <span>🗑️</span>
                                             Delete Appointment
                                         </Button>
                                         <div className="flex gap-2">

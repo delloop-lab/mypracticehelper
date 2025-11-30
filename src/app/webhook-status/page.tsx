@@ -343,10 +343,37 @@ export default function WebhookStatusPage() {
                         </div>
 
                         <div>
-                            <p className="font-medium mb-2">4. Check Server Logs</p>
-                            <p className="text-sm text-muted-foreground">
-                                If webhooks are being sent but not working, check your Vercel deployment logs for errors.
-                                Look for lines starting with <code>[Calendly Webhook]</code>.
+                            <p className="font-medium mb-2">4. Verify Calendly Webhook URL</p>
+                            <p className="text-sm text-muted-foreground mb-2">
+                                Make sure your Calendly webhook is configured with this EXACT URL:
+                            </p>
+                            <code className="block p-2 bg-muted rounded text-sm break-all mb-2">
+                                {status.webhook.url}
+                            </code>
+                            <a
+                                href={status.instructions.checkWebhooks}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline text-sm"
+                            >
+                                → Open Calendly Webhooks Dashboard to verify
+                            </a>
+                        </div>
+
+                        <div>
+                            <p className="font-medium mb-2">5. Check Server Logs</p>
+                            <p className="text-sm text-muted-foreground mb-2">
+                                Check your Vercel deployment logs for webhook activity:
+                            </p>
+                            <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-1 ml-2">
+                                <li>Go to Vercel Dashboard → Your Project → Deployments</li>
+                                <li>Click on the latest deployment</li>
+                                <li>Click "Functions" → <code>api/calendly/webhook</code></li>
+                                <li>Look for logs starting with <code>[Calendly Webhook]</code></li>
+                            </ol>
+                            <p className="text-sm text-yellow-700 mt-2 bg-yellow-50 p-2 rounded">
+                                <strong>Tip:</strong> If you see no logs at all, Calendly isn't reaching your endpoint. 
+                                Check that the webhook URL in Calendly matches exactly: <code className="break-all">{status.webhook.url}</code>
                             </p>
                         </div>
                     </CardContent>

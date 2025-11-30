@@ -71,12 +71,65 @@ export default function WebhookSetupPage() {
             const data = await response.json();
 
             if (response.ok) {
-                setWebhooks(data.collection || []);
-                if (data.collection.length === 0) {
+                const webhooksList = data.collection || [];
+                setWebhooks(webhooksList);
+                
+                // Try to fetch signing key from first webhook if we don't have it
+                if (webhooksList.length > 0 && !signingKey) {
+                    const firstWebhook = webhooksList[0];
+                    if (firstWebhook.uri) {
+                        try {
+                            const detailsResponse = await fetch(firstWebhook.uri, {
+                                headers: getHeaders()
+                            });
+                            const detailsData = await detailsResponse.json();
+                            if (detailsData.resource?.signing_key) {
+                                setSigningKey(detailsData.resource.signing_key);
+                                setStatus({ 
+                                    type: 'success', 
+                                    message: '✅ Found signing key from existing webhook!' 
+                                });
+                            }
+                        } catch (e) {
+                            console.log('Could not fetch webhook details:', e);
+                        }
+                    }
+                }
+                
+                if (webhooksList.length === 0) {
                     setStatus({ type: 'success', message: 'No active webhooks found.' });
                 }
             } else {
                 throw new Error(data.message || 'Failed to list webhooks');
+            }
+        } catch (e: any) {
+            setStatus({ type: 'error', message: `Error: ${e.message}` });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchSigningKey = async (webhookUri: string) => {
+        if (!webhookUri) return;
+        
+        setLoading(true);
+        try {
+            const response = await fetch(webhookUri, {
+                headers: getHeaders()
+            });
+            const data = await response.json();
+            
+            if (response.ok && data.resource?.signing_key) {
+                setSigningKey(data.resource.signing_key);
+                setStatus({ 
+                    type: 'success', 
+                    message: '✅ Signing key retrieved!' 
+                });
+            } else {
+                setStatus({ 
+                    type: 'error', 
+                    message: 'Signing key not available in API response. Check Calendly dashboard.' 
+                });
             }
         } catch (e: any) {
             setStatus({ type: 'error', message: `Error: ${e.message}` });
@@ -113,15 +166,37 @@ export default function WebhookSetupPage() {
             const data = await response.json();
 
             if (response.ok) {
-                const signingKeyValue = data.resource?.signing_key || 
-                                       data.collection?.[0]?.signing_key ||
-                                       'Check Calendly dashboard for signing key';
+                // Try to get signing key from response
+                let signingKeyValue = data.resource?.signing_key || 
+                                    data.collection?.[0]?.signing_key;
+                
+                // If not in response, try to fetch webhook details
+                if (!signingKeyValue && data.resource?.uri) {
+                    try {
+                        const detailsResponse = await fetch(data.resource.uri, {
+                            headers: getHeaders()
+                        });
+                        const detailsData = await detailsResponse.json();
+                        signingKeyValue = detailsData.resource?.signing_key;
+                    } catch (e) {
+                        console.log('Could not fetch webhook details:', e);
+                    }
+                }
+                
+                if (!signingKeyValue) {
+                    signingKeyValue = 'Check Calendly dashboard for signing key';
+                    setStatus({ 
+                        type: 'success', 
+                        message: '✅ Webhook created! Signing key not returned - check Calendly dashboard at https://calendly.com/integrations/api_webhooks/webhooks' 
+                    });
+                } else {
+                    setStatus({ 
+                        type: 'success', 
+                        message: '✅ Webhook created successfully!' 
+                    });
+                }
                 
                 setSigningKey(signingKeyValue);
-                setStatus({ 
-                    type: 'success', 
-                    message: '✅ Webhook created successfully!' 
-                });
                 listWebhooks(); // Refresh list
             } else {
                 throw new Error(data.message || JSON.stringify(data));
@@ -363,14 +438,24 @@ export default function WebhookSetupPage() {
                                                 </span>
                                             </div>
                                         </div>
-                                        <Button
-                                            onClick={() => deleteWebhook(hook.uri)}
-                                            variant="destructive"
-                                            size="sm"
-                                            disabled={loading}
-                                        >
-                                            Delete
-                                        </Button>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                onClick={() => fetchSigningKey(hook.uri)}
+                                                variant="outline"
+                                                size="sm"
+                                                disabled={loading}
+                                            >
+                                                Get Key
+                                            </Button>
+                                            <Button
+                                                onClick={() => deleteWebhook(hook.uri)}
+                                                variant="destructive"
+                                                size="sm"
+                                                disabled={loading}
+                                            >
+                                                Delete
+                                            </Button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -395,4 +480,5 @@ export default function WebhookSetupPage() {
         </div>
     );
 }
+
 

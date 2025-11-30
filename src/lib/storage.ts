@@ -3,12 +3,25 @@ import { supabase } from './supabase';
 // Helper to map database fields to app fields if necessary
 // Currently assuming 1:1 mapping for simplicity, but we might need adapters later
 
-export async function getClients(includeArchived: boolean = false) {
-    // First, try to fetch all clients
-    const { data, error } = await supabase
+export async function getClients(includeArchived: boolean = false, userId?: string | null) {
+    // Build query with optional user_id filter
+    let query = supabase
         .from('clients')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*');
+    
+    // Filter by user_id if provided
+    // If userId is provided, show only that user's clients
+    // If userId is null but user is authenticated via fallback, show clients without user_id (migration period)
+    if (userId) {
+        // Show user's clients OR clients without user_id (for migration period)
+        query = query.or(`user_id.eq.${userId},user_id.is.null`);
+    } else {
+        // No userId - show only clients without user_id (legacy data)
+        query = query.is('user_id', null);
+    }
+    
+    // Order by created_at
+    const { data, error } = await query.order('created_at', { ascending: false });
     
     if (error) {
         console.error('[getClients] Error fetching clients:', error);
@@ -104,12 +117,13 @@ export async function getClients(includeArchived: boolean = false) {
             doctorInfo: metadata.doctorInfo || undefined,
             archived: client.archived || false,
             archivedAt: client.archived_at || undefined,
-            createdAt: client.created_at || undefined
+            createdAt: client.created_at || undefined,
+            newClientFormSigned: client.new_client_form_signed || false
         };
     });
 }
 
-export async function saveClients(clients: any[]) {
+export async function saveClients(clients: any[], userId?: string | null) {
     // CRITICAL: DO NOT DELETE CLIENTS - This function should only upsert/update clients
     // Deleting clients based on what's NOT in the list is dangerous and can cause data loss
     // If clients are archived or filtered out, they would be deleted accidentally
@@ -145,6 +159,8 @@ export async function saveClients(clients: any[]) {
             metadata: metadata, // Store as JSONB
             archived: client.archived || false,
             archived_at: client.archivedAt ? new Date(client.archivedAt).toISOString() : null,
+            user_id: userId || client.user_id || null, // Include user_id
+            new_client_form_signed: client.newClientFormSigned || false,
             updated_at: new Date().toISOString()
         };
     });
@@ -159,15 +175,21 @@ export async function saveClients(clients: any[]) {
     }
 }
 
-export async function getRecordings() {
-    // Join with clients to get client name
-    const { data, error } = await supabase
+export async function getRecordings(userId?: string | null) {
+    // Build query with optional user_id filter
+    let query = supabase
         .from('recordings')
         .select(`
             *,
             clients (name)
-        `)
-        .order('created_at', { ascending: false });
+        `);
+    
+    // Filter by user_id if provided (recordings table has user_id column)
+    if (userId) {
+        query = query.eq('user_id', userId);
+    }
+    
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
         console.error('Error fetching recordings:', error);
@@ -234,14 +256,18 @@ export async function getRecordings() {
     });
 }
 
-export async function saveRecordings(recordings: any[]) {
+export async function saveRecordings(recordings: any[], userId?: string | null) {
     // CRITICAL: DO NOT DELETE RECORDINGS - This function should only upsert/update recordings
     // Deleting recordings based on what's NOT in the list is dangerous and can cause data loss
     
     // Only upsert the recordings provided - do NOT delete any recordings
 
-    // Get all clients to map clientName to client_id
-    const { data: allClients } = await supabase.from('clients').select('id, name');
+    // Get all clients for this user to map clientName to client_id
+    let clientQuery = supabase.from('clients').select('id, name');
+    if (userId) {
+        clientQuery = clientQuery.eq('user_id', userId);
+    }
+    const { data: allClients } = await clientQuery;
     
     // Create case-insensitive, trimmed name map (handle duplicates by taking first)
     const clientMap = new Map<string, string>();
@@ -289,6 +315,7 @@ export async function saveRecordings(recordings: any[]) {
         return {
             id: r.id,
             client_id: client_id,
+            user_id: userId || r.user_id || null, // Include user_id
             title: r.title || 'Untitled Recording',
             transcript: transcript,
             audio_url: r.audioURL || r.audioUrl || '', // Handle both audioURL and audioUrl

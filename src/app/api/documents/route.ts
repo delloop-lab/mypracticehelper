@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { saveDocumentFile, getDocuments, saveDocuments } from '@/lib/storage';
+import { saveDocumentFile, getDocuments, saveDocuments, getClients, saveClients } from '@/lib/storage';
+import { checkAuthentication } from '@/lib/auth';
 
 export async function GET() {
     try {
@@ -52,6 +53,75 @@ export async function POST(request: Request) {
     } catch (error) {
         console.error('Error saving document:', error);
         return NextResponse.json({ error: 'Failed to save document' }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: Request) {
+    try {
+        // Check authentication
+        const { userId, isFallback } = await checkAuthentication(request);
+        
+        if (isFallback) {
+            return NextResponse.json({ 
+                error: 'User account not found. Please run the database migration to create your user account.',
+                requiresMigration: true
+            }, { status: 403 });
+        }
+        
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { searchParams } = new URL(request.url);
+        const documentUrl = searchParams.get('url');
+        const clientName = searchParams.get('clientName');
+
+        if (!documentUrl) {
+            return NextResponse.json({ error: 'Document URL is required' }, { status: 400 });
+        }
+
+        // Get all clients
+        const clients = await getClients(false, userId);
+        
+        // Find the client with this document and remove it
+        let found = false;
+        const updatedClients = clients.map(client => {
+            if (client.documents && client.documents.length > 0) {
+                // Check if this client has the document by URL
+                // If clientName is provided, also verify it matches for extra safety
+                const hasDocument = client.documents.some((doc: any) => {
+                    if (doc.url === documentUrl) {
+                        // If clientName is provided, verify it matches
+                        if (clientName) {
+                            return client.name === clientName;
+                        }
+                        return true;
+                    }
+                    return false;
+                });
+
+                if (hasDocument) {
+                    found = true;
+                    return {
+                        ...client,
+                        documents: client.documents.filter((doc: any) => doc.url !== documentUrl)
+                    };
+                }
+            }
+            return client;
+        });
+
+        if (!found) {
+            return NextResponse.json({ error: 'Document not found in any client record' }, { status: 404 });
+        }
+
+        // Save the updated clients
+        await saveClients(updatedClients, userId);
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting document:', error);
+        return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 });
     }
 }
 

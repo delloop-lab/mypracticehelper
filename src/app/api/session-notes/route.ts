@@ -1,13 +1,185 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { checkAuthentication } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
-        // Fetch session notes, recordings with transcripts, and sessions (including Calendly appointments)
+        // Check authentication (handles both new and fallback methods)
+        const { userId, isFallback, userEmail } = await checkAuthentication(request);
+        
+        // If fallback auth, show legacy data (notes without user_id)
+        if (isFallback && userEmail === 'claire@claireschillaci.com') {
+            console.log('[Session Notes API] Fallback auth detected, showing legacy notes (no user_id)');
+            const [notesResult, recordingsResult, sessionsResult] = await Promise.all([
+                supabase
+                    .from('session_notes')
+                    .select('*')
+                    .is('user_id', null)
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('recordings')
+                    .select(`
+                        *,
+                        clients (id, name)
+                    `)
+                    .is('user_id', null)
+                    .not('transcript', 'is', null)
+                    .neq('transcript', '')
+                    .order('created_at', { ascending: false }),
+                supabase
+                    .from('sessions')
+                    .select('*')
+                    .is('user_id', null)
+                    .order('date', { ascending: false })
+            ]);
+            
+            // Continue with existing mapping logic below...
+            const notesData = notesResult.data || [];
+            const recordingsData = recordingsResult.data || [];
+            const sessionsData = sessionsResult.data || [];
+            
+            // Get all unique client IDs from all sources
+            const clientIds = new Set<string>();
+            notesData.forEach((note: any) => {
+                if (note.client_id) clientIds.add(note.client_id);
+            });
+            recordingsData.forEach((recording: any) => {
+                if (recording.client_id) clientIds.add(recording.client_id);
+            });
+            sessionsData.forEach((session: any) => {
+                if (session.client_id) clientIds.add(session.client_id);
+            });
+            
+            // Fetch client names for all client IDs
+            const clientsMap: Record<string, string> = {};
+            if (clientIds.size > 0) {
+                const { data: clientsData } = await supabase
+                    .from('clients')
+                    .select('id, name')
+                    .in('id', Array.from(clientIds));
+                
+                if (clientsData) {
+                    clientsData.forEach((client: any) => {
+                        clientsMap[client.id] = client.name;
+                    });
+                }
+            }
+            
+            // Map sessions to date strings
+            const sessionsMap: Record<string, string> = {};
+            sessionsData.forEach((session: any) => {
+                if (session.id && session.date) {
+                    sessionsMap[session.id] = session.date;
+                }
+            });
+            
+            // Map session notes to frontend format
+            const mappedSessionNotes = notesData.map((note: any) => {
+                const clientId = note.client_id;
+                const sessionId = note.session_id;
+                
+                const clientName = clientId && clientsMap[clientId] 
+                    ? clientsMap[clientId] 
+                    : 'Unknown Client';
+                
+                const sessionDate = sessionId && sessionsMap[sessionId]
+                    ? sessionsMap[sessionId]
+                    : note.created_at || new Date().toISOString();
+                
+                return {
+                    id: note.id,
+                    clientName: clientName,
+                    clientId: clientId,
+                    sessionDate: sessionDate,
+                    content: note.content || '',
+                    createdDate: note.created_at || new Date().toISOString(),
+                    attachments: note.attachments || [],
+                    source: 'session_note'
+                };
+            });
+            
+            // Map recordings
+            const uniqueRecordingsMap = new Map<string, any>();
+            recordingsData.forEach((recording: any) => {
+                if (recording.id && !uniqueRecordingsMap.has(recording.id)) {
+                    uniqueRecordingsMap.set(recording.id, recording);
+                }
+            });
+            const uniqueRecordings = Array.from(uniqueRecordingsMap.values());
+            
+            const mappedRecordingNotes = uniqueRecordings.map((recording: any) => {
+                const clientId = recording.client_id;
+                const clientName = clientId && clientsMap[clientId] 
+                    ? clientsMap[clientId] 
+                    : recording.clients?.name || 'Unknown Client';
+                
+                return {
+                    id: `recording-${recording.id}`,
+                    clientName: clientName,
+                    clientId: clientId,
+                    sessionDate: recording.created_at || recording.date || new Date().toISOString(),
+                    content: recording.transcript || '',
+                    createdDate: recording.created_at || new Date().toISOString(),
+                    transcript: recording.transcript,
+                    attachments: recording.attachments || [],
+                    source: 'recording',
+                    recordingId: recording.id,
+                    audioURL: recording.audio_url || null
+                };
+            });
+            
+            // Map sessions
+            const mappedSessions = sessionsData.map((session: any) => {
+                const clientId = session.client_id;
+                const clientName = clientId && clientsMap[clientId] 
+                    ? clientsMap[clientId] 
+                    : 'Unassigned';
+                
+                return {
+                    id: `session-${session.id}`,
+                    clientName: clientName,
+                    clientId: clientId,
+                    sessionDate: session.date || session.created_at || new Date().toISOString(),
+                    content: session.notes || '',
+                    createdDate: session.created_at || session.date || new Date().toISOString(),
+                    source: 'session',
+                    hasNotes: false
+                };
+            });
+            
+            // Combine all notes
+            const notesMap = new Map<string, any>();
+            mappedSessionNotes.forEach((note: any) => {
+                if (note.id) notesMap.set(note.id, note);
+            });
+            mappedRecordingNotes.forEach((note: any) => {
+                if (note.id && !notesMap.has(note.id)) {
+                    notesMap.set(note.id, note);
+                }
+            });
+            mappedSessions.forEach((session: any) => {
+                if (session.id && !session.hasNotes && !notesMap.has(session.id)) {
+                    notesMap.set(session.id, session);
+                }
+            });
+            
+            const allNotes = Array.from(notesMap.values()).sort((a, b) => {
+                return new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime();
+            });
+            
+            return NextResponse.json(allNotes);
+        }
+        
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        // Fetch session notes, recordings with transcripts, and sessions (filtered by user_id)
         const [notesResult, recordingsResult, sessionsResult] = await Promise.all([
             supabase
                 .from('session_notes')
                 .select('*')
+                .eq('user_id', userId)
                 .order('created_at', { ascending: false }),
             supabase
                 .from('recordings')
@@ -15,12 +187,14 @@ export async function GET() {
                     *,
                     clients (id, name)
                 `)
+                .eq('user_id', userId)
                 .not('transcript', 'is', null)
                 .neq('transcript', '')
                 .order('created_at', { ascending: false }),
             supabase
                 .from('sessions')
                 .select('*')
+                .eq('user_id', userId)
                 .order('date', { ascending: false })
         ]);
 
@@ -280,6 +454,22 @@ export async function GET() {
 
 export async function PUT(request: Request) {
     try {
+        // Check authentication
+        const { userId, isFallback, userEmail } = await checkAuthentication(request);
+        
+        // For fallback auth, we need to create the user first or use a temporary ID
+        // For now, reject saves if user doesn't exist (they need to run migration)
+        if (isFallback) {
+            return NextResponse.json({ 
+                error: 'User account not found. Please run the database migration to create your user account.',
+                requiresMigration: true
+            }, { status: 403 });
+        }
+        
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const notes = await request.json();
 
         if (!Array.isArray(notes)) {
@@ -290,8 +480,11 @@ export async function PUT(request: Request) {
         // Deleting notes based on what's NOT in the list is dangerous and can cause data loss
         // Only upsert the notes provided - do NOT delete any notes
 
-        // Get all clients to map client names to IDs
-        const { data: allClients } = await supabase.from('clients').select('id, name');
+        // Get all clients for this user to map client names to IDs
+        const { data: allClients } = await supabase
+            .from('clients')
+            .select('id, name')
+            .eq('user_id', userId);
         const clientNameToIdMap: Record<string, string> = {};
         if (allClients) {
             allClients.forEach((client: any) => {
@@ -299,9 +492,11 @@ export async function PUT(request: Request) {
             });
         }
 
-        // Get all sessions to map session dates to IDs
-        // We'll need to match by date and client_id
-        const { data: allSessions } = await supabase.from('sessions').select('id, date, client_id');
+        // Get all sessions for this user to map session dates to IDs
+        const { data: allSessions } = await supabase
+            .from('sessions')
+            .select('id, date, client_id')
+            .eq('user_id', userId);
         const sessionDateToIdMap: Record<string, string> = {};
         if (allSessions) {
             allSessions.forEach((session: any) => {
@@ -330,6 +525,7 @@ export async function PUT(request: Request) {
                 id: note.id,
                 client_id: clientId || null,
                 session_id: sessionId || null,
+                user_id: userId, // Always include user_id
                 content: note.content || note.notes || '',
                 created_at: note.createdDate || note.created_at || note.date || new Date().toISOString(),
                 updated_at: new Date().toISOString()
@@ -350,6 +546,92 @@ export async function PUT(request: Request) {
         console.error('Error saving session notes:', error);
         return NextResponse.json({ 
             error: `Failed to save session notes: ${error?.message || 'Unknown error'}` 
+        }, { status: 500 });
+    }
+}
+
+export async function DELETE(request: Request) {
+    try {
+        // Check authentication
+        const { userId, isFallback } = await checkAuthentication(request);
+        
+        // Reject write operations for fallback users (they need to run migration)
+        if (isFallback) {
+            return NextResponse.json({ 
+                error: 'User account not found. Please run the database migration to create your user account.',
+                requiresMigration: true
+            }, { status: 403 });
+        }
+        
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { searchParams } = new URL(request.url);
+        const noteId = searchParams.get('id');
+
+        if (!noteId) {
+            return NextResponse.json({ error: 'Session note ID is required' }, { status: 400 });
+        }
+
+        // Verify the note belongs to this user before deleting
+        // Try to find the note - it might be a UUID or a timestamp string
+        const { data: existingNote, error: fetchError } = await supabase
+            .from('session_notes')
+            .select('id, user_id, client_id, session_id')
+            .eq('id', noteId)
+            .single();
+
+        if (fetchError || !existingNote) {
+            console.error('[Session Notes DELETE] Note not found:', {
+                noteId,
+                error: fetchError,
+                userId
+            });
+            
+            // If note not found by ID, it might be a legacy note or one that was never saved
+            // Return a more helpful error message
+            return NextResponse.json({ 
+                error: 'Session note not found. It may have already been deleted or never saved to the database.',
+                noteId: noteId
+            }, { status: 404 });
+        }
+
+        // Verify ownership - allow deletion if user_id matches OR if user_id is null (legacy notes)
+        if (existingNote.user_id && existingNote.user_id !== userId) {
+            console.error('[Session Notes DELETE] Ownership mismatch:', {
+                noteId,
+                noteUserId: existingNote.user_id,
+                requestUserId: userId
+            });
+            return NextResponse.json({ error: 'Unauthorized: You do not own this session note' }, { status: 403 });
+        }
+
+        // Delete the session note
+        // If user_id is null (legacy note), delete without user_id check
+        // Otherwise, ensure user_id matches
+        let deleteQuery = supabase
+            .from('session_notes')
+            .delete()
+            .eq('id', noteId);
+        
+        // Only add user_id filter if the note has a user_id
+        if (existingNote.user_id) {
+            deleteQuery = deleteQuery.eq('user_id', userId);
+        }
+        
+        const { error } = await deleteQuery;
+
+        if (error) {
+            console.error('Supabase error deleting session note:', error);
+            return NextResponse.json({ error: `Failed to delete: ${error.message}` }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        console.error('Error deleting session note:', error);
+        return NextResponse.json({ 
+            error: `Failed to delete session note: ${error?.message || 'Unknown error'}` 
         }, { status: 500 });
     }
 }
