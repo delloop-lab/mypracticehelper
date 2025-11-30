@@ -43,7 +43,12 @@ export function Footer() {
                     </div>
                 </div>
                 <div className="mt-12 border-t pt-8 text-center text-sm text-muted-foreground">
-                    <p>&copy; {new Date().getFullYear()} My Practice Helper. All rights reserved.</p>
+                    <p>
+                        &copy; {new Date().getFullYear()} My Practice Helper. All rights reserved.{" "}
+                        <Link href="/terms" className="text-primary hover:underline">
+                            Terms and Conditions
+                        </Link>
+                    </p>
                 </div>
             </div>
         </footer>

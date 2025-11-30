@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export function FooterSimple() {
     return (
         <footer className="border-t bg-muted/40 mt-auto">
@@ -13,7 +15,10 @@ export function FooterSimple() {
                         >
                             My Practice Helper
                         </a>
-                        . All rights reserved.
+                        . All rights reserved.{" "}
+                        <Link href="/terms" className="text-primary hover:underline">
+                            Terms and Conditions
+                        </Link>
                     </p>
                 </div>
             </div>
