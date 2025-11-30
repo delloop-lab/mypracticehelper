@@ -400,8 +400,9 @@ export function ClientImportExport() {
                             // Determine which field matched for better error message
                             const matchingFields = [];
                             if (newClient.email) {
+                                const newClientEmail = newClient.email.toLowerCase().trim();
                                 const emailMatch = mergedClients.some((c: any) => 
-                                    c.email && c.email.toLowerCase().trim() === newClient.email.toLowerCase().trim()
+                                    c.email && c.email.toLowerCase().trim() === newClientEmail
                                 );
                                 if (emailMatch) matchingFields.push('email');
                             }
