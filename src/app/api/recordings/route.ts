@@ -23,9 +23,82 @@ export async function GET(request: Request) {
         }
 
         console.log('[Recordings API] Fetching recordings for userId:', userId);
-        const recordings = await getRecordings(userId);
-        console.log('[Recordings API] Found recordings:', recordings.length);
-        return NextResponse.json(recordings);
+        
+        // Fetch recordings with user_id AND legacy recordings (user_id IS NULL) for migration period
+        // This ensures users see their recordings even if some haven't been migrated yet
+        const { data: userRecordings, error: userError } = await supabase
+            .from('recordings')
+            .select(`
+                *,
+                clients (name)
+            `)
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+        
+        const { data: legacyRecordings, error: legacyError } = await supabase
+            .from('recordings')
+            .select(`
+                *,
+                clients (name)
+            `)
+            .is('user_id', null)
+            .order('created_at', { ascending: false });
+        
+        if (userError) {
+            console.error('[Recordings API] Error fetching user recordings:', userError);
+        }
+        if (legacyError) {
+            console.error('[Recordings API] Error fetching legacy recordings:', legacyError);
+        }
+        
+        console.log('[Recordings API] Found recordings:', {
+            userRecordings: userRecordings?.length || 0,
+            legacyRecordings: legacyRecordings?.length || 0
+        });
+        
+        // Combine both sets and remove duplicates
+        const allRecordings = [...(userRecordings || []), ...(legacyRecordings || [])];
+        const uniqueRecordings = Array.from(
+            new Map(allRecordings.map(r => [r.id, r])).values()
+        );
+        
+        // Use the existing mapping logic from getRecordings
+        const mappedRecordings = uniqueRecordings.map((recording: any) => {
+            let notes: any[] = [];
+            let transcriptText: string = recording.transcript || '';
+
+            if (recording.transcript) {
+                try {
+                    const parsed = JSON.parse(recording.transcript);
+                    if (Array.isArray(parsed)) {
+                        notes = parsed;
+                        transcriptText = notes.map((n: any) => n.text || n.content || '').join(' ');
+                    } else if (typeof parsed === 'string') {
+                        transcriptText = parsed;
+                    } else if (parsed.transcript) {
+                        transcriptText = parsed.transcript;
+                        notes = parsed.notes || [];
+                    }
+                } catch {
+                    transcriptText = recording.transcript;
+                }
+            }
+
+            return {
+                id: recording.id,
+                date: recording.created_at || recording.date,
+                duration: recording.duration || 0,
+                audioURL: recording.audio_url || recording.audioURL || `/api/audio/${recording.id}.webm`,
+                transcript: transcriptText,
+                notes: notes,
+                clientName: recording.clients?.name || recording.client_name || recording.clientName,
+                clientId: recording.client_id || recording.clientId,
+                client_id: recording.client_id
+            };
+        });
+        
+        console.log('[Recordings API] Returning mapped recordings:', mappedRecordings.length);
+        return NextResponse.json(mappedRecordings);
     } catch (error) {
         console.error('[Recordings API] Error:', error);
         return NextResponse.json({ error: 'Failed to fetch recordings' }, { status: 500 });
