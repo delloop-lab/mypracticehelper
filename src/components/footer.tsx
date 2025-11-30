@@ -48,6 +48,10 @@ export function Footer() {
                         <Link href="/terms" className="text-primary hover:underline">
                             Terms and Conditions
                         </Link>
+                        {" | "}
+                        <Link href="/privacy" className="text-primary hover:underline">
+                            Privacy Policy
+                        </Link>
                     </p>
                 </div>
             </div>
