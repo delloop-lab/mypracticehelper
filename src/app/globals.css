@@ -133,6 +133,60 @@ button[aria-disabled="true"].rdp-day_button:hover,
   }
 }
 
+/* Smooth slide animations for mobile menu */
+@keyframes slide-in-from-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out-to-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-out-to-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Smooth sheet animations */
+[data-slot="sheet-content"][data-state="open"] {
+  animation: slide-in-from-left 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+[data-slot="sheet-content"][data-state="closed"] {
+  animation: slide-out-to-left 0.4s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+[data-slot="sheet-content"][data-state="open"][data-side="right"] {
+  animation: slide-in-from-right 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+[data-slot="sheet-content"][data-state="closed"][data-side="right"] {
+  animation: slide-out-to-right 0.4s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
 /* Force styling for disabled/blocked days in react-day-picker v9 */
 /* Target ALL possible selectors - subtle ghosting so days are still visible */
 .rdp-day_disabled,
