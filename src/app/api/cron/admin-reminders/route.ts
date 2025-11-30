@@ -203,13 +203,6 @@ export async function GET(request: Request) {
                     }
                 }
 
-            } catch (error: any) {
-                const errorMsg = `Error processing user ${user.id}: ${error.message}`;
-                console.error(`[Admin Reminders Cron] ${errorMsg}`, error);
-                results.errors.push(errorMsg);
-            }
-        }
-
                 // 3. Check custom reminder templates
                 const { data: customTemplates, error: templatesError } = await supabase
                     .from('custom_reminder_templates')
@@ -236,12 +229,19 @@ export async function GET(request: Request) {
                                 const value = config.value !== undefined ? config.value : false;
 
                                 // Get clients matching the condition
-                                const { data: matchingClients } = await supabase
+                                // Use type assertion to avoid TypeScript deep instantiation error
+                                let query = supabase
                                     .from('clients')
                                     .select('id, name')
                                     .eq('user_id', user.id)
-                                    .eq(field, value)
                                     .is('archived', false);
+                                
+                                // Apply dynamic field filter
+                                if (field === 'new_client_form_signed') {
+                                    query = query.eq('new_client_form_signed', value as boolean);
+                                }
+                                
+                                const { data: matchingClients } = await query;
 
                                 if (matchingClients && matchingClients.length > 0) {
                                     for (const client of matchingClients) {
@@ -292,6 +292,13 @@ export async function GET(request: Request) {
                         }
                     }
                 }
+
+            } catch (error: any) {
+                const errorMsg = `Error processing user ${user.id}: ${error.message}`;
+                console.error(`[Admin Reminders Cron] ${errorMsg}`, error);
+                results.errors.push(errorMsg);
+            }
+        }
 
         console.log(`[Admin Reminders Cron] Complete: ${results.newClientFormReminders} new client form reminders, ${results.unpaidSessionReminders} unpaid session reminders`);
 
