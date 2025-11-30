@@ -187,6 +187,26 @@ button[aria-disabled="true"].rdp-day_button:hover,
   animation: slide-out-to-right 0.4s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
+/* Ensure overlay is clickable and provides visual feedback */
+[data-slot="sheet-overlay"] {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-slot="sheet-overlay"]:active {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* Improve close button touch target */
+[data-slot="sheet-content"] [data-slot="sheet-close"],
+[data-slot="sheet-content"] button[data-slot="sheet-close"] {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Force styling for disabled/blocked days in react-day-picker v9 */
 /* Target ALL possible selectors - subtle ghosting so days are still visible */
 .rdp-day_disabled,
