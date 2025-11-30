@@ -24,6 +24,9 @@ interface Appointment {
     date: string;
     time: string;
     type: string;
+    paymentStatus?: "paid" | "pending" | "unpaid";
+    fee?: number;
+    currency?: string;
 }
 
 interface SessionNote {
