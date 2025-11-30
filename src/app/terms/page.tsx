@@ -155,20 +155,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                    <h2 className="text-2xl font-semibold mb-4">17. Contact Us</h2>
-                    <p className="text-muted-foreground leading-relaxed">
-                        For questions about these Terms or your personal data rights, please contact us at:{" "}
-                        <a 
-                            href="mailto:help@mypracticehelper.com" 
-                            className="text-primary hover:underline font-medium"
-                        >
-                            help@mypracticehelper.com
-                        </a>
-                    </p>
-                </section>
-
-                <section>
-                    <h2 className="text-2xl font-semibold mb-4">18. Cookie Policy</h2>
+                    <h2 className="text-2xl font-semibold mb-4">17. Cookie Policy</h2>
                     <p className="text-muted-foreground leading-relaxed mb-4">
                         MyPracticeHelper uses cookies and similar technologies to ensure the proper functioning of the website, improve user experience, and analyse site usage. By using the Platform, you agree to our use of cookies as described below.
                     </p>
@@ -192,7 +179,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                    <h2 className="text-2xl font-semibold mb-4">19. Disclaimer</h2>
+                    <h2 className="text-2xl font-semibold mb-4">18. Disclaimer</h2>
                     <p className="text-muted-foreground leading-relaxed mb-4">
                         MyPracticeHelper is a software platform that provides tools to assist therapists and wellness professionals in managing their practice. It is not a healthcare provider, and we do not deliver therapy, counselling, or any medical advice.
                     </p>
@@ -211,7 +198,7 @@ export default function TermsPage() {
                 </section>
 
                 <section>
-                    <h2 className="text-2xl font-semibold mb-4">20. Contact</h2>
+                    <h2 className="text-2xl font-semibold mb-4">19. Contact</h2>
                     <p className="text-muted-foreground leading-relaxed mb-2">
                         For any questions regarding this Cookie Policy or Disclaimer, please contact us at:
                     </p>
