@@ -6,7 +6,15 @@
 const bcrypt = require('bcryptjs');
 
 async function generateHash() {
-    const password = process.argv[2] || '22Picnic!';
+    // Password should be passed as command line argument for security
+    // Usage: node scripts/generate-password-hash.js "your-password-here"
+    const password = process.argv[2];
+    
+    if (!password) {
+        console.error('Error: Password must be provided as command line argument');
+        console.error('Usage: node scripts/generate-password-hash.js "your-password-here"');
+        process.exit(1);
+    }
     const hash = await bcrypt.hash(password, 10);
     console.log('\n========================================');
     console.log('Password:', password);

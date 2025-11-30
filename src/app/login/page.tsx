@@ -46,27 +46,9 @@ export default function LoginPage() {
                     window.location.href = "/dashboard";
                 }, 100);
             } else {
-                // API login failed - try fallback for backwards compatibility
-                // This allows existing hardcoded login to still work until user is created in DB
-                const correctPassword = "22Picnic!";
-                const originalEmail = "claire@claireschillaci.com";
-                
-                if (email === originalEmail && password === correctPassword) {
-                    // Fallback: Set cookies manually for backwards compatibility
-                    const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
-                    document.cookie = `isAuthenticated=true; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
-                    document.cookie = `userEmail=${encodeURIComponent(email)}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
-                    localStorage.setItem("isAuthenticated", "true");
-                    localStorage.setItem("userEmail", email);
-
-                    setTimeout(() => {
-                        window.location.href = "/dashboard";
-                    }, 100);
-                } else {
-                    // Both API and fallback failed
-                    setError(data.error || "Invalid email or password");
-                    setIsLoading(false);
-                }
+                // API login failed - show error
+                setError(data.error || "Invalid email or password");
+                setIsLoading(false);
             }
         } catch (error) {
             console.error("Login error:", error);
