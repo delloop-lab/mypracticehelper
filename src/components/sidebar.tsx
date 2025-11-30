@@ -65,8 +65,20 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
     const pathname = usePathname();
     // Always use company logo if it's set and not empty, otherwise use default
     // Add cache-busting timestamp to force reload of latest logo
+    // IMPORTANT: Sidebar should NEVER show logo.png - only custom logo or your-logo-here.png
     const logoSrc = useMemo(() => {
-        let src = (companyLogo && companyLogo.trim() !== "") ? companyLogo : "/your-logo-here.png";
+        // Only use companyLogo if it exists, is not empty, and is NOT the default app logo (/logo.png)
+        // Allow company-logo.png and other uploaded logos, just exclude the default /logo.png
+        const isDefaultAppLogo = companyLogo === '/logo.png';
+        let src = (companyLogo && companyLogo.trim() !== "" && !isDefaultAppLogo) 
+            ? companyLogo 
+            : "/your-logo-here.png";
+        
+        // Final safety check: ensure we never use the default app logo.png in sidebar
+        if (src === '/logo.png') {
+            src = "/your-logo-here.png";
+        }
+        
         if (src.startsWith('http') || src.includes('supabase.co')) {
             // Remove any existing timestamp query params and add a new one with version
             const url = new URL(src);
@@ -158,11 +170,21 @@ export function Sidebar() {
     useEffect(() => {
         const fetchCompanyLogo = async (forceRefresh: boolean = false) => {
             try {
-                const response = await fetch(`/api/settings?t=${Date.now()}`);
+                const response = await fetch(`/api/settings?t=${Date.now()}`, {
+                    credentials: 'include', // Include cookies for authentication
+                });
+                
                 if (response.ok) {
                     const data = await response.json();
+                    console.log('[Sidebar] Settings API response:', { 
+                        hasCompanyLogo: !!data.companyLogo, 
+                        companyLogo: data.companyLogo,
+                        companyLogoLength: data.companyLogo?.length || 0
+                    });
+                    
                     // The API returns the config directly, so companyLogo is at the root level
                     const newLogo = (data.companyLogo && data.companyLogo.trim() !== "") ? data.companyLogo : undefined;
+                    console.log('[Sidebar] Processed logo:', { newLogo, isEmpty: !newLogo });
                     
                     setCompanyLogo((currentLogo) => {
                         // Only update if logo changed or if forcing refresh
@@ -170,15 +192,19 @@ export function Sidebar() {
                             // Increment version to force image refresh when logo changes
                             if (forceRefresh || newLogo !== currentLogo) {
                                 setLogoVersion(prev => prev + 1);
-                                console.log('Logo updated, incrementing version. New logo:', newLogo);
+                                console.log('[Sidebar] Logo updated, incrementing version. New logo:', newLogo, 'Old logo:', currentLogo);
                             }
                             return newLogo;
                         }
                         return currentLogo;
                     });
+                } else {
+                    console.error('[Sidebar] Settings API response not OK:', response.status, response.statusText);
+                    const errorText = await response.text();
+                    console.error('[Sidebar] Error response:', errorText);
                 }
             } catch (error) {
-                console.error('Error fetching company logo:', error);
+                console.error('[Sidebar] Error fetching company logo:', error);
             }
         };
         

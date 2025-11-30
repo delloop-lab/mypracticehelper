@@ -87,23 +87,104 @@ export async function GET(request: Request) {
         // If fallback auth, show legacy settings (default or without user_id)
         if (isFallback && userEmail === 'claire@claireschillaci.com') {
             console.log('[Settings API GET] Fallback auth detected, showing legacy settings');
-            // Try to get 'default' settings first
+            
+            // First, try to find user by email to get their user_id
+            const { data: userData } = await supabase
+                .from('users')
+                .select('id')
+                .eq('email', userEmail.toLowerCase().trim())
+                .maybeSingle();
+            
+            console.log('[Settings API GET] User lookup result:', { userData, userId: userData?.id });
+            
+            // If user exists, try to get their user-specific settings
+            if (userData?.id) {
+                console.log('[Settings API GET] User found, checking user-specific settings for user_id:', userData.id);
+                
+                // Try by user_id first
+                const { data: userSettingsData, error: userSettingsError } = await supabase
+                    .from('settings')
+                    .select('id, user_id, config, updated_at')
+                    .eq('user_id', userData.id)
+                    .order('updated_at', { ascending: false })
+                    .limit(1);
+                
+                console.log('[Settings API GET] Query by user_id:', { 
+                    count: userSettingsData?.length || 0, 
+                    error: userSettingsError,
+                    hasConfig: userSettingsData?.[0]?.config ? true : false,
+                    companyLogo: userSettingsData?.[0]?.config?.companyLogo
+                });
+                
+                if (userSettingsData && userSettingsData.length > 0 && userSettingsData[0].config) {
+                    console.log('[Settings API GET] Found user-specific settings by user_id, returning config');
+                    console.log('[Settings API GET] Config companyLogo:', userSettingsData[0].config.companyLogo);
+                    return NextResponse.json(userSettingsData[0].config);
+                }
+                
+                // Also try by id format
+                const settingsId = `user-${userData.id}`;
+                const { data: idSettingsData, error: idSettingsError } = await supabase
+                    .from('settings')
+                    .select('id, user_id, config, updated_at')
+                    .eq('id', settingsId)
+                    .maybeSingle();
+                
+                console.log('[Settings API GET] Query by id:', { 
+                    id: settingsId,
+                    hasData: !!idSettingsData,
+                    error: idSettingsError,
+                    companyLogo: idSettingsData?.config?.companyLogo
+                });
+                
+                if (idSettingsData?.config) {
+                    console.log('[Settings API GET] Found user-specific settings by id, returning config');
+                    console.log('[Settings API GET] Config companyLogo:', idSettingsData.config.companyLogo);
+                    return NextResponse.json(idSettingsData.config);
+                }
+            }
+            
+            // Try to get 'default' settings
             const { data: defaultData, error: defaultError } = await supabase
                 .from('settings')
-                .select('config')
+                .select('id, config, updated_at')
                 .eq('id', 'default')
-                .single();
+                .maybeSingle();
 
-            console.log('[Settings API GET] Default settings query result:', { data: defaultData, error: defaultError });
+            console.log('[Settings API GET] Default settings query result:', { 
+                hasData: !!defaultData,
+                error: defaultError,
+                companyLogo: defaultData?.config?.companyLogo
+            });
 
-            if (defaultData) {
+            if (defaultData?.config) {
                 console.log('[Settings API GET] Returning default settings');
+                console.log('[Settings API GET] Default config companyLogo:', defaultData.config.companyLogo);
                 return NextResponse.json(defaultData.config);
             }
 
             // If no default settings, return defaults
             console.log('[Settings API GET] No default settings found, returning DEFAULT_SETTINGS');
+            console.log('[Settings API GET] DEFAULT_SETTINGS companyLogo:', DEFAULT_SETTINGS.companyLogo);
             return NextResponse.json(DEFAULT_SETTINGS);
+        }
+        
+        // Special handling for claire@claireschillaci.com - also check for settings without user_id
+        if (userEmail === 'claire@claireschillaci.com' && !userId) {
+            console.log('[Settings API GET] claire@claireschillaci.com without userId, checking for legacy settings');
+            // Check for settings without user_id (legacy)
+            const { data: legacySettings } = await supabase
+                .from('settings')
+                .select('config')
+                .is('user_id', null)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            
+            if (legacySettings?.config) {
+                console.log('[Settings API GET] Found legacy settings (no user_id), companyLogo:', legacySettings.config.companyLogo);
+                return NextResponse.json(legacySettings.config);
+            }
         }
         
         if (!userId) {
@@ -168,6 +249,24 @@ export async function GET(request: Request) {
             if (idData && idData.config) {
                 console.log('[Settings API GET] Found settings by id, returning config');
                 console.log('[Settings API GET] Appointment types in loaded config:', idData.config.appointmentTypes?.length || 0);
+                console.log('[Settings API GET] Config companyLogo:', idData.config.companyLogo);
+                
+                // If user-specific settings don't have a logo, check 'default' settings as fallback
+                if (!idData.config?.companyLogo || idData.config.companyLogo.trim() === '') {
+                    console.log('[Settings API GET] User settings (by id) have no logo, checking default settings');
+                    const { data: defaultData } = await supabase
+                        .from('settings')
+                        .select('config')
+                        .eq('id', 'default')
+                        .maybeSingle();
+                    
+                    if (defaultData?.config?.companyLogo && defaultData.config.companyLogo.trim() !== '') {
+                        console.log('[Settings API GET] Found logo in default settings, merging:', defaultData.config.companyLogo);
+                        // Merge default logo into user settings
+                        idData.config.companyLogo = defaultData.config.companyLogo;
+                    }
+                }
+                
                 return NextResponse.json(idData.config);
             }
 
@@ -192,6 +291,23 @@ export async function GET(request: Request) {
         console.log('[Settings API GET] Found settings by user_id, returning config');
         console.log('[Settings API GET] Appointment types in loaded config:', data.config?.appointmentTypes?.length || 0);
         console.log('[Settings API GET] Sample appointment types:', data.config?.appointmentTypes?.slice(0, 2));
+        console.log('[Settings API GET] Config companyLogo:', data.config?.companyLogo);
+        
+        // If user-specific settings don't have a logo, check 'default' settings as fallback
+        if (!data.config?.companyLogo || data.config.companyLogo.trim() === '') {
+            console.log('[Settings API GET] User settings have no logo, checking default settings');
+            const { data: defaultData } = await supabase
+                .from('settings')
+                .select('config')
+                .eq('id', 'default')
+                .maybeSingle();
+            
+            if (defaultData?.config?.companyLogo && defaultData.config.companyLogo.trim() !== '') {
+                console.log('[Settings API GET] Found logo in default settings, merging:', defaultData.config.companyLogo);
+                // Merge default logo into user settings
+                data.config.companyLogo = defaultData.config.companyLogo;
+            }
+        }
         
         return NextResponse.json(data.config);
     } catch (error) {
