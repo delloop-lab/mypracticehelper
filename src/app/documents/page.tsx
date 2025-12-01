@@ -501,15 +501,37 @@ function DocumentsContent() {
                                 </Select>
                             </div>
                         </div>
-                        {/* Results count */}
-                        <div className="text-sm text-muted-foreground">
-                            Showing {filteredAndSortedDocuments.length} of {documents.length} documents
+                        {/* Results count and Show Documents button */}
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm text-muted-foreground">
+                                Showing {filteredAndSortedDocuments.length} of {documents.length} documents
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowDocuments(!showDocuments)}
+                                className="flex items-center gap-2"
+                            >
+                                {showDocuments ? (
+                                    <>
+                                        <ChevronUp className="h-4 w-4" />
+                                        Hide Documents
+                                    </>
+                                ) : (
+                                    <>
+                                        <ChevronDown className="h-4 w-4" />
+                                        Show Documents
+                                    </>
+                                )}
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>
                 )}
                 {/* Documents List */}
-                {documents.length === 0 ? (
+                {showDocuments && (
+                    <>
+                    {documents.length === 0 ? (
                     <Card>
                         <CardContent className="flex flex-col items-center justify-center py-16">
                             <FileText className="h-16 w-16 text-muted-foreground mb-4" />
@@ -557,6 +579,8 @@ function DocumentsContent() {
                             ))}
                         </AnimatePresence>
                     </div>
+                    )}
+                    </>
                 )}
             </div>
 
