@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info } from "lucide-react";
+import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info, ChevronDown, ChevronUp } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -43,6 +43,7 @@ function DocumentsContent() {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [clients, setClients] = useState<any[]>([]);
     const [isDragging, setIsDragging] = useState(false);
+    const [showDocuments, setShowDocuments] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync client filter from URL
