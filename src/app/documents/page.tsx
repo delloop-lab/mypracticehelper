@@ -419,11 +419,20 @@ function DocumentsContent() {
                         <Button 
                             variant="outline" 
                             size="sm"
-                            onClick={() => setShowFilters(!showFilters)}
+                            onClick={() => setShowDocuments(!showDocuments)}
                             className="flex items-center gap-2"
                         >
-                            <Filter className="h-4 w-4" />
-                            {showFilters ? 'Hide Filters' : 'Show Filters'}
+                            {showDocuments ? (
+                                <>
+                                    <ChevronUp className="h-4 w-4" />
+                                    Hide Documents
+                                </>
+                            ) : (
+                                <>
+                                    <ChevronDown className="h-4 w-4" />
+                                    Show Documents
+                                </>
+                            )}
                         </Button>
                         <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
                     </div>
