@@ -319,7 +319,7 @@ function DocumentsContent() {
         <div className="container mx-auto px-4 py-8 max-w-6xl">
             <div className="mb-8">
                 <h1 className="text-4xl font-bold mb-2">Documents</h1>
-                <p className="text-muted-foreground">View and manage client documents</p>
+                <p className="text-muted-foreground">View and manage clients and company documents</p>
             </div>
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
