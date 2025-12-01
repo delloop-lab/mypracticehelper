@@ -470,7 +470,7 @@ function DocumentsContent() {
                 </Card>
 
                 {/* Filters and Search */}
-                {showFilters && (
+                {(showFilters || showDocuments) && (
                 <Card className="mb-6">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
