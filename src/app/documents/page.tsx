@@ -44,6 +44,7 @@ function DocumentsContent() {
     const [clients, setClients] = useState<any[]>([]);
     const [isDragging, setIsDragging] = useState(false);
     const [showDocuments, setShowDocuments] = useState(false);
+    const [showFilters, setShowFilters] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync client filter from URL
@@ -399,7 +400,18 @@ function DocumentsContent() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold tracking-tight">Document Library</h2>
-                    <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
+                    <div className="flex gap-2">
+                        <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setShowFilters(!showFilters)}
+                            className="flex items-center gap-2"
+                        >
+                            <Filter className="h-4 w-4" />
+                            {showFilters ? 'Hide Filters' : 'Show Filters'}
+                        </Button>
+                        <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
+                    </div>
                 </div>
                 
                 {/* Drag and Drop Upload Zone */}
@@ -433,6 +445,7 @@ function DocumentsContent() {
                 </Card>
 
                 {/* Filters and Search */}
+                {showFilters && (
                 <Card className="mb-6">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
