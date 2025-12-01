@@ -71,6 +71,23 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 });
         }
 
+        // Validate file type
+        const allowedExtensions = ['.doc', '.docx', '.txt'];
+        const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+        if (!allowedExtensions.includes(fileExtension)) {
+            return NextResponse.json({ 
+                error: 'Only MS Word (.doc, .docx) and Text (.txt) files are allowed.' 
+            }, { status: 400 });
+        }
+
+        // Validate file size (3 MB = 3 * 1024 * 1024 bytes)
+        const maxSize = 3 * 1024 * 1024; // 3 MB
+        if (file.size > maxSize) {
+            return NextResponse.json({ 
+                error: 'File size must be less than 3 MB.' 
+            }, { status: 400 });
+        }
+
         const buffer = Buffer.from(await file.arrayBuffer());
         const timestamp = Date.now();
         const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');

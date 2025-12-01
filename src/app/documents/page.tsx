@@ -172,6 +172,21 @@ function DocumentsContent() {
     const handleFileSelect = async (file: File | null) => {
         if (!file) return;
 
+        // Validate file type
+        const allowedTypes = ['.doc', '.docx', '.txt'];
+        const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+        if (!allowedTypes.includes(fileExtension)) {
+            alert('Only MS Word (.doc, .docx) and Text (.txt) files are allowed.');
+            return;
+        }
+
+        // Validate file size (3 MB = 3 * 1024 * 1024 bytes)
+        const maxSize = 3 * 1024 * 1024; // 3 MB
+        if (file.size > maxSize) {
+            alert('File size must be less than 3 MB.');
+            return;
+        }
+
         setSelectedFile(file);
         setUploadDialogOpen(true);
     };
@@ -429,6 +444,7 @@ function DocumentsContent() {
                             onChange={handleFileInputChange}
                             className="hidden"
                             id="document-upload"
+                            accept=".doc,.docx,.txt"
                             disabled={isUploading}
                         />
                         <Upload className={`h-12 w-12 mb-4 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
@@ -439,7 +455,7 @@ function DocumentsContent() {
                             or click to browse
                         </p>
                         <p className="text-xs text-muted-foreground">
-                            Supports all file types
+                            MS Word (.doc, .docx) and Text (.txt) files only, max 3 MB
                         </p>
                     </CardContent>
                 </Card>
