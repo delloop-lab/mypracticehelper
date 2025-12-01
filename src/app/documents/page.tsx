@@ -372,7 +372,7 @@ function DocumentsContent() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Documents</SelectItem>
-                                        <SelectItem value="user-documents">My Documents</SelectItem>
+                                        <SelectItem value="user-documents">Company Documents</SelectItem>
                                         {clientNames.map(name => (
                                             <SelectItem key={name} value={name}>{name}</SelectItem>
                                         ))}
@@ -440,7 +440,7 @@ function DocumentsContent() {
                                                     </CardTitle>
                                                     <CardDescription className="flex items-center gap-4 mt-2">
                                                         <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatDate(doc.uploadedDate)}</span>
-                                                        <span className="text-sm">{doc.isUserDocument ? "My Document" : `Client: ${doc.clientName || "Unassigned"}`}</span>
+                                                        <span className="text-sm">{doc.isUserDocument ? "Company Document" : `Client: ${doc.clientName || "Unassigned"}`}</span>
                                                         <span className="text-sm">Size: {doc.size}</span>
                                                         <span className="text-sm uppercase">{doc.type}</span>
                                                     </CardDescription>

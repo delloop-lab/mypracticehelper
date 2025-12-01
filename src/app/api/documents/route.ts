@@ -29,7 +29,7 @@ export async function GET(request: Request) {
                     name: doc.name,
                     type: doc.type || doc.name.split('.').pop()?.toLowerCase() || 'document',
                     size: doc.size || 'Unknown',
-                    uploadedBy: 'You',
+                    uploadedBy: 'Company',
                     uploadedDate: doc.created_at || new Date().toISOString(),
                     clientName: null, // User documents don't have a client
                     category: doc.category || 'user',
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
                     name: data.name,
                     type: data.type,
                     size: data.size,
-                    uploadedBy: 'You',
+                    uploadedBy: 'Company',
                     uploadedDate: data.created_at,
                     clientName: null,
                     category: data.category,
