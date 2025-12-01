@@ -42,6 +42,7 @@ function DocumentsContent() {
     const [documentType, setDocumentType] = useState<'company' | 'client'>('company');
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [clients, setClients] = useState<any[]>([]);
+    const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync client filter from URL
@@ -166,15 +167,44 @@ function DocumentsContent() {
     }, [documents]);
 
     // Handle file selection - show dialog to choose document type
-    const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
+    const handleFileSelect = async (file: File | null) => {
         if (!file) return;
 
         setSelectedFile(file);
         setUploadDialogOpen(true);
+    };
+
+    // Handle file input change
+    const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        handleFileSelect(file);
         // Reset file input
         if (event.target) {
             event.target.value = '';
+        }
+    };
+
+    // Handle drag and drop
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+
+        const file = e.dataTransfer.files?.[0];
+        if (file) {
+            handleFileSelect(file);
         }
     };
 
@@ -368,27 +398,39 @@ function DocumentsContent() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold tracking-tight">Document Library</h2>
-                    <div className="flex gap-2">
+                    <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
+                </div>
+                
+                {/* Drag and Drop Upload Zone */}
+                <Card className={`border-2 border-dashed transition-colors ${isDragging ? 'border-primary bg-primary/10' : 'border-muted-foreground/25 hover:border-primary/50'}`}>
+                    <CardContent 
+                        className="flex flex-col items-center justify-center py-12 cursor-pointer"
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                    >
                         <input
                             type="file"
                             ref={fileInputRef}
-                            onChange={handleFileSelect}
+                            onChange={handleFileInputChange}
                             className="hidden"
-                            id="user-document-upload"
+                            id="document-upload"
                             disabled={isUploading}
                         />
-                        <Button 
-                            variant="default" 
-                            size="sm"
-                            disabled={isUploading}
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            <Upload className="h-4 w-4 mr-2" />
-                            {isUploading ? 'Uploading...' : 'Upload Document'}
-                        </Button>
-                        <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
-                    </div>
-                </div>
+                        <Upload className={`h-12 w-12 mb-4 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                        <h3 className="text-lg font-semibold mb-2">
+                            {isDragging ? 'Drop file here' : 'Drag and drop files here'}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mb-2">
+                            or click to browse
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            Supports all file types
+                        </p>
+                    </CardContent>
+                </Card>
+
                 {/* Filters and Search */}
                 <Card className="mb-6">
                     <CardHeader>
