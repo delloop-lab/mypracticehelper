@@ -507,6 +507,7 @@ function DocumentsContent() {
                         </div>
                     </CardContent>
                 </Card>
+                )}
                 {/* Documents List */}
                 {documents.length === 0 ? (
                     <Card>
