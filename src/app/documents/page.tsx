@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface ClientDocument {
     id: string;
@@ -36,6 +37,11 @@ function DocumentsContent() {
     const [sortBy, setSortBy] = useState<SortOption>('date-desc');
     const [deleteDocumentConfirm, setDeleteDocumentConfirm] = useState<{ isOpen: boolean, document: ClientDocument | null }>({ isOpen: false, document: null });
     const [isUploading, setIsUploading] = useState(false);
+    const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [documentType, setDocumentType] = useState<'company' | 'client'>('company');
+    const [selectedClientId, setSelectedClientId] = useState<string>('');
+    const [clients, setClients] = useState<any[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync client filter from URL
@@ -49,10 +55,23 @@ function DocumentsContent() {
     // Reload documents on focus (useful after uploads)
     useEffect(() => {
         loadDocuments();
+        loadClients();
         const handleFocus = () => loadDocuments();
         window.addEventListener('focus', handleFocus);
         return () => window.removeEventListener('focus', handleFocus);
     }, []);
+
+    const loadClients = async () => {
+        try {
+            const response = await fetch('/api/clients', { credentials: 'include' });
+            if (response.ok) {
+                const clientsData = await response.json();
+                setClients(clientsData);
+            }
+        } catch (error) {
+            console.error('Error loading clients:', error);
+        }
+    };
 
     const loadDocuments = async () => {
         try {
@@ -146,15 +165,40 @@ function DocumentsContent() {
         return Array.from(new Set(names)).sort();
     }, [documents]);
 
-    // Handle file upload for user documents
-    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Handle file selection - show dialog to choose document type
+    const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
 
+        setSelectedFile(file);
+        setUploadDialogOpen(true);
+        // Reset file input
+        if (event.target) {
+            event.target.value = '';
+        }
+    };
+
+    // Handle actual upload after user selects type and client (if applicable)
+    const handleConfirmUpload = async () => {
+        if (!selectedFile) return;
+
+        // Validate: if client document, must have selected client
+        if (documentType === 'client' && !selectedClientId) {
+            alert('Please select a client for this document.');
+            return;
+        }
+
         setIsUploading(true);
+        setUploadDialogOpen(false);
+
         const formData = new FormData();
-        formData.append('file', file);
-        formData.append('isUserDocument', 'true'); // Flag to indicate this is a user document
+        formData.append('file', selectedFile);
+        
+        if (documentType === 'company') {
+            formData.append('isUserDocument', 'true');
+        } else {
+            formData.append('clientId', selectedClientId);
+        }
 
         try {
             const response = await fetch('/api/documents', {
@@ -165,6 +209,10 @@ function DocumentsContent() {
 
             if (response.ok) {
                 await loadDocuments(); // Reload documents to show the new one
+                // Reset state
+                setSelectedFile(null);
+                setDocumentType('company');
+                setSelectedClientId('');
             } else {
                 const error = await response.json();
                 alert(`Failed to upload document: ${error.error || 'Unknown error'}`);
@@ -174,10 +222,6 @@ function DocumentsContent() {
             alert('Error uploading document. Please try again.');
         } finally {
             setIsUploading(false);
-            // Reset file input
-            if (event.target) {
-                event.target.value = '';
-            }
         }
     };
 
@@ -322,29 +366,13 @@ function DocumentsContent() {
                 <p className="text-muted-foreground">View and manage clients and company documents</p>
             </div>
             <div className="space-y-6">
-                {/* Info Card */}
-                <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-                    <CardContent className="pt-6">
-                        <div className="flex items-start gap-3">
-                            <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                            <div>
-                                <p className="text-sm text-blue-900 dark:text-blue-100 font-medium mb-1">
-                                    Uploading Client Documents
-                                </p>
-                                <p className="text-sm text-blue-800 dark:text-blue-200">
-                                    To upload documents for a specific client, please go to the <strong>Client's Card</strong> page. The upload button above is for <strong>Company Documents</strong> only.
-                                </p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
                 <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold tracking-tight">Document Library</h2>
                     <div className="flex gap-2">
                         <input
                             type="file"
                             ref={fileInputRef}
-                            onChange={handleFileUpload}
+                            onChange={handleFileSelect}
                             className="hidden"
                             id="user-document-upload"
                             disabled={isUploading}
@@ -356,7 +384,7 @@ function DocumentsContent() {
                             onClick={() => fileInputRef.current?.click()}
                         >
                             <Upload className="h-4 w-4 mr-2" />
-                            {isUploading ? 'Uploading...' : 'Upload Company Documents'}
+                            {isUploading ? 'Uploading...' : 'Upload Document'}
                         </Button>
                         <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
                     </div>
@@ -486,6 +514,71 @@ function DocumentsContent() {
                 description={`Are you sure you want to delete "${deleteDocumentConfirm.document?.name}"? ${deleteDocumentConfirm.document?.isUserDocument ? "This will permanently remove your document." : `This will permanently remove the document from ${deleteDocumentConfirm.document?.clientName || "the client"}'s record.`} This action cannot be undone.`}
                 itemName={deleteDocumentConfirm.document?.name}
             />
+
+            {/* Upload Document Dialog */}
+            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Upload Document</DialogTitle>
+                        <DialogDescription>
+                            Select whether this document is for the Company or for a specific Client.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Document Type</Label>
+                            <Select value={documentType} onValueChange={(value: 'company' | 'client') => setDocumentType(value)}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="company">Company Document</SelectItem>
+                                    <SelectItem value="client">Client Document</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {documentType === 'client' && (
+                            <div className="space-y-2">
+                                <Label>Select Client</Label>
+                                <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Choose a client..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {clients.map(client => (
+                                            <SelectItem key={client.id} value={client.id}>
+                                                {client.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        {selectedFile && (
+                            <div className="p-3 bg-muted rounded-md">
+                                <p className="text-sm font-medium">Selected file:</p>
+                                <p className="text-sm text-muted-foreground">{selectedFile.name}</p>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => {
+                            setUploadDialogOpen(false);
+                            setSelectedFile(null);
+                            setDocumentType('company');
+                            setSelectedClientId('');
+                        }}>
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={handleConfirmUpload}
+                            disabled={isUploading || (documentType === 'client' && !selectedClientId)}
+                        >
+                            {isUploading ? 'Uploading...' : 'Upload'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

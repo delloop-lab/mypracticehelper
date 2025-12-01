@@ -64,7 +64,8 @@ export async function POST(request: Request) {
 
         const formData = await request.formData();
         const file = formData.get('file') as File;
-        const isUserDocument = formData.get('isUserDocument') === 'true'; // Flag to indicate user document
+        const isUserDocument = formData.get('isUserDocument') === 'true'; // Flag to indicate company document
+        const clientId = formData.get('clientId') as string | null; // Client ID if this is a client document
 
         if (!file) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -79,7 +80,51 @@ export async function POST(request: Request) {
         const fileUrl = await saveDocumentFile(fileName, buffer);
         const documentUrl = `/api/documents/${fileName}`;
 
-        // If this is a user document (not associated with a client), save to user_documents table
+        // If this is a client document, save it to the client's documents array
+        if (clientId) {
+            const clients = await getClients(false, userId);
+            const client = clients.find(c => c.id === clientId);
+            
+            if (!client) {
+                return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+            }
+
+            // Add document to client's documents array
+            const newDoc = {
+                name: file.name,
+                url: documentUrl,
+                date: new Date().toISOString(),
+            };
+
+            const updatedClient = {
+                ...client,
+                documents: [...(client.documents || []), newDoc]
+            };
+
+            // Update clients array
+            const updatedClients = clients.map(c => c.id === clientId ? updatedClient : c);
+            await saveClients(updatedClients, userId);
+
+            return NextResponse.json({
+                success: true,
+                originalName: file.name,
+                url: documentUrl,
+                document: {
+                    id: documentUrl,
+                    name: file.name,
+                    type: file.name.split('.').pop()?.toLowerCase() || 'document',
+                    size: formatSize(file.size),
+                    uploadedBy: 'System',
+                    uploadedDate: new Date().toISOString(),
+                    clientName: client.name,
+                    category: 'client',
+                    url: documentUrl,
+                    isUserDocument: false
+                }
+            });
+        }
+
+        // If this is a company document (not associated with a client), save to user_documents table
         if (isUserDocument) {
             const { data, error } = await supabase
                 .from('user_documents')
