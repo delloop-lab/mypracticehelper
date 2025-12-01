@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload } from "lucide-react";
+import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 
@@ -322,6 +322,22 @@ function DocumentsContent() {
                 <p className="text-muted-foreground">View and manage clients and company documents</p>
             </div>
             <div className="space-y-6">
+                {/* Info Card */}
+                <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                    <CardContent className="pt-6">
+                        <div className="flex items-start gap-3">
+                            <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                                <p className="text-sm text-blue-900 dark:text-blue-100 font-medium mb-1">
+                                    Uploading Client Documents
+                                </p>
+                                <p className="text-sm text-blue-800 dark:text-blue-200">
+                                    To upload documents for a specific client, please go to the <strong>Client's Card</strong> page. The upload button above is for <strong>Company Documents</strong> only.
+                                </p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
                 <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold tracking-tight">Document Library</h2>
                     <div className="flex gap-2">
