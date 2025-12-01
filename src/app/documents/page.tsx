@@ -340,7 +340,7 @@ function DocumentsContent() {
                             onClick={() => fileInputRef.current?.click()}
                         >
                             <Upload className="h-4 w-4 mr-2" />
-                            {isUploading ? 'Uploading...' : 'Upload Document'}
+                            {isUploading ? 'Uploading...' : 'Upload Company Documents'}
                         </Button>
                         <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
                     </div>
