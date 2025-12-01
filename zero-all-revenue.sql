@@ -67,3 +67,4 @@ GROUP BY COALESCE(metadata->>'paymentStatus', 'unpaid')
 ORDER BY payment_status;
 
 
+

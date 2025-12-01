@@ -78,3 +78,4 @@ CREATE POLICY "Allow all operations on settings" ON settings
 -- ============================================================================
 
 
+

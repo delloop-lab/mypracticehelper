@@ -34,3 +34,4 @@ AND DATE(date AT TIME ZONE 'UTC') = '2025-11-30';
 
 
 
+

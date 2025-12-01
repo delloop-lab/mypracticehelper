@@ -33,3 +33,4 @@ SELECT COUNT(*) as total_sessions FROM sessions;
 -- DELETE FROM sessions WHERE user_id IS NULL;
 
 
+

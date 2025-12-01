@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText } from "lucide-react";
+import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 
@@ -18,11 +18,12 @@ interface ClientDocument {
     size: string;
     uploadedBy: string;
     uploadedDate: string;
-    clientName: string;
+    clientName: string | null;
     clientFirstName?: string;
     clientLastName?: string;
     category: string;
     url?: string;
+    isUserDocument?: boolean; // Flag to identify user documents
 }
 
 type SortOption = 'date-desc' | 'date-asc' | 'client-asc' | 'client-desc' | 'client-first-asc' | 'client-first-desc' | 'client-last-asc' | 'client-last-desc' | 'name-asc' | 'name-desc';
@@ -34,6 +35,8 @@ function DocumentsContent() {
     const [selectedClient, setSelectedClient] = useState<string>("all");
     const [sortBy, setSortBy] = useState<SortOption>('date-desc');
     const [deleteDocumentConfirm, setDeleteDocumentConfirm] = useState<{ isOpen: boolean, document: ClientDocument | null }>({ isOpen: false, document: null });
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync client filter from URL
     useEffect(() => {
@@ -53,11 +56,13 @@ function DocumentsContent() {
 
     const loadDocuments = async () => {
         try {
-            const response = await fetch('/api/clients');
-            if (response.ok) {
-                const clients = await response.json();
-                const allDocs: ClientDocument[] = [];
-                const fileUrls: string[] = [];
+            // Fetch client documents
+            const clientsResponse = await fetch('/api/clients', { credentials: 'include' });
+            const clientDocs: ClientDocument[] = [];
+            const fileUrls: string[] = [];
+            
+            if (clientsResponse.ok) {
+                const clients = await clientsResponse.json();
                 
                 clients.forEach((client: any) => {
                     if (client.documents && client.documents.length > 0) {
@@ -65,7 +70,7 @@ function DocumentsContent() {
                             if (doc.url) {
                                 fileUrls.push(doc.url);
                             }
-                            allDocs.push({
+                            clientDocs.push({
                                 id: doc.url || `${client.id}-${doc.name}`,
                                 name: doc.name,
                                 type: doc.name.split('.').pop()?.toLowerCase() || 'document',
@@ -77,36 +82,52 @@ function DocumentsContent() {
                                 clientLastName: client.lastName,
                                 category: 'client',
                                 url: doc.url,
+                                isUserDocument: false,
                             });
                         });
                     }
                 });
-                
-                setDocuments(allDocs);
-                
-                // Fetch file sizes if we have URLs
-                if (fileUrls.length > 0) {
-                    try {
-                        const sizesResponse = await fetch('/api/documents/metadata', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ filenames: fileUrls }),
-                        });
-                        
-                        if (sizesResponse.ok) {
-                            const { sizes } = await sizesResponse.json();
-                            // Update documents with actual sizes
-                            setDocuments(prevDocs => 
-                                prevDocs.map(doc => ({
-                                    ...doc,
-                                    size: sizes[doc.url || ''] || doc.size
-                                }))
-                            );
-                        }
-                    } catch (sizeError) {
-                        console.error('Error fetching file sizes:', sizeError);
-                        // Continue with 'Unknown' sizes if fetch fails
+            }
+
+            // Fetch user documents
+            const userDocsResponse = await fetch('/api/documents', { credentials: 'include' });
+            let userDocs: ClientDocument[] = [];
+            
+            if (userDocsResponse.ok) {
+                userDocs = await userDocsResponse.json();
+                userDocs.forEach((doc: any) => {
+                    if (doc.url) {
+                        fileUrls.push(doc.url);
                     }
+                });
+            }
+            
+            // Combine both types of documents
+            const allDocs = [...clientDocs, ...userDocs];
+            setDocuments(allDocs);
+            
+            // Fetch file sizes if we have URLs
+            if (fileUrls.length > 0) {
+                try {
+                    const sizesResponse = await fetch('/api/documents/metadata', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filenames: fileUrls }),
+                    });
+                    
+                    if (sizesResponse.ok) {
+                        const { sizes } = await sizesResponse.json();
+                        // Update documents with actual sizes
+                        setDocuments(prevDocs => 
+                            prevDocs.map(doc => ({
+                                ...doc,
+                                size: sizes[doc.url || ''] || doc.size
+                            }))
+                        );
+                    }
+                } catch (sizeError) {
+                    console.error('Error fetching file sizes:', sizeError);
+                    // Continue with 'Unknown' sizes if fetch fails
                 }
             }
         } catch (error) {
@@ -125,6 +146,41 @@ function DocumentsContent() {
         return Array.from(new Set(names)).sort();
     }, [documents]);
 
+    // Handle file upload for user documents
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('isUserDocument', 'true'); // Flag to indicate this is a user document
+
+        try {
+            const response = await fetch('/api/documents', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include',
+            });
+
+            if (response.ok) {
+                await loadDocuments(); // Reload documents to show the new one
+            } else {
+                const error = await response.json();
+                alert(`Failed to upload document: ${error.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error uploading document:', error);
+            alert('Error uploading document. Please try again.');
+        } finally {
+            setIsUploading(false);
+            // Reset file input
+            if (event.target) {
+                event.target.value = '';
+            }
+        }
+    };
+
     // Filtering & sorting
     const filteredAndSortedDocuments = useMemo(() => {
         let filtered = documents;
@@ -132,19 +188,25 @@ function DocumentsContent() {
             const q = searchQuery.toLowerCase();
             filtered = filtered.filter(d =>
                 d.name?.toLowerCase().includes(q) ||
-                d.clientName?.toLowerCase().includes(q) ||
+                (d.clientName && d.clientName.toLowerCase().includes(q)) ||
                 d.type?.toLowerCase().includes(q)
             );
         }
         // Filter by client (case-insensitive, trimmed)
         if (selectedClient !== "all") {
-            const normalizedSelected = selectedClient.trim().toLowerCase();
-            filtered = filtered.filter(d => {
-                if (d.clientName) {
-                    return d.clientName.trim().toLowerCase() === normalizedSelected;
-                }
-                return false;
-            });
+            if (selectedClient === "user-documents") {
+                // Show only user documents
+                filtered = filtered.filter(d => d.isUserDocument === true);
+            } else {
+                // Filter by specific client name
+                const normalizedSelected = selectedClient.trim().toLowerCase();
+                filtered = filtered.filter(d => {
+                    if (d.clientName) {
+                        return d.clientName.trim().toLowerCase() === normalizedSelected;
+                    }
+                    return false;
+                });
+            }
         }
         const sorted = [...filtered].sort((a, b) => {
             switch (sortBy) {
@@ -216,14 +278,24 @@ function DocumentsContent() {
 
     const confirmDeleteDocument = async () => {
         const doc = deleteDocumentConfirm.document;
-        if (!doc || !doc.url || !doc.clientName) {
-            console.error('Cannot delete document: missing document, URL, or client name');
+        if (!doc || !doc.url) {
+            console.error('Cannot delete document: missing document or URL');
             return;
         }
 
         try {
-            const response = await fetch(`/api/documents?url=${encodeURIComponent(doc.url)}&clientName=${encodeURIComponent(doc.clientName)}`, {
+            // Build query params
+            const params = new URLSearchParams();
+            params.append('url', doc.url);
+            if (doc.isUserDocument) {
+                params.append('isUserDocument', 'true');
+            } else if (doc.clientName) {
+                params.append('clientName', doc.clientName);
+            }
+
+            const response = await fetch(`/api/documents?${params.toString()}`, {
                 method: 'DELETE',
+                credentials: 'include',
             });
 
             if (response.ok) {
@@ -252,7 +324,26 @@ function DocumentsContent() {
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold tracking-tight">Document Library</h2>
-                    <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
+                    <div className="flex gap-2">
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileUpload}
+                            className="hidden"
+                            id="user-document-upload"
+                            disabled={isUploading}
+                        />
+                        <Button 
+                            variant="default" 
+                            size="sm"
+                            disabled={isUploading}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <Upload className="h-4 w-4 mr-2" />
+                            {isUploading ? 'Uploading...' : 'Upload Document'}
+                        </Button>
+                        <Button onClick={loadDocuments} variant="outline" size="sm">Refresh List</Button>
+                    </div>
                 </div>
                 {/* Filters and Search */}
                 <Card className="mb-6">
@@ -280,7 +371,8 @@ function DocumentsContent() {
                                         <SelectValue placeholder="All Clients" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Clients</SelectItem>
+                                        <SelectItem value="all">All Documents</SelectItem>
+                                        <SelectItem value="user-documents">My Documents</SelectItem>
                                         {clientNames.map(name => (
                                             <SelectItem key={name} value={name}>{name}</SelectItem>
                                         ))}
@@ -348,7 +440,7 @@ function DocumentsContent() {
                                                     </CardTitle>
                                                     <CardDescription className="flex items-center gap-4 mt-2">
                                                         <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatDate(doc.uploadedDate)}</span>
-                                                        <span className="text-sm">Client: {doc.clientName || "Unassigned"}</span>
+                                                        <span className="text-sm">{doc.isUserDocument ? "My Document" : `Client: ${doc.clientName || "Unassigned"}`}</span>
                                                         <span className="text-sm">Size: {doc.size}</span>
                                                         <span className="text-sm uppercase">{doc.type}</span>
                                                     </CardDescription>
@@ -375,7 +467,7 @@ function DocumentsContent() {
                 }}
                 onConfirm={confirmDeleteDocument}
                 title="Delete Document"
-                description={`Are you sure you want to delete "${deleteDocumentConfirm.document?.name}"? This will permanently remove the document from ${deleteDocumentConfirm.document?.clientName || "the client"}'s record. This action cannot be undone.`}
+                description={`Are you sure you want to delete "${deleteDocumentConfirm.document?.name}"? ${deleteDocumentConfirm.document?.isUserDocument ? "This will permanently remove your document." : `This will permanently remove the document from ${deleteDocumentConfirm.document?.clientName || "the client"}'s record.`} This action cannot be undone.`}
                 itemName={deleteDocumentConfirm.document?.name}
             />
         </div>
