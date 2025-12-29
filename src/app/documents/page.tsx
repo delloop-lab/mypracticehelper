@@ -193,7 +193,7 @@ function DocumentsContent() {
 
     // Handle file input change
     const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
+        const file: File | null = event.target.files?.[0] ?? null;
         handleFileSelect(file);
         // Reset file input
         if (event.target) {
