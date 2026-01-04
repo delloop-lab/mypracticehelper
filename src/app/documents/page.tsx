@@ -576,33 +576,11 @@ function DocumentsContent() {
                                 </Select>
                             </div>
                         </div>
-                        {/* Results count and Show Documents button */}
+                        {/* Results count */}
                         <div className="flex items-center justify-between">
                             <div className="text-sm text-muted-foreground">
                                 Showing {filteredAndSortedDocuments.length} of {documents.length} documents
                             </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setShowDocuments(!showDocuments)}
-                                className={`flex items-center gap-2 ${
-                                    showDocuments 
-                                        ? 'border-red-500 text-red-600 hover:bg-red-50 hover:text-red-700' 
-                                        : 'border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700'
-                                }`}
-                            >
-                                {showDocuments ? (
-                                    <>
-                                        <ChevronUp className="h-4 w-4" />
-                                        Hide Documents
-                                    </>
-                                ) : (
-                                    <>
-                                        <ChevronDown className="h-4 w-4" />
-                                        Show Documents
-                                    </>
-                                )}
-                            </Button>
                         </div>
                     </CardContent>
                 </Card>
