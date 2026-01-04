@@ -6,6 +6,7 @@ export function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Allow access to login page, root page (redirects to login), public assets, webhook setup pages, and landing page
+    // Also allow static files (images, fonts, etc.) from public folder
     if (
         pathname === '/login' ||
         pathname === '/' ||
@@ -14,7 +15,21 @@ export function middleware(request: NextRequest) {
         pathname.startsWith('/api') ||
         pathname.startsWith('/favicon') ||
         pathname === '/webhook-setup' ||
-        pathname === '/webhook-status'
+        pathname === '/webhook-status' ||
+        // Allow static files from public folder
+        pathname.endsWith('.png') ||
+        pathname.endsWith('.jpg') ||
+        pathname.endsWith('.jpeg') ||
+        pathname.endsWith('.gif') ||
+        pathname.endsWith('.svg') ||
+        pathname.endsWith('.webp') ||
+        pathname.endsWith('.ico') ||
+        pathname.endsWith('.woff') ||
+        pathname.endsWith('.woff2') ||
+        pathname.endsWith('.ttf') ||
+        pathname.endsWith('.js') ||
+        pathname.endsWith('.css') ||
+        pathname.endsWith('.html')
     ) {
         return NextResponse.next();
     }
@@ -38,7 +53,8 @@ export const config = {
          * - _next/static (static files)
          * - _next/image (image optimization files)
          * - favicon.ico (favicon file)
+         * - Static file extensions (.png, .jpg, .svg, etc.)
          */
-        '/((?!_next/static|_next/image|favicon.ico).*)',
+        '/((?!_next/static|_next/image|favicon.ico|.*\\.png$|.*\\.jpg$|.*\\.jpeg$|.*\\.gif$|.*\\.svg$|.*\\.webp$|.*\\.ico$).*)',
     ],
 };
