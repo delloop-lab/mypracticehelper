@@ -3,7 +3,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Upload } from "lucide-react";
+import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Upload, ExternalLink } from "lucide-react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,8 +36,12 @@ export function VoiceNotes() {
     const [clients, setClients] = useState<Client[]>([]);
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
     const [selectedClientId, setSelectedClientId] = useState<string>("");
+    const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+    const [availableSessions, setAvailableSessions] = useState<{ id: string; date: string; type: string }[]>([]);
+    const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [isDragging, setIsDragging] = useState(false);
+    const [currentTherapist, setCurrentTherapist] = useState<string>("");
 
     // Refs
     const recognitionRef = useRef<any>(null);
@@ -49,14 +54,106 @@ export function VoiceNotes() {
     useEffect(() => {
         const loadClients = async () => {
             try {
+                console.log('[Voice Notes] Loading clients...');
                 const res = await fetch("/api/clients");
-                if (res.ok) setClients(await res.json());
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('[Voice Notes] Loaded', data.length, 'clients');
+                    setClients(data);
+                }
             } catch (e) {
-                console.error("Error loading clients", e);
+                console.error("[Voice Notes] Error loading clients", e);
             }
         };
         loadClients();
     }, []);
+
+    // Load therapist name on mount (from logged-in user's first_name and last_name)
+    useEffect(() => {
+        const loadTherapist = async () => {
+            try {
+                console.log('[Voice Notes] ========== Fetching therapist name ==========');
+                const response = await fetch('/api/auth/me');
+                if (response.ok) {
+                    const userData = await response.json();
+                    console.log('[Voice Notes] User data from /api/auth/me:', userData);
+                    
+                    const nameParts: string[] = [];
+                    if (userData.first_name && userData.first_name.trim()) {
+                        nameParts.push(userData.first_name.trim());
+                    }
+                    if (userData.last_name && userData.last_name.trim()) {
+                        nameParts.push(userData.last_name.trim());
+                    }
+                    
+                    if (nameParts.length > 0) {
+                        const name = nameParts.join(' ');
+                        console.log('[Voice Notes] Therapist name:', name);
+                        setCurrentTherapist(name);
+                    } else if (userData.email) {
+                        // Fallback to email if name not set
+                        const emailParts = userData.email.split('@')[0].split('.');
+                        const name = emailParts.map((part: string) => 
+                            part.charAt(0).toUpperCase() + part.slice(1)
+                        ).join(' ');
+                        setCurrentTherapist(name);
+                    }
+                } else {
+                    console.error('[Voice Notes] Failed to fetch user:', response.status);
+                }
+            } catch (error) {
+                console.error('[Voice Notes] Error fetching therapist:', error);
+            }
+        };
+        loadTherapist();
+    }, []);
+
+    // Load sessions for selected client
+    const loadSessionsForClient = async (clientId: string) => {
+        console.log('[Voice Notes] ========== Loading sessions for client ==========');
+        console.log('[Voice Notes] Client ID:', clientId);
+        setIsLoadingSessions(true);
+        setAvailableSessions([]);
+        setSelectedSessionId("");
+        
+        try {
+            const client = clients.find(c => c.id === clientId);
+            const clientName = client?.name;
+            console.log('[Voice Notes] Client name:', clientName);
+            
+            const response = await fetch('/api/appointments');
+            if (response.ok) {
+                const appointments = await response.json();
+                console.log('[Voice Notes] Total appointments:', appointments.length);
+                const now = new Date();
+                
+                // Filter to past sessions for this client
+                const pastSessions = appointments
+                    .filter((apt: any) => {
+                        const aptDate = new Date(apt.date);
+                        const isPast = aptDate < now;
+                        const matchesClient = 
+                            apt.clientName === clientName ||
+                            apt.clientName?.toLowerCase() === clientName?.toLowerCase() ||
+                            apt.clientId === clientId ||
+                            apt.client_id === clientId;
+                        return isPast && matchesClient;
+                    })
+                    .map((apt: any) => ({
+                        id: apt.id,
+                        date: apt.date,
+                        type: apt.type || 'Session'
+                    }))
+                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                
+                console.log('[Voice Notes] ✅ Found', pastSessions.length, 'past sessions');
+                setAvailableSessions(pastSessions);
+            }
+        } catch (error) {
+            console.error('[Voice Notes] Error loading sessions:', error);
+        }
+        setIsLoadingSessions(false);
+    };
 
     // Initialize SpeechRecognition (WebKit only - works in Chrome/Edge)
     useEffect(() => {
@@ -137,6 +234,12 @@ export function VoiceNotes() {
     };
 
     const startRecording = async () => {
+        // Require both client and session to be selected
+        if (!selectedClientId || !selectedSessionId) {
+            setError("Please select both a client and a session before starting recording");
+            return;
+        }
+
         setError("");
         setTranscript("");
         transcriptRef.current = "";
@@ -332,9 +435,15 @@ export function VoiceNotes() {
         }, 1500); // Increased timeout to 1.5 seconds to allow final results to be captured
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        // Require both client and session to be selected
+        if (!selectedClientId || !selectedSessionId) {
+            setError("Please select both a client and a session before uploading a file");
+            return;
+        }
 
         const allowed = ["audio/mp3", "audio/webm", "audio/m4u", "audio/wav", "audio/m4a", "audio/x-m4a", "audio/mp4", "audio/mpeg"];
         if (!allowed.includes(file.type)) {
@@ -347,7 +456,44 @@ export function VoiceNotes() {
         setAudioBlob(blob);
         setAudioURL(url);
 
+        // Calculate duration from audio file BEFORE processing
+        let durationInSeconds = 0;
+        try {
+            const audio = new Audio(url);
+            await new Promise((resolve, reject) => {
+                audio.onloadedmetadata = () => {
+                    durationInSeconds = Math.floor(audio.duration);
+                    console.log('[Voice Notes] Uploaded file duration:', durationInSeconds, 'seconds');
+                    setRecordingTime(durationInSeconds);
+                    resolve(null);
+                };
+                audio.onerror = () => {
+                    console.warn('[Voice Notes] Could not load audio metadata');
+                    resolve(null); // Continue even if duration can't be calculated
+                };
+                // Timeout after 5 seconds
+                setTimeout(() => {
+                    console.warn('[Voice Notes] Duration calculation timeout');
+                    resolve(null);
+                }, 5000);
+            });
+        } catch (err) {
+            console.warn('[Voice Notes] Could not calculate audio duration:', err);
+            // Continue without duration
+        }
+
+        // Set duration before processing so it's available in processTranscript
+        setRecordingTime(durationInSeconds);
+        
+        // Store duration in a way that processTranscript can access it
+        // We'll pass it through a closure or use the state
+        // For now, ensure it's set before processing
+        if (durationInSeconds > 0) {
+            console.log('[Voice Notes] Duration set before processing:', durationInSeconds);
+        }
+
         // For uploaded files, use special marker so processTranscript knows to use STT
+        // Note: duration will be recalculated in processTranscript if still 0
         processTranscript("__FILE_UPLOAD__", blob);
     };
 
@@ -443,11 +589,23 @@ export function VoiceNotes() {
             } else {
                 formattedText = "No transcript captured";
                 setIsProcessing(false);
+                
+                // Get client info for metadata even if no transcript
+                let clientNameForSave: string | undefined = undefined;
+                let clientIdForSave: string | undefined = undefined;
+                if (selectedClientId) {
+                    const selectedClient = clients.find(c => c.id === selectedClientId);
+                    if (selectedClient) {
+                        clientNameForSave = selectedClient.name;
+                        clientIdForSave = selectedClient.id;
+                    }
+                }
+                
                 const notes: NoteSection[] = [{ title: "Session Notes", content: formattedText }];
                 setStructuredNotes(notes);
                 try {
-                    await saveRecording(formattedText, blob, notes);
-                    console.log("Recording saved successfully");
+                    await saveRecording(formattedText, blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined);
+                    console.log("Recording saved successfully", { clientId: clientIdForSave, sessionId: selectedSessionId });
                     window.dispatchEvent(new Event("recordings-updated"));
                 } catch (err) {
                     console.error("Failed to save recording:", err);
@@ -486,39 +644,160 @@ export function VoiceNotes() {
         // Show the transcript in the UI (this is what the user reviews)
         setTranscript(basicFormatted);
 
-        // Then, use AI to create a more structured set of notes
-        let structuredText = basicFormatted;
-        try {
-            console.log("Processing transcript with AI...");
-            const response = await fetch('/api/ai/process-transcript', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transcript: basicFormatted })
-            });
-
-            if (response.ok) {
-                const data = await response.json() as { structured?: string; method?: string };
-                structuredText = data.structured || basicFormatted;
-                console.log(`Transcript processed using ${data.method || 'unknown'} method`);
-            } else {
-                console.warn('AI processing failed, using basic transcript only');
+        // Fetch metadata for structured notes header
+        let clientName: string | undefined = undefined;
+        let clientId: string | undefined = undefined;
+        let therapistName: string | undefined = undefined;
+        const sessionDate = new Date().toISOString();
+        
+        // For uploaded files, calculate duration from blob if not already set
+        let duration = recordingTime;
+        if (text === "__FILE_UPLOAD__" && duration === 0) {
+            // Try to get duration from audioURL if available
+            if (audioURL) {
+                try {
+                    const audio = new Audio(audioURL);
+                    await new Promise<void>((resolve) => {
+                        let resolved = false;
+                        const finish = () => {
+                            if (!resolved) {
+                                resolved = true;
+                                resolve();
+                            }
+                        };
+                        audio.onloadedmetadata = () => {
+                            if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+                                duration = Math.floor(audio.duration);
+                                console.log('[Voice Notes] Calculated duration in processTranscript:', duration, 'seconds');
+                                setRecordingTime(duration);
+                            }
+                            finish();
+                        };
+                        audio.onerror = () => {
+                            console.warn('[Voice Notes] Audio metadata load error');
+                            finish();
+                        };
+                        // Try to load
+                        audio.load();
+                        // Timeout after 3 seconds
+                        setTimeout(() => {
+                            if (duration === 0) {
+                                console.warn('[Voice Notes] Duration calculation timeout, using 0');
+                            }
+                            finish();
+                        }, 3000);
+                    });
+                } catch (err) {
+                    console.warn('[Voice Notes] Could not calculate duration in processTranscript:', err);
+                }
             }
-        } catch (err) {
-            console.error('Error processing transcript with AI:', err);
-            // Keep structuredText as basicFormatted
+            // Also try to get duration from the blob directly if audioURL method failed
+            if (duration === 0 && blob) {
+                try {
+                    // Create a temporary URL for the blob
+                    const tempUrl = URL.createObjectURL(blob);
+                    const audio = new Audio(tempUrl);
+                    await new Promise<void>((resolve) => {
+                        audio.onloadedmetadata = () => {
+                            if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+                                duration = Math.floor(audio.duration);
+                                console.log('[Voice Notes] Calculated duration from blob:', duration, 'seconds');
+                                setRecordingTime(duration);
+                            }
+                            URL.revokeObjectURL(tempUrl);
+                            resolve();
+                        };
+                        audio.onerror = () => {
+                            URL.revokeObjectURL(tempUrl);
+                            resolve();
+                        };
+                        audio.load();
+                        setTimeout(() => {
+                            URL.revokeObjectURL(tempUrl);
+                            resolve();
+                        }, 3000);
+                    });
+                } catch (err) {
+                    console.warn('[Voice Notes] Could not calculate duration from blob:', err);
+                }
+            }
+        }
+        console.log('[Voice Notes] Final duration for AI processing:', duration, 'seconds');
+
+        // Get client name and ID from selected client
+        if (selectedClientId) {
+            const selectedClient = clients.find(c => c.id === selectedClientId);
+            if (selectedClient) {
+                clientName = selectedClient.name;
+                clientId = selectedClient.id;
+            }
         }
 
-        // Notes saved with the recording are the AI-structured version,
-        // but we no longer show these on the Voice Notes screen (only the raw transcript),
-        // so they are used only for storage and later viewing in Recordings / Session Notes.
-        const notes: NoteSection[] = [{ title: "Session Notes", content: structuredText }];
+        // Use pre-fetched therapist name (from useEffect on mount)
+        therapistName = currentTherapist || undefined;
+        console.log('[Voice Notes] Using therapist name:', therapistName);
+
+        // Determine if this is an uploaded file (client's words) or live recording (therapist's notes)
+        const isUploadedFile = text === "__FILE_UPLOAD__";
+        
+        let structuredText = basicFormatted;
+        
+        if (isUploadedFile) {
+            // UPLOADED FILES: Apply AI structuring because these are client's spoken words
+            // that need to be organized into structured session notes
+            try {
+                console.log("Processing UPLOADED transcript with AI...", { clientName, therapistName, sessionDate, duration });
+                const response = await fetch('/api/ai/process-transcript', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        transcript: basicFormatted,
+                        clientName,
+                        therapistName,
+                        sessionDate,
+                        duration
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json() as { structured?: string; method?: string };
+                    structuredText = data.structured || basicFormatted;
+                    console.log(`[Voice Notes] Uploaded transcript processed using ${data.method || 'unknown'} method`);
+                    console.log(`[Voice Notes] Structured text length: ${structuredText.length}, Transcript length: ${basicFormatted.length}`);
+                    console.log(`[Voice Notes] Structured preview:`, structuredText.substring(0, 200));
+                    if (structuredText === basicFormatted) {
+                        console.warn('[Voice Notes] ⚠️ Structured text is same as transcript - AI may not have processed it');
+                    }
+                } else {
+                    const errorText = await response.text();
+                    console.error('[Voice Notes] AI processing failed:', errorText);
+                    console.warn('AI processing failed for uploaded file, using basic transcript only');
+                }
+            } catch (err) {
+                console.error('Error processing uploaded transcript with AI:', err);
+                // Keep structuredText as basicFormatted
+            }
+        } else {
+            // LIVE MIC RECORDINGS: These are therapist's spoken notes after the session
+            // No AI structuring needed - just save the raw transcript as-is
+            console.log("Live recording - saving therapist's notes without AI structuring");
+            
+            // Just use the plain transcript - no headers or formatting
+            structuredText = basicFormatted;
+        }
+
+        // Notes saved with the recording
+        // For live recordings, just show "Notes" with plain transcript
+        const notes: NoteSection[] = [{ title: isUploadedFile ? "AI-Structured Notes" : "Notes", content: structuredText }];
         setStructuredNotes(notes);
         setIsProcessing(false);
 
         try {
             // Save the raw-but-formatted transcript, and keep AI-structured notes separately
-            await saveRecording(basicFormatted, blob, notes);
-            console.log("Recording saved successfully");
+            // Include client information and session ID if available
+            const sessionId = selectedSessionId || undefined;
+            await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId);
+            console.log("Recording saved successfully", { clientId, clientName, sessionId });
             window.dispatchEvent(new Event("recordings-updated"));
         } catch (err) {
             console.error("Failed to save recording:", err);
@@ -561,16 +840,32 @@ export function VoiceNotes() {
         return formatted;
     };
 
-    const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[]) => {
+    const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[], clientId?: string, clientName?: string, sessionId?: string) => {
         const form = new FormData();
         form.append("file", blob);
-        const meta = {
+        const meta: any = {
             id: Date.now().toString(),
             date: new Date().toISOString(),
             duration: recordingTime,
             transcript,
             notes
         };
+        
+        // Include client information if available
+        if (clientId) {
+            meta.client_id = clientId;
+            meta.clientId = clientId;
+        }
+        if (clientName) {
+            meta.clientName = clientName;
+        }
+        // Include session ID if available
+        if (sessionId) {
+            meta.session_id = sessionId;
+            meta.sessionId = sessionId;
+            console.log('[Voice Notes] Saving recording with session_id:', sessionId);
+        }
+        
         form.append("data", JSON.stringify(meta));
         const response = await fetch("/api/recordings", { method: "POST", body: form });
         if (!response.ok) throw new Error(`Failed to save recording: ${response.statusText}`);
@@ -594,7 +889,7 @@ export function VoiceNotes() {
         setSaveStatus("idle");
     };
 
-    const assignRecordingToClient = async (clientId: string) => {
+    const assignRecordingToClient = async (clientId: string, sessionId?: string) => {
         try {
             const res = await fetch("/api/recordings");
             if (!res.ok) return;
@@ -602,9 +897,86 @@ export function VoiceNotes() {
             // Find the most recent recording without a client assigned
             const idx = recordings.findIndex((r: any) => !r.client_id && !r.clientId);
             if (idx === -1) return;
+            
+            // Get client name
+            const client = clients.find(c => c.id === clientId);
+            const clientName = client?.name;
+            
             // Set the clientId
             recordings[idx].clientId = clientId;
             recordings[idx].client_id = clientId; // Also set snake_case for database
+            if (clientName) {
+                recordings[idx].clientName = clientName;
+            }
+            
+            // Set session ID if provided
+            if (sessionId) {
+                recordings[idx].sessionId = sessionId;
+                recordings[idx].session_id = sessionId;
+                console.log('[Voice Notes] Assigning recording to session:', sessionId);
+            }
+            
+            // Regenerate structured notes with correct client if notes exist
+            if (recordings[idx].notes && recordings[idx].notes.length > 0 && recordings[idx].transcript) {
+                try {
+                    // Fetch therapist name - the therapist is the person whose FIRST and LAST names are in their profile
+                    let therapistName: string | undefined = undefined;
+                    const userResponse = await fetch('/api/auth/me');
+                    if (userResponse.ok) {
+                        const userData = await userResponse.json() as { first_name?: string | null; last_name?: string | null; email?: string };
+                        console.log('[Voice Notes] User data for therapist name (regenerate):', { first_name: userData.first_name, last_name: userData.last_name, email: userData.email });
+                        
+                        // Build therapist name from first_name and last_name (even if one is null)
+                        const nameParts: string[] = [];
+                        if (userData.first_name && userData.first_name.trim()) {
+                            nameParts.push(userData.first_name.trim());
+                        }
+                        if (userData.last_name && userData.last_name.trim()) {
+                            nameParts.push(userData.last_name.trim());
+                        }
+                        
+                        if (nameParts.length > 0) {
+                            therapistName = nameParts.join(' ').trim();
+                            console.log('[Voice Notes] Therapist name from profile (regenerate):', therapistName);
+                        } else if (userData.email) {
+                            // Fallback: Extract from email if first_name/last_name are not available
+                            const emailParts = userData.email.split('@')[0].split('.');
+                            if (emailParts.length > 1) {
+                                therapistName = emailParts.map(part => 
+                                    part.charAt(0).toUpperCase() + part.slice(1)
+                                ).join(' ');
+                            } else {
+                                therapistName = emailParts[0].charAt(0).toUpperCase() + emailParts[0].slice(1);
+                            }
+                            console.log('[Voice Notes] Therapist name from email fallback (regenerate):', therapistName);
+                        }
+                    }
+                    
+                    // Regenerate structured notes with correct metadata
+                    const response = await fetch('/api/ai/process-transcript', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            transcript: recordings[idx].transcript,
+                            clientName: clientName || undefined,
+                            therapistName,
+                            sessionDate: recordings[idx].date,
+                            duration: recordings[idx].duration
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json() as { structured?: string };
+                        if (data.structured) {
+                            // Update the notes with regenerated content
+                            recordings[idx].notes = [{ title: "Session Notes", content: data.structured }];
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Could not regenerate structured notes:', err);
+                }
+            }
+            
             await fetch("/api/recordings", {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
@@ -625,12 +997,14 @@ export function VoiceNotes() {
             return;
         }
         try {
-            // Pass the client ID instead of name
-            await assignRecordingToClient(client.id);
+            // Pass the client ID and session ID
+            await assignRecordingToClient(client.id, selectedSessionId || undefined);
             setSaveStatus("success");
             setTimeout(() => {
                 setIsSaveDialogOpen(false);
                 setSelectedClientId("");
+                setSelectedSessionId("");
+                setAvailableSessions([]);
                 setSaveStatus("idle");
             }, 1500);
         } catch (e) {
@@ -649,6 +1023,87 @@ export function VoiceNotes() {
                     <CardDescription>Record Clinical Notes with automatic transcription (Chrome/Edge only).</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    {/* Client and Therapist Info - Select BEFORE recording */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg border">
+                        <div className="space-y-2">
+                            <Label htmlFor="pre-record-client" className="text-sm font-medium">
+                                Select Client *
+                            </Label>
+                            <Select 
+                                value={selectedClientId} 
+                                onValueChange={async (value) => {
+                                    console.log('[Voice Notes] Client selected:', value);
+                                    setSelectedClientId(value);
+                                    // Load sessions for this client
+                                    await loadSessionsForClient(value);
+                                }}
+                            >
+                                <SelectTrigger id="pre-record-client">
+                                    <SelectValue placeholder="Select a client..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {clients.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            {c.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-sm font-medium">Therapist</Label>
+                            <div className="p-2 rounded-md text-sm bg-muted border font-medium">
+                                {currentTherapist || 'Loading...'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Session Selection - REQUIRED - Shows after client is selected */}
+                    {selectedClientId && (
+                        <div className="p-4 bg-muted/50 rounded-lg border space-y-2">
+                            <Label htmlFor="pre-record-session" className="text-sm font-medium">
+                                Select Session *
+                            </Label>
+                            {isLoadingSessions ? (
+                                <div className="text-sm text-muted-foreground p-2">Loading sessions...</div>
+                            ) : availableSessions.length > 0 ? (
+                                <>
+                                    <Select 
+                                        value={selectedSessionId || ""} 
+                                        onValueChange={(value) => {
+                                            console.log('[Voice Notes] Session selected:', value);
+                                            setSelectedSessionId(value);
+                                        }}
+                                    >
+                                        <SelectTrigger id="pre-record-session">
+                                            <SelectValue placeholder="Select a session (required)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {availableSessions.map((session) => (
+                                                <SelectItem key={session.id} value={session.id}>
+                                                    {new Date(session.date).toLocaleDateString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        year: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })} - {session.type}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Select a session to link this recording. Recording and file upload are disabled until both client and session are selected.
+                                    </p>
+                                </>
+                            ) : (
+                                <div className="text-xs text-red-600 dark:text-red-400 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800">
+                                    ⚠️ No sessions found for this client. Please create a session first before recording.
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="flex flex-col items-center justify-center py-8">
                         <AnimatePresence mode="wait">
                             {!isRecording && !isProcessing && structuredNotes.length === 0 && (
@@ -659,10 +1114,21 @@ export function VoiceNotes() {
                                     exit={{ opacity: 0, scale: 0.9 }}
                                     className="flex flex-col items-center space-y-4"
                                 >
-                                    <Button size="lg" onClick={startRecording} className="h-24 w-24 rounded-full bg-primary hover:bg-primary/90">
+                                    <Button 
+                                        size="lg" 
+                                        onClick={startRecording} 
+                                        disabled={!selectedClientId || !selectedSessionId}
+                                        className="h-24 w-24 rounded-full bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
                                         <Mic className="h-10 w-10" />
                                     </Button>
-                                    <p className="text-sm text-muted-foreground">Click to start recording</p>
+                                    <p className="text-sm text-muted-foreground text-center">
+                                        {!selectedClientId 
+                                            ? 'Please select a client first'
+                                            : !selectedSessionId
+                                            ? 'Please select a session to enable recording'
+                                            : `Recording for: ${clients.find(c => c.id === selectedClientId)?.name} - ${availableSessions.find(s => s.id === selectedSessionId)?.type || 'session'}`}
+                                    </p>
                                 </motion.div>
                             )}
 
@@ -715,7 +1181,11 @@ export function VoiceNotes() {
                                         <CheckCircle2 className="h-10 w-10 text-green-500" />
                                     </div>
                                     <p className="text-sm text-muted-foreground">Recording complete!</p>
-                                    <Button onClick={startRecording} variant="outline">
+                                    <Button 
+                                        onClick={startRecording} 
+                                        variant="outline"
+                                        disabled={!selectedClientId || !selectedSessionId}
+                                    >
                                         <Mic className="mr-2 h-4 w-4" /> Record New Notes
                                     </Button>
                                 </motion.div>
@@ -754,10 +1224,29 @@ export function VoiceNotes() {
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
                     {/* We intentionally hide AI-structured notes here and only show the raw transcript above.
                         The structured notes are still saved and can be viewed in Recording History / Session Notes. */}
-                    <div className="flex gap-2">
-                        <Button className="flex-1" onClick={handleSaveToClient}>
-                            <CheckCircle2 className="mr-2 h-4 w-4" /> Save to Client Record
-                        </Button>
+                    <div className="flex flex-col gap-2">
+                        {selectedClientId ? (
+                            // Client was already selected before recording - already saved
+                            <div className="flex items-center justify-between gap-2 p-3 bg-green-100 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                                    <span className="text-green-700 dark:text-green-300 font-medium">
+                                        ✓ Saved to {clients.find(c => c.id === selectedClientId)?.name || 'client'} record
+                                    </span>
+                                </div>
+                                <Link href={`/clients?highlight=${selectedClientId}${selectedSessionId ? `&session=${selectedSessionId}` : ''}`}>
+                                    <Button variant="outline" size="sm" className="gap-1">
+                                        <ExternalLink className="h-4 w-4" />
+                                        View Client
+                                    </Button>
+                                </Link>
+                            </div>
+                        ) : (
+                            // No client selected before recording - show button to assign
+                            <Button className="flex-1" onClick={handleSaveToClient}>
+                                <CheckCircle2 className="mr-2 h-4 w-4" /> Assign to Client Record
+                            </Button>
+                        )}
                     </div>
                 </motion.div>
             )}
@@ -768,29 +1257,98 @@ export function VoiceNotes() {
                         <DialogTitle>Save Notes to Client Record</DialogTitle>
                         <DialogDescription>Select a client to append these notes to their record.</DialogDescription>
                     </DialogHeader>
-                    <div className="py-4">
-                        <Label htmlFor="client-select">Select Client</Label>
-                        <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                            <SelectTrigger id="client-select">
-                                <SelectValue placeholder="Select a client..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {clients.map((c) => (
-                                    <SelectItem key={c.id} value={c.id}>
-                                        {c.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="client-select">Select Client *</Label>
+                            <Select 
+                                value={selectedClientId} 
+                                onValueChange={async (value) => {
+                                    setSelectedClientId(value);
+                                    setSelectedSessionId(""); // Clear session when client changes
+                                    // Load sessions for this client
+                                    if (value) {
+                                        await loadSessionsForClient(value);
+                                    } else {
+                                        setAvailableSessions([]);
+                                    }
+                                }}
+                            >
+                                <SelectTrigger id="client-select">
+                                    <SelectValue placeholder="Select a client..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {clients.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            {c.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        
+                        {/* Session Selection - Show when client is selected */}
+                        {selectedClientId && (
+                            <div className="space-y-2">
+                                <Label htmlFor="session-select">Link to Session (Optional)</Label>
+                                {isLoadingSessions ? (
+                                    <div className="text-sm text-muted-foreground">Loading sessions...</div>
+                                ) : availableSessions.length > 0 ? (
+                                    <Select
+                                        value={selectedSessionId || "none"}
+                                        onValueChange={(value) => {
+                                            setSelectedSessionId(value === "none" ? "" : value);
+                                        }}
+                                    >
+                                        <SelectTrigger id="session-select">
+                                            <SelectValue placeholder="Select a session..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">No session (unlinked)</SelectItem>
+                                            {availableSessions.map(session => (
+                                                <SelectItem key={session.id} value={session.id}>
+                                                    {new Date(session.date).toLocaleDateString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        year: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })} - {session.type}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <div className="text-xs text-muted-foreground p-2 bg-muted rounded">
+                                        No past sessions found for this client. Recording will be saved without a session link.
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={confirmSaveToClient} disabled={!selectedClientId || saveStatus === "saving"}>
-                            {saveStatus === "saving" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {saveStatus === "success" ? "Saved!" : "Save Notes"}
-                        </Button>
+                        {saveStatus === "success" ? (
+                            <>
+                                <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)}>
+                                    Close
+                                </Button>
+                                <Link href={`/clients?highlight=${selectedClientId}`}>
+                                    <Button className="gap-1">
+                                        <ExternalLink className="h-4 w-4" />
+                                        View Client
+                                    </Button>
+                                </Link>
+                            </>
+                        ) : (
+                            <>
+                                <Button variant="outline" onClick={() => setIsSaveDialogOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button onClick={confirmSaveToClient} disabled={!selectedClientId || saveStatus === "saving"}>
+                                    {saveStatus === "saving" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    Save Notes
+                                </Button>
+                            </>
+                        )}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -798,9 +1356,18 @@ export function VoiceNotes() {
             {/* File upload UI */}
             <div className="mt-6">
                 <div
-                    className={`relative border-2 border-dashed rounded-lg p-8 transition-colors ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
-                        }`}
+                    className={`relative border-2 border-dashed rounded-lg p-8 transition-colors ${
+                        !selectedClientId || !selectedSessionId
+                            ? "border-muted-foreground/10 bg-muted/20 opacity-50 cursor-not-allowed"
+                            : isDragging 
+                            ? "border-primary bg-primary/5" 
+                            : "border-muted-foreground/25 hover:border-primary/50"
+                    }`}
                     onDragOver={(e) => {
+                        if (!selectedClientId || !selectedSessionId) {
+                            e.preventDefault();
+                            return;
+                        }
                         e.preventDefault();
                         setIsDragging(true);
                     }}
@@ -811,6 +1378,9 @@ export function VoiceNotes() {
                     onDrop={(e) => {
                         e.preventDefault();
                         setIsDragging(false);
+                        if (!selectedClientId || !selectedSessionId) {
+                            return;
+                        }
                         const file = e.dataTransfer.files?.[0];
                         if (file) {
                             const syntheticEvent = {
@@ -824,15 +1394,18 @@ export function VoiceNotes() {
                         type="file"
                         accept="audio/mp3, audio/webm, audio/m4u, audio/wav, audio/m4a, audio/mp4, audio/mpeg"
                         onChange={handleFileUpload}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        disabled={!selectedClientId || !selectedSessionId}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                     />
                     <div className="flex flex-col items-center justify-center text-center space-y-2">
-                        <div className="p-3 bg-primary/10 rounded-full">
-                            <Upload className="h-6 w-6 text-primary" />
+                        <div className={`p-3 rounded-full ${!selectedClientId || !selectedSessionId ? "bg-muted" : "bg-primary/10"}`}>
+                            <Upload className={`h-6 w-6 ${!selectedClientId || !selectedSessionId ? "text-muted-foreground" : "text-primary"}`} />
                         </div>
                         <div className="space-y-1">
-                            <p className="text-sm font-medium">
-                                Drag & drop your audio file here or click to browse
+                            <p className={`text-sm font-medium ${!selectedClientId || !selectedSessionId ? "text-muted-foreground" : ""}`}>
+                                {!selectedClientId || !selectedSessionId
+                                    ? "Please select a client and session to enable file upload"
+                                    : "Drag & drop your audio file here or click to browse"}
                             </p>
                             <p className="text-xs text-muted-foreground">
                                 Supports MP3, WAV, M4A, WebM (max 25MB) - Uploaded files will be transcribed into session notes

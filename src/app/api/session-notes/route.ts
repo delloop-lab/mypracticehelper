@@ -271,6 +271,10 @@ export async function GET(request: Request) {
                 clientId: clientId,
                 sessionDate: sessionDate,
                 content: note.content || '',
+                transcript: note.transcript || undefined,
+                audioURL: note.audio_url || undefined,
+                aiOverview: note.ai_overview || undefined,
+                sessionId: note.session_id || undefined,
                 createdDate: note.created_at || new Date().toISOString(),
                 attachments: note.attachments || [],
                 source: 'session_note' // Mark as session note
@@ -286,10 +290,25 @@ export async function GET(request: Request) {
         });
         const uniqueRecordings = Array.from(uniqueRecordingsMap.values());
 
+        // Build sessions map for recordings that are linked to sessions
+        const sessionsMapForRecordings: Record<string, string> = {};
+        sessionsData.forEach((session: any) => {
+            if (session.id) {
+                sessionsMapForRecordings[session.id] = session.date;
+            }
+        });
+
         // Map recordings with transcripts to session notes format
         const mappedRecordingNotes = uniqueRecordings.map((recording: any) => {
             const clientId = recording.client_id;
             const clientName = recording.clients?.name || (clientId && clientsMap[clientId]) || 'Unknown Client';
+            const sessionId = recording.session_id;
+            
+            // If recording is linked to a session, use the session date instead of recording created_at
+            let sessionDate = recording.created_at || new Date().toISOString();
+            if (sessionId && sessionsMapForRecordings[sessionId]) {
+                sessionDate = sessionsMapForRecordings[sessionId];
+            }
             
             // Extract transcript / notes content for session notes view
             let transcriptContent = '';
@@ -337,14 +356,15 @@ export async function GET(request: Request) {
                 id: `recording-${recording.id}`, // Prefix to avoid conflicts with session notes
                 clientName: clientName,
                 clientId: clientId,
-                sessionDate: recording.created_at || new Date().toISOString(),
+                sessionDate: sessionDate, // Use session date if linked, otherwise recording date
                 content: transcriptContent,
                 transcript: rawTranscript || transcriptContent,
                 createdDate: recording.created_at || new Date().toISOString(),
                 attachments: [],
                 source: 'recording', // Mark as recording
                 recordingId: recording.id, // Keep original recording ID
-                audioURL: recording.audio_url || null
+                audioURL: recording.audio_url || null,
+                sessionId: sessionId || undefined // Include sessionId if linked
             };
         });
 
@@ -507,38 +527,78 @@ export async function PUT(request: Request) {
 
         // Map frontend fields to DB fields
         const records = await Promise.all(notes.map(async (note: any) => {
+            console.log('[Session Notes API] Processing note:', {
+                id: note.id,
+                clientName: note.clientName,
+                clientId: note.clientId,
+                sessionId: note.sessionId,
+                transcript: note.transcript ? `[${note.transcript.length} chars]` : 'null',
+                audioURL: note.audioURL ? 'present' : 'null',
+                aiOverview: note.aiOverview ? `[${note.aiOverview.length} chars]` : 'null',
+                content: note.content ? `[${note.content.length} chars]` : 'null'
+            });
+            
             let clientId = note.clientId || note.client_id;
             let sessionId = note.sessionId || note.session_id;
 
             // If we have clientName but no clientId, try to find it
             if (!clientId && note.clientName) {
                 clientId = clientNameToIdMap[note.clientName];
+                console.log('[Session Notes API] Resolved clientId from name:', clientId);
             }
 
             // If we have sessionDate but no sessionId, try to find it
             if (!sessionId && note.sessionDate && clientId) {
                 const sessionKey = `${clientId}_${note.sessionDate}`;
                 sessionId = sessionDateToIdMap[sessionKey];
+                console.log('[Session Notes API] Resolved sessionId from date:', sessionId);
             }
 
-            return {
+            const record = {
                 id: note.id,
                 client_id: clientId || null,
                 session_id: sessionId || null,
                 user_id: userId, // Always include user_id
                 content: note.content || note.notes || '',
+                transcript: note.transcript || null,
+                audio_url: note.audioURL || note.audio_url || null,
+                ai_overview: note.aiOverview || note.ai_overview || null,
                 created_at: note.createdDate || note.created_at || note.date || new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
+            
+            console.log('[Session Notes API] Record to save:', {
+                id: record.id,
+                client_id: record.client_id,
+                session_id: record.session_id,
+                transcript: record.transcript ? `[${record.transcript.length} chars]` : 'null',
+                audio_url: record.audio_url ? 'present' : 'null',
+                ai_overview: record.ai_overview ? `[${record.ai_overview.length} chars]` : 'null',
+                content: record.content ? `[${record.content.length} chars]` : 'null'
+            });
+            
+            return record;
         }));
 
-        const { error } = await supabase
+        console.log('[Session Notes API] Upserting', records.length, 'records to session_notes table');
+        const { data, error } = await supabase
             .from('session_notes')
-            .upsert(records);
+            .upsert(records)
+            .select();
 
         if (error) {
-            console.error('Supabase error saving session notes:', error);
+            console.error('[Session Notes API] Supabase error saving session notes:', error);
             throw error;
+        }
+        
+        console.log('[Session Notes API] Successfully saved', data?.length || 0, 'records');
+        if (data && data.length > 0) {
+            console.log('[Session Notes API] Sample saved record:', {
+                id: data[0].id,
+                transcript: data[0].transcript ? `[${data[0].transcript.length} chars]` : 'null',
+                audio_url: data[0].audio_url ? 'present' : 'null',
+                ai_overview: data[0].ai_overview ? `[${data[0].ai_overview.length} chars]` : 'null'
+            });
         }
 
         return NextResponse.json({ success: true });

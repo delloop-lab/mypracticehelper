@@ -42,6 +42,8 @@ interface Recording {
     clientName?: string;
     clientId?: string;
     client_id?: string;
+    session_id?: string;
+    sessionId?: string;
     notes?: NoteSection[];
 }
 
@@ -57,6 +59,9 @@ function RecordingsContent() {
     const [editingRecording, setEditingRecording] = useState<Recording | null>(null);
     const [editClientName, setEditClientName] = useState("");
     const [editClientId, setEditClientId] = useState<string | undefined>(undefined);
+    const [editSessionId, setEditSessionId] = useState<string | undefined>(undefined);
+    const [pastSessions, setPastSessions] = useState<{ id: string; date: string; type: string; time: string }[]>([]);
+    const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; recording: Recording | null }>({ isOpen: false, recording: null });
     // Default to "history" for SSR, then update to "new" on mobile after hydration
@@ -131,13 +136,17 @@ function RecordingsContent() {
 
     const loadClients = async () => {
         try {
+            console.log('[Recordings] Loading clients...');
             const response = await fetch('/api/clients');
             if (response.ok) {
                 const data = await response.json();
+                console.log('[Recordings] Loaded', data.length, 'clients');
                 setClients(data);
+            } else {
+                console.error('[Recordings] Failed to load clients:', response.status);
             }
         } catch (error) {
-            console.error('Error loading clients:', error);
+            console.error('[Recordings] Error loading clients:', error);
         }
     };
 
@@ -252,7 +261,7 @@ function RecordingsContent() {
 
     const formatDate = (dateString: string): string => {
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
@@ -312,35 +321,185 @@ function RecordingsContent() {
         }
     };
 
-    const handleEditClient = (recording: Recording) => {
+    const handleEditClient = async (recording: Recording) => {
+        console.log('[Recordings] handleEditClient called for recording:', recording.id);
+        console.log('[Recordings] Recording client info:', { clientName: recording.clientName, clientId: recording.clientId, client_id: recording.client_id });
         setEditingRecording(recording);
         setEditClientName(recording.clientName || "");
+        setPastSessions([]); // Reset sessions first
+        
         // Set clientId if available, otherwise find it by name
         const clientId = recording.client_id || recording.clientId;
         if (clientId) {
             setEditClientId(clientId);
+            // Load past sessions for this client
+            await loadPastSessionsForClient(clientId, recording.clientName);
         } else if (recording.clientName) {
             // Find client ID by name
             const client = clients.find(c => c.name === recording.clientName);
-            setEditClientId(client?.id);
+            if (client?.id) {
+                setEditClientId(client.id);
+                await loadPastSessionsForClient(client.id, recording.clientName);
+            } else {
+                console.log('[Recordings] Client not found by name, cannot load sessions');
+                setEditClientId(undefined);
+            }
         } else {
+            console.log('[Recordings] No client info on recording, sessions will load when client is selected');
             setEditClientId(undefined);
         }
+        
+        // Set session_id if available
+        setEditSessionId(recording.session_id || recording.sessionId || undefined);
+    };
+    
+    const loadPastSessionsForClient = async (clientId: string, clientName?: string) => {
+        console.log('[Recordings] ========== Loading past sessions ==========');
+        console.log('[Recordings] Client ID:', clientId);
+        console.log('[Recordings] Client Name:', clientName);
+        console.log('[Recordings] Clients available:', clients.length);
+        setIsLoadingSessions(true);
+        try {
+            const response = await fetch('/api/appointments');
+            if (response.ok) {
+                const appointments = await response.json();
+                console.log('[Recordings] Total appointments from API:', appointments.length);
+                const now = new Date();
+                
+                // Find client by ID or use the provided name
+                const client = clients.find(c => c.id === clientId);
+                const searchName = client?.name || clientName;
+                console.log('[Recordings] Found client:', client ? client.name : 'NOT IN LIST');
+                console.log('[Recordings] Searching for sessions with name:', searchName);
+                
+                if (!searchName) {
+                    console.log('[Recordings] No client name to search, clearing sessions');
+                    setPastSessions([]);
+                    setIsLoadingSessions(false);
+                    return;
+                }
+                
+                // Log all appointments for debugging
+                console.log('[Recordings] All appointments:', appointments.map((a: any) => ({
+                    id: a.id,
+                    clientName: a.clientName,
+                    clientId: a.clientId || a.client_id,
+                    date: a.date
+                })));
+                
+                // Filter to past sessions for this client (match by client name or ID)
+                const past = appointments
+                    .filter((apt: any) => {
+                        const aptDate = new Date(apt.date);
+                        const isPast = aptDate < now;
+                        // Match by client name OR client ID
+                        const matchesClient = 
+                            apt.clientName === searchName || 
+                            apt.clientName?.toLowerCase() === searchName?.toLowerCase() ||
+                            apt.clientId === clientId || 
+                            apt.client_id === clientId;
+                        console.log('[Recordings] Checking apt:', apt.id, 'clientName:', apt.clientName, 'matches:', matchesClient, 'isPast:', isPast);
+                        return isPast && matchesClient;
+                    })
+                    .map((apt: any) => ({
+                        id: apt.id,
+                        date: apt.date,
+                        type: apt.type || 'Session',
+                        time: apt.time || new Date(apt.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    }))
+                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Most recent first
+                setPastSessions(past);
+                console.log('[Recordings] ✅ Loaded', past.length, 'past sessions for client', searchName);
+            } else {
+                console.error('[Recordings] Failed to fetch appointments:', response.status);
+            }
+        } catch (error) {
+            console.error('[Recordings] Error loading past sessions:', error);
+            setPastSessions([]);
+        }
+        setIsLoadingSessions(false);
     };
 
-    const handleSaveClient = () => {
+    const handleSaveClient = async () => {
         if (!editingRecording) return;
 
         // Find the selected client to get both name and ID
         const selectedClient = clients.find(c => c.name === editClientName.trim());
+        const clientName = editClientName.trim() || selectedClient?.name;
+        const clientId = selectedClient?.id || editClientId;
+        
+        // Regenerate structured notes with correct client if notes exist
+        let updatedNotes = editingRecording.notes;
+        if (editingRecording.notes && editingRecording.notes.length > 0 && editingRecording.transcript && clientName) {
+            try {
+                // Fetch therapist name - the therapist is the person whose FIRST and LAST names are in their profile
+                let therapistName: string | undefined = undefined;
+                const userResponse = await fetch('/api/auth/me');
+                if (userResponse.ok) {
+                    const userData = await userResponse.json() as { first_name?: string | null; last_name?: string | null; email?: string };
+                    console.log('[Recordings] User data for therapist name:', { first_name: userData.first_name, last_name: userData.last_name, email: userData.email });
+                    
+                    // Build therapist name from first_name and last_name (even if one is null)
+                    const nameParts: string[] = [];
+                    if (userData.first_name && userData.first_name.trim()) {
+                        nameParts.push(userData.first_name.trim());
+                    }
+                    if (userData.last_name && userData.last_name.trim()) {
+                        nameParts.push(userData.last_name.trim());
+                    }
+                    
+                    if (nameParts.length > 0) {
+                        therapistName = nameParts.join(' ').trim();
+                        console.log('[Recordings] Therapist name from profile:', therapistName);
+                    } else if (userData.email) {
+                        // Fallback: Extract from email if first_name/last_name are not available
+                        const emailParts = userData.email.split('@')[0].split('.');
+                        if (emailParts.length > 1) {
+                            therapistName = emailParts.map(part => 
+                                part.charAt(0).toUpperCase() + part.slice(1)
+                            ).join(' ');
+                        } else {
+                            therapistName = emailParts[0].charAt(0).toUpperCase() + emailParts[0].slice(1);
+                        }
+                        console.log('[Recordings] Therapist name from email fallback:', therapistName);
+                    }
+                }
+                
+                // Regenerate structured notes with correct metadata
+                const response = await fetch('/api/ai/process-transcript', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        transcript: editingRecording.transcript,
+                        clientName: clientName,
+                        therapistName,
+                        sessionDate: editingRecording.date,
+                        duration: editingRecording.duration
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json() as { structured?: string };
+                    if (data.structured) {
+                        // Update the notes with regenerated content
+                        updatedNotes = [{ title: "Session Notes", content: data.structured }];
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not regenerate structured notes:', err);
+            }
+        }
         
         const updatedRecordings = recordings.map(r =>
             r.id === editingRecording.id
                 ? { 
                     ...r, 
-                    clientName: editClientName.trim() || undefined,
-                    client_id: selectedClient?.id || editClientId || undefined,
-                    clientId: selectedClient?.id || editClientId || undefined
+                    clientName: clientName || undefined,
+                    client_id: clientId || undefined,
+                    clientId: clientId || undefined,
+                    session_id: editSessionId || undefined,
+                    sessionId: editSessionId || undefined,
+                    notes: updatedNotes || r.notes
                 }
                 : r
         );
@@ -656,19 +815,44 @@ function RecordingsContent() {
                     )}
 
                     {/* Edit Client Dialog */}
-                    <Dialog open={!!editingRecording} onOpenChange={(open: boolean) => !open && setEditingRecording(null)}>
+                    <Dialog open={!!editingRecording} onOpenChange={(open: boolean) => {
+                        if (!open) {
+                            setEditingRecording(null);
+                            setEditClientName("");
+                            setEditClientId(undefined);
+                            setEditSessionId(undefined);
+                            setPastSessions([]);
+                        }
+                    }}>
                         <DialogContent>
                             <DialogHeader>
-                                <DialogTitle>Assign Client</DialogTitle>
+                                <DialogTitle>Assign Client & Session</DialogTitle>
                                 <DialogDescription>
-                                    Assign this recording to a client for better organization
+                                    Assign this recording to a client and optionally link it to a past session
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4 py-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="client-name">Client Name</Label>
+                                    <Label htmlFor="client-name">Client Name *</Label>
                                     {clients.length > 0 ? (
-                                        <Select value={editClientName || undefined} onValueChange={setEditClientName}>
+                                        <Select 
+                                            value={editClientName || undefined} 
+                                            onValueChange={async (value) => {
+                                                console.log('[Recordings] Client selected from dropdown:', value);
+                                                setEditClientName(value);
+                                                const selectedClient = clients.find(c => c.name === value);
+                                                console.log('[Recordings] Found selected client:', selectedClient);
+                                                if (selectedClient?.id) {
+                                                    setEditClientId(selectedClient.id);
+                                                    await loadPastSessionsForClient(selectedClient.id, value);
+                                                } else {
+                                                    setEditClientId(undefined);
+                                                    setPastSessions([]);
+                                                }
+                                                // Clear session selection when client changes
+                                                setEditSessionId(undefined);
+                                            }}
+                                        >
                                             <SelectTrigger id="client-name">
                                                 <SelectValue placeholder="Select a client" />
                                             </SelectTrigger>
@@ -694,12 +878,67 @@ function RecordingsContent() {
                                         </div>
                                     )}
                                 </div>
+                                
+                                {/* Session dropdown - always show when client is selected */}
+                                {editClientName && (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="session-select">Link to Past Session (Optional)</Label>
+                                        {isLoadingSessions ? (
+                                            <div className="text-sm text-muted-foreground p-2 border rounded">
+                                                Loading sessions...
+                                            </div>
+                                        ) : pastSessions.length > 0 ? (
+                                            <>
+                                                <Select 
+                                                    value={editSessionId || "none"} 
+                                                    onValueChange={(value) => {
+                                                        console.log('[Recordings] Session selected:', value);
+                                                        setEditSessionId(value === "none" ? undefined : value);
+                                                    }}
+                                                >
+                                                    <SelectTrigger id="session-select">
+                                                        <SelectValue placeholder="Select a past session (optional)" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="none">No session (unlinked)</SelectItem>
+                                                        {pastSessions.map(session => (
+                                                            <SelectItem key={session.id} value={session.id}>
+                                                                {new Date(session.date).toLocaleDateString('en-US', {
+                                                                    month: 'short',
+                                                                    day: 'numeric',
+                                                                    year: 'numeric',
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })} - {session.type}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Linking to a session will show this recording in the client's Session Notes
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <div className="text-xs text-amber-600 dark:text-amber-400 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800">
+                                                ⚠️ No past sessions found for this client. 
+                                                <br />
+                                                <span className="text-muted-foreground">Check that the client has sessions logged in their profile, or log a session first.</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             <DialogFooter>
-                                <Button variant="outline" onClick={() => setEditingRecording(null)}>
+                                <Button variant="outline" onClick={() => {
+                                    setEditingRecording(null);
+                                    setEditClientName("");
+                                    setEditClientId(undefined);
+                                    setEditSessionId(undefined);
+                                    setPastSessions([]);
+                                }}>
                                     Cancel
                                 </Button>
-                                <Button onClick={handleSaveClient}>
+                                <Button onClick={handleSaveClient} disabled={!editClientName.trim()}>
                                     Save
                                 </Button>
                             </DialogFooter>

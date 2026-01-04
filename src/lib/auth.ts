@@ -71,14 +71,28 @@ export async function getCurrentUserId(request: Request): Promise<string | null>
         // If we have a sessionToken, use it (new auth method)
         if (sessionToken) {
             // Parse session token to get user ID
-            // Format: userId-timestamp-random
-            const parts = sessionToken.split('-');
-            if (parts.length < 3) {
-                return null;
+            // New format: userId::timestamp::random (using :: as separator)
+            // Old format: userId-timestamp-random (UUID has dashes, so this was buggy)
+            let userId: string;
+            
+            if (sessionToken.includes('::')) {
+                // New format with :: separator
+                const parts = sessionToken.split('::');
+                if (parts.length < 3) {
+                    return null;
+                }
+                userId = parts[0];
+            } else {
+                // Old format - UUID is first 5 dash-separated parts
+                // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars with dashes)
+                const parts = sessionToken.split('-');
+                if (parts.length < 7) {
+                    // Not enough parts for UUID + timestamp + random
+                    return null;
+                }
+                // Reconstruct UUID from first 5 parts
+                userId = parts.slice(0, 5).join('-');
             }
-
-            // Extract userId from token (first part)
-            const userId = parts[0];
             
             // Verify user exists in database
             const { data: user } = await supabase

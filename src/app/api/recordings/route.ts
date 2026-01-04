@@ -30,7 +30,8 @@ export async function GET(request: Request) {
             .from('recordings')
             .select(`
                 *,
-                clients (name)
+                clients (name),
+                sessions (id, date, type)
             `)
             .eq('user_id', userId)
             .order('created_at', { ascending: false });
@@ -39,7 +40,8 @@ export async function GET(request: Request) {
             .from('recordings')
             .select(`
                 *,
-                clients (name)
+                clients (name),
+                sessions (id, date, type)
             `)
             .is('user_id', null)
             .order('created_at', { ascending: false });
@@ -93,7 +95,9 @@ export async function GET(request: Request) {
                 notes: notes,
                 clientName: recording.clients?.name || recording.client_name || recording.clientName,
                 clientId: recording.client_id || recording.clientId,
-                client_id: recording.client_id
+                client_id: recording.client_id,
+                session_id: recording.session_id || null,
+                sessionId: recording.session_id || null
             };
         });
         

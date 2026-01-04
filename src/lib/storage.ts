@@ -251,6 +251,8 @@ export async function getRecordings(userId?: string | null) {
             clientName: clientName,
             client_id: client_id, // Include client_id for matching
             clientId: client_id, // Also include clientId for backward compatibility
+            session_id: recording.session_id || null, // Include session_id if available
+            sessionId: recording.session_id || null, // Also include sessionId for backward compatibility
             title: recording.title || 'Untitled Recording'
         };
     });
@@ -315,6 +317,7 @@ export async function saveRecordings(recordings: any[], userId?: string | null) 
         return {
             id: r.id,
             client_id: client_id,
+            session_id: r.session_id || r.sessionId || null, // Include session_id if available
             user_id: userId || r.user_id || null, // Include user_id
             title: r.title || 'Untitled Recording',
             transcript: transcript,

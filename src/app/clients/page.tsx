@@ -159,6 +159,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [searchField, setSearchField] = useState<string>("all"); // "all", "name", "email", "phone", "dateAdded", etc.
     const [dateAddedFilter, setDateAddedFilter] = useState<{ from?: string; to?: string }>({});
     const [sortBy, setSortBy] = useState<string>("name-asc"); // "name-asc", "name-desc", "dateAdded-asc", "dateAdded-desc"
+    
+    // Selection state
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
 
     // Comprehensive search and filter logic
     const filteredClients = useMemo(() => {
@@ -588,6 +592,40 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    // Handle highlight and session query parameters (from session-notes page)
+    useEffect(() => {
+        const highlightClientId = searchParams.get('highlight');
+        const sessionId = searchParams.get('session');
+        
+        if (highlightClientId && clients.length > 0) {
+            const client = clients.find(c => c.id === highlightClientId);
+            if (client) {
+                console.log('[Clients] Highlighting client from session-notes:', client.name);
+                setEditingClient(client);
+                setFormData(client);
+                setIsAddDialogOpen(true);
+                
+                // If session ID is provided, find and open that session
+                if (sessionId && appointments.length > 0) {
+                    const session = appointments.find(apt => apt.id === sessionId);
+                    if (session) {
+                        console.log('[Clients] Opening session:', session.id, session.date);
+                        // Open the session notes dialog after a short delay to allow client dialog to render
+                        setTimeout(() => {
+                            handleOpenSession(session, "notes");
+                        }, 500);
+                    } else {
+                        console.log('[Clients] Session not found:', sessionId);
+                    }
+                }
+                
+                // Clear URL parameters after handling
+                router.replace('/clients');
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams, clients, appointments]);
+
     const loadSessionNotes = async (sessionId: string) => {
         setIsLoadingSessionNotes(true);
         try {
@@ -630,25 +668,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         }
                     }
                     
-                    // For recordings: match by client and date
+                    // For recordings: ONLY match by session_id - recordings must be explicitly linked to a session
                     if (note.source === 'recording') {
-                        // Match by client ID first
-                        if (noteClientId && sessionClientId && noteClientId === sessionClientId) {
-                            // If dates match exactly, include it
-                            if (noteDate === sessionDate) {
-                                return true;
-                            }
-                            
-                            // Also include recordings for this client even if date doesn't match exactly
-                            // (recordings might be created on a different day but related to the session)
+                        // Only show recording if it's explicitly linked to THIS session
+                        if (note.sessionId === sessionId || note.session_id === sessionId) {
+                            console.log('[Load Session Notes] Recording matched by session_id:', note.id);
                             return true;
                         }
                         
-                        // Fallback: match by client name (case-insensitive)
-                        if (note.clientName && session.clientName && 
-                            note.clientName.toLowerCase() === session.clientName.toLowerCase()) {
-                            return true;
-                        }
+                        // Don't show recordings that aren't linked to this specific session
+                        // (They will appear in the Recordings page instead)
+                        return false;
                     }
                     
                     return false;
@@ -1140,6 +1170,42 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    const handleBulkMarkFormsSigned = async () => {
+        const unsignedCount = clients.filter(c => !c.newClientFormSigned && !c.archived).length;
+        
+        if (unsignedCount === 0) {
+            alert('All clients already have their forms signed!');
+            return;
+        }
+
+        const confirmMessage = `Are you sure you want to mark ${unsignedCount} client${unsignedCount > 1 ? 's' : ''} as having their New Client Form signed? This will also deactivate any related reminders.`;
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/clients/bulk-mark-forms-signed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                // Reload clients to reflect the changes
+                await loadClients();
+                alert(data.message || `Successfully marked ${data.updated || unsignedCount} client${(data.updated || unsignedCount) > 1 ? 's' : ''} as having forms signed.`);
+            } else {
+                alert(data.error || 'Failed to update clients. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error bulk marking forms as signed:', error);
+            alert('Error updating clients. Please try again.');
+        }
+    };
+
     const [deleteConfirmation, setDeleteConfirmation] = useState<{ isOpen: boolean, clientId: string | null, action: 'archive' | 'delete' | null }>({ isOpen: false, clientId: null, action: null });
     const [gdprDeleteOpen, setGdprDeleteOpen] = useState(false);
     const [gdprDeleteClientId, setGdprDeleteClientId] = useState<string | null>(null);
@@ -1317,6 +1383,93 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    // Selection handlers
+    const toggleSelectionMode = () => {
+        setIsSelectionMode(!isSelectionMode);
+        if (isSelectionMode) {
+            setSelectedClientIds(new Set());
+        }
+    };
+
+    const toggleClientSelection = (clientId: string) => {
+        setSelectedClientIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(clientId)) {
+                newSet.delete(clientId);
+            } else {
+                newSet.add(clientId);
+            }
+            return newSet;
+        });
+    };
+
+    const selectAllClients = () => {
+        setSelectedClientIds(new Set(filteredClients.map(c => c.id)));
+    };
+
+    const clearSelection = () => {
+        setSelectedClientIds(new Set());
+    };
+
+    const isAllSelected = filteredClients.length > 0 && filteredClients.every(c => selectedClientIds.has(c.id));
+    const isSomeSelected = selectedClientIds.size > 0 && selectedClientIds.size < filteredClients.length;
+
+    const handleSelectAll = () => {
+        if (isAllSelected) {
+            clearSelection();
+        } else {
+            selectAllClients();
+        }
+    };
+
+    // Bulk delete function
+    const handleBulkDelete = async () => {
+        if (selectedClientIds.size === 0) return;
+
+        const selectedCount = selectedClientIds.size;
+        const confirmMessage = `Are you sure you want to permanently delete ${selectedCount} client${selectedCount > 1 ? 's' : ''}? This will remove all associated data including sessions, notes, recordings, and payments. This action cannot be undone.`;
+
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        const idsToDelete = Array.from(selectedClientIds);
+        let successCount = 0;
+        let failCount = 0;
+
+        // Delete clients one by one
+        for (const id of idsToDelete) {
+            try {
+                const response = await fetch(`/api/clients/gdpr-delete?id=${id}`, {
+                    method: 'DELETE',
+                    credentials: 'include',
+                });
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    console.error(`Failed to delete client ${id}:`, errorData.error);
+                }
+            } catch (error) {
+                failCount++;
+                console.error(`Error deleting client ${id}:`, error);
+            }
+        }
+
+        // Clear selection and reload clients
+        setSelectedClientIds(new Set());
+        setIsSelectionMode(false);
+        await loadClients();
+
+        // Show result message
+        if (failCount === 0) {
+            alert(`Successfully deleted ${successCount} client${successCount > 1 ? 's' : ''}.`);
+        } else {
+            alert(`Deleted ${successCount} client${successCount > 1 ? 's' : ''}. Failed to delete ${failCount} client${failCount > 1 ? 's' : ''}.`);
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
             <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -1329,12 +1482,69 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     <Tabs value={activeTab} onValueChange={(value) => {
                         setActiveTab(value as 'active' | 'archived');
                         setShowBulkImport(false); // Hide bulk import when switching tabs
+                        setIsSelectionMode(false); // Exit selection mode when switching tabs
+                        setSelectedClientIds(new Set()); // Clear selection when switching tabs
                     }}>
                         <TabsList>
                             <TabsTrigger value="active">Active Clients</TabsTrigger>
                             <TabsTrigger value="archived">Archived Clients</TabsTrigger>
                         </TabsList>
                     </Tabs>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {isSelectionMode ? (
+                        <>
+                            <Button
+                                variant="outline"
+                                onClick={toggleSelectionMode}
+                                size="lg"
+                            >
+                                Cancel Selection
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={handleBulkDelete}
+                                size="lg"
+                                disabled={selectedClientIds.size === 0}
+                            >
+                                <Trash2 className="mr-2 h-5 w-5" />
+                                Delete Selected ({selectedClientIds.size})
+                            </Button>
+                        </>
+                    ) : (
+                        <Button
+                            variant="outline"
+                            onClick={toggleSelectionMode}
+                            size="lg"
+                            disabled={filteredClients.length === 0}
+                        >
+                            Select Clients
+                        </Button>
+                    )}
+                    {activeTab === 'active' && (
+                        <>
+                            {clients.filter(c => !c.newClientFormSigned && !c.archived).length > 0 && (
+                                <Button 
+                                    variant="outline"
+                                    size="lg"
+                                    onClick={handleBulkMarkFormsSigned}
+                                    className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                                >
+                                    <CheckCircle2 className="mr-2 h-5 w-5" />
+                                    Mark All Forms Signed ({clients.filter(c => !c.newClientFormSigned && !c.archived).length})
+                                </Button>
+                            )}
+                            <Button 
+                                size="lg" 
+                                className="bg-green-500 hover:bg-green-600 text-white"
+                                onClick={() => setIsAddDialogOpen(true)}
+                            >
+                                <Plus className="mr-2 h-5 w-5" />
+                                Add Client
+                            </Button>
+                        </>
+                    )}
                 </div>
 
                 {activeTab === 'active' && (
@@ -1346,10 +1556,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     }
                 }}>
                     <DialogTrigger asChild>
-                        <Button size="lg" className="bg-green-500 hover:bg-green-600 text-white">
-                            <Plus className="mr-2 h-5 w-5" />
-                            Add Client
-                        </Button>
+                        <div style={{ display: 'none' }}></div>
                     </DialogTrigger>
                     <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col">
                         <DialogHeader>
@@ -1550,6 +1757,22 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     </div>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        {/* Mailing Address */}
+                                        <div className="space-y-2">
+                                            <Label htmlFor="mailingAddress">
+                                                <FileText className="inline h-4 w-4 mr-1 text-blue-500" />
+                                                Mailing Address
+                                            </Label>
+                                            <Textarea
+                                                id="mailingAddress"
+                                                placeholder="Street address, city, postcode (e.g., Lagos 8600-616)"
+                                                rows={3}
+                                                value={formData.mailingAddress || ''}
+                                                onChange={(e) => setFormData({ ...formData, mailingAddress: e.target.value })}
+                                                autoComplete="off"
+                                            />
                                         </div>
 
                                         {/* Notes */}
@@ -1918,7 +2141,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                 {/* Session Details Dialog */}
                 <Dialog open={!!activeSession} onOpenChange={(open) => !open && setActiveSession(null)}>
-                    <DialogContent className="max-w-2xl">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Session Details</DialogTitle>
                             <DialogDescription>
@@ -1938,7 +2161,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     <TabsTrigger value="attachments">Attachments</TabsTrigger>
                                 </TabsList>
 
-                                <TabsContent value="notes" className="py-4 space-y-4">
+                                <TabsContent value="notes" className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
                                     {isLoadingSessionNotes ? (
                                         <p className="text-muted-foreground text-center py-8">Loading session notes...</p>
                                     ) : sessionNotes.length > 0 ? (
@@ -1963,11 +2186,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             })()}
 
                                             {sessionNotes.map((note, index) => (
-                                                <div key={note.id || index} className="border rounded-lg p-4 bg-muted/50">
-                                                    <div className="flex items-center justify-between mb-2">
+                                                <div key={note.id || index} className="border rounded-lg p-4 bg-muted/50 space-y-3">
+                                                    <div className="flex items-center justify-between">
                                                         <div className="text-sm text-muted-foreground">
                                                             {note.createdDate || note.created_at 
-                                                                ? new Date(note.createdDate || note.created_at).toLocaleDateString() 
+                                                                ? new Date(note.createdDate || note.created_at).toLocaleString('en-GB', {
+                                                                    day: '2-digit',
+                                                                    month: '2-digit',
+                                                                    year: 'numeric',
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })
                                                                 : 'No date'}
                                                         </div>
                                                         {note.source === 'recording' && (
@@ -1977,9 +2206,25 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             </span>
                                                         )}
                                                     </div>
+                                                    
+                                                    {/* Show notes content */}
                                                     <div className="whitespace-pre-wrap text-sm">
                                                         {note.content || note.notes || 'No content'}
                                                     </div>
+                                                    
+                                                    {/* Show raw transcript ONLY for uploaded recordings (client's words), NOT for live therapist notes */}
+                                                    {/* Live recordings have "Therapist Notes:" in the content, uploaded ones have AI-structured content */}
+                                                    {note.transcript && 
+                                                     note.transcript !== note.content && 
+                                                     note.content && 
+                                                     !note.content.includes('**Therapist Notes:**') && (
+                                                        <div className="border-t pt-3 mt-3">
+                                                            <p className="text-xs font-medium text-muted-foreground mb-2">📝 Original Transcript (Client's Words):</p>
+                                                            <div className="whitespace-pre-wrap text-sm bg-muted/50 p-3 rounded text-muted-foreground">
+                                                                {note.transcript}
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                             <div className="pt-4 border-t">
@@ -1987,7 +2232,23 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     variant="outline" 
                                                     onClick={() => {
                                                         // Navigate to session notes page to create a new note for this session
-                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&date=${activeSession.date}&create=true`);
+                                                        // Ensure date is properly formatted and encoded
+                                                        let dateParam = '';
+                                                        if (activeSession.date) {
+                                                            try {
+                                                                // Convert to ISO string if it's not already
+                                                                const date = new Date(activeSession.date);
+                                                                if (!isNaN(date.getTime())) {
+                                                                    dateParam = encodeURIComponent(date.toISOString());
+                                                                } else {
+                                                                    console.warn('[Clients] Invalid date in activeSession:', activeSession.date);
+                                                                }
+                                                            } catch (e) {
+                                                                console.error('[Clients] Error processing date:', e);
+                                                            }
+                                                        }
+                                                        console.log('[Clients] Navigating to session notes with date:', dateParam);
+                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&sessionId=${activeSession.id}&date=${dateParam}&create=true`);
                                                         setActiveSession(null);
                                                     }}
                                                 >
@@ -2002,7 +2263,23 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 <Button 
                                                     onClick={() => {
                                                         // Navigate to session notes page to create a new note for this session
-                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&date=${activeSession.date}&create=true`);
+                                                        // Ensure date is properly formatted and encoded
+                                                        let dateParam = '';
+                                                        if (activeSession.date) {
+                                                            try {
+                                                                // Convert to ISO string if it's not already
+                                                                const date = new Date(activeSession.date);
+                                                                if (!isNaN(date.getTime())) {
+                                                                    dateParam = encodeURIComponent(date.toISOString());
+                                                                } else {
+                                                                    console.warn('[Clients] Invalid date in activeSession:', activeSession.date);
+                                                                }
+                                                            } catch (e) {
+                                                                console.error('[Clients] Error processing date:', e);
+                                                            }
+                                                        }
+                                                        console.log('[Clients] Navigating to session notes with date:', dateParam);
+                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&sessionId=${activeSession.id}&date=${dateParam}&create=true`);
                                                         setActiveSession(null);
                                                     }}
                                                 >
@@ -2104,7 +2381,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     open={gdprDeleteOpen}
                     onOpenChange={setGdprDeleteOpen}
                     onConfirm={confirmGDPRDelete}
-                    clientName={editingClient?.name}
+                    clientName={editingClient?.name || clients.find(c => c.id === gdprDeleteClientId)?.name}
                 />
             </div >
 
@@ -2264,6 +2541,35 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 </div>
             )}
 
+            {/* Selection Toolbar - Show when in selection mode */}
+            {isSelectionMode && filteredClients.length > 0 && (
+                <Card className="mb-4">
+                    <CardContent className="py-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={isAllSelected}
+                                        onCheckedChange={handleSelectAll}
+                                        ref={(el) => {
+                                            if (el) {
+                                                (el as any).indeterminate = isSomeSelected;
+                                            }
+                                        }}
+                                    />
+                                    <Label className="text-sm font-medium cursor-pointer" onClick={handleSelectAll}>
+                                        {isAllSelected ? 'Deselect All' : 'Select All'}
+                                    </Label>
+                                </div>
+                                <span className="text-sm text-muted-foreground">
+                                    {selectedClientIds.size} of {filteredClients.length} selected
+                                </span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Sort - Always visible, positioned before client cards */}
             {clients.length > 0 && (
                 <div className="mb-4 flex items-center gap-4">
@@ -2343,28 +2649,69 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 transition={{ delay: index * 0.05 }}
                             >
                                 <Card
-                                    className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50 group relative"
-                                    onClick={() => handleEdit(client)}
+                                    className={`hover:shadow-md transition-all hover:border-primary/50 group relative ${
+                                        isSelectionMode ? '' : 'cursor-pointer'
+                                    } ${selectedClientIds.has(client.id) ? 'border-primary border-2' : ''}`}
+                                    onClick={() => {
+                                        if (isSelectionMode) {
+                                            toggleClientSelection(client.id);
+                                        } else {
+                                            handleEdit(client);
+                                        }
+                                    }}
                                 >
-                                    {/* Warning Icon - Positioned on the right */}
-                                    {!client.newClientFormSigned && (
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <div 
-                                                    className="absolute top-2 right-2 z-10"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                >
-                                                    <AlertTriangle 
-                                                        className="h-4 w-4 text-amber-500 dark:text-amber-400 cursor-help" 
-                                                    />
-                                                </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent>
-                                                <p>New Client Form not signed</p>
-                                            </TooltipContent>
-                                        </Tooltip>
+                                    {/* Checkbox - Show in selection mode */}
+                                    {isSelectionMode && (
+                                        <div 
+                                            className="absolute top-2 left-2 z-10"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <Checkbox
+                                                checked={selectedClientIds.has(client.id)}
+                                                onCheckedChange={() => toggleClientSelection(client.id)}
+                                            />
+                                        </div>
                                     )}
-                                    <CardContent className="px-3 py-1">
+                                    {/* Action buttons - Top right */}
+                                    <div 
+                                        className="absolute top-2 right-2 z-10 flex items-center gap-1"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        {/* Warning Icon */}
+                                        {!client.newClientFormSigned && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <div>
+                                                        <AlertTriangle 
+                                                            className="h-4 w-4 text-amber-500 dark:text-amber-400 cursor-help" 
+                                                        />
+                                                    </div>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>New Client Form not signed</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                        {/* Delete Button - Always visible */}
+                                        {!isSelectionMode && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                                                        onClick={() => handleGDPRDeleteClick(client.id)}
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>Delete client</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                    </div>
+                                    <CardContent className={`px-3 py-1 ${isSelectionMode ? 'pl-10' : ''}`}>
                                         <div className="overflow-hidden min-w-0">
                                             <div className="flex items-baseline gap-1.5">
                                                 <p className="font-medium truncate text-sm leading-none flex-1">

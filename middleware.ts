@@ -5,10 +5,11 @@ export function middleware(request: NextRequest) {
     // Get the pathname
     const { pathname } = request.nextUrl;
 
-    // Allow access to login page, root page (redirects to login), public assets, and webhook setup pages
+    // Allow access to login page, root page (redirects to login), public assets, webhook setup pages, and landing page
     if (
         pathname === '/login' ||
         pathname === '/' ||
+        pathname === '/landing' ||
         pathname.startsWith('/_next') ||
         pathname.startsWith('/api') ||
         pathname.startsWith('/favicon') ||

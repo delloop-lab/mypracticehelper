@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Calendar, DollarSign, Users, Mic, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { RemindersModal } from "@/components/reminders-modal";
 
 type Tab = "overview" | "schedule" | "clients" | "billing" | "notes" | "documents";
 
@@ -22,6 +23,7 @@ export default function DashboardPage() {
     return (
         <div className="min-h-screen bg-background p-6 lg:p-10">
             <div className="max-w-7xl mx-auto">
+                <RemindersModal />
                 <DashboardOverview onNavigate={handleNavigate} />
             </div>
         </div>

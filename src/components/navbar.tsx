@@ -79,6 +79,10 @@ export function Navbar() {
             }
             return currentLogo;
           });
+        } else if (response.status === 401) {
+          // 401 is expected when user is not authenticated - don't log as error
+          // This can happen during redirects or when session expires
+          console.log('[Navbar] Settings API returned 401 (not authenticated)');
         } else {
           console.error('[Navbar] Settings API response not OK:', response.status, response.statusText);
           const errorText = await response.text();

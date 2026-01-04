@@ -62,6 +62,7 @@ export default function LoginPage() {
             <Card className="w-full max-w-sm shadow-lg">
                 <CardHeader className="space-y-1.5 px-5 pt-5 pb-3">
                     <div className="flex justify-center mb-3">
+                        {/* Always show the application logo on login page */}
                         <Image
                             src="/logo.png"
                             alt="My Practice Helper"

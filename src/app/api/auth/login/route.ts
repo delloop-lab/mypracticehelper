@@ -21,10 +21,27 @@ export async function POST(request: Request) {
             .from('users')
             .select('id, email, password_hash, first_name, last_name')
             .eq('email', email.toLowerCase().trim())
-            .single();
+            .maybeSingle();
 
-        if (userError || !user) {
+        if (userError) {
+            console.error('[Login API] Database error:', userError);
+            return NextResponse.json(
+                { error: 'An error occurred during login' },
+                { status: 500 }
+            );
+        }
+
+        if (!user) {
             // Don't reveal if user exists or not (security best practice)
+            console.log('[Login API] User not found for email:', email.toLowerCase().trim());
+            return NextResponse.json(
+                { error: 'Invalid email or password' },
+                { status: 401 }
+            );
+        }
+
+        if (!user.password_hash) {
+            console.error('[Login API] User found but has no password_hash');
             return NextResponse.json(
                 { error: 'Invalid email or password' },
                 { status: 401 }
@@ -34,15 +51,18 @@ export async function POST(request: Request) {
         // Verify password
         const isValidPassword = await verifyPassword(password, user.password_hash);
         if (!isValidPassword) {
+            console.log('[Login API] Password verification failed for user:', user.id);
             return NextResponse.json(
                 { error: 'Invalid email or password' },
                 { status: 401 }
             );
         }
 
+        console.log('[Login API] Login successful for user:', user.id, user.email);
+
         // Create session token
-        // Format: userId-timestamp-random
-        const sessionToken = `${user.id}-${Date.now().toString(36)}-${Math.random().toString(36).substring(2)}`;
+        // Format: userId::timestamp::random (using :: as separator since userId is a UUID with dashes)
+        const sessionToken = `${user.id}::${Date.now().toString(36)}::${Math.random().toString(36).substring(2)}`;
         
         // Set session cookie (7 days)
         const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
@@ -92,6 +112,8 @@ export async function POST(request: Request) {
         );
     }
 }
+
+
 
 
 

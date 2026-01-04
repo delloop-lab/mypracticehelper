@@ -187,6 +187,31 @@ export async function GET(request: Request) {
             }
         }
         
+        // If no userId and not fallback, try to return default settings for unauthenticated access (e.g., login page)
+        if (!userId && !isFallback) {
+            console.log('[Settings API GET] No authentication, trying default settings');
+            const { data: defaultData, error: defaultError } = await supabase
+                .from('settings')
+                .select('id, config, updated_at')
+                .eq('id', 'default')
+                .maybeSingle();
+
+            console.log('[Settings API GET] Default settings query result (unauthenticated):', { 
+                hasData: !!defaultData,
+                error: defaultError,
+                companyLogo: defaultData?.config?.companyLogo
+            });
+
+            if (defaultData?.config) {
+                console.log('[Settings API GET] Returning default settings (unauthenticated)');
+                return NextResponse.json(defaultData.config);
+            }
+
+            // If no default settings, return defaults with empty logo (will fallback to /logo.png on frontend)
+            console.log('[Settings API GET] No default settings found, returning DEFAULT_SETTINGS (unauthenticated)');
+            return NextResponse.json(DEFAULT_SETTINGS);
+        }
+        
         if (!userId) {
             console.error('[Settings API GET] Unauthorized - no userId');
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

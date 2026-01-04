@@ -33,14 +33,15 @@ interface SessionNote {
     clientName: string;
     clientId?: string;
     sessionDate: string;
-    content: string; // AI-structured content for display
+    content: string; // Session notes content
     createdDate: string;
-    transcript?: string; // Raw/natural transcript (for recordings)
+    transcript?: string; // Raw/natural transcript (for recordings or manual entry)
+    audioURL?: string | null; // Audio URL (for recordings or manual entry)
+    aiOverview?: string; // AI-generated overview
     attachments?: { name: string; url: string }[];
     source?: 'session_note' | 'recording' | 'session'; // Indicates if note came from session_notes table, recordings table, or sessions table
     recordingId?: string; // Original recording ID if source is 'recording'
-    audioURL?: string | null; // Audio URL if source is 'recording'
-    sessionId?: string; // Original session ID if source is 'session'
+    sessionId?: string; // Original session ID if source is 'session' or linked session
 }
 
 type SortOption = 'date-desc' | 'date-asc' | 'client-asc' | 'client-desc' | 'session-desc' | 'session-asc';
@@ -59,10 +60,69 @@ function SessionNotesContent() {
     const [formData, setFormData] = useState({
         clientName: "",
         clientId: undefined as string | undefined,
+        sessionId: undefined as string | undefined,
         sessionDate: "",
+        therapistName: "",
         content: "",
+        transcript: "",
+        audioURL: "",
+        aiOverview: "",
         attachments: [] as { name: string; url: string }[]
     });
+    const [availableSessions, setAvailableSessions] = useState<{ id: string; date: string; type: string; time: string }[]>([]);
+    const [currentTherapist, setCurrentTherapist] = useState<string>("");
+    
+    // Fetch therapist name on mount (from logged-in user's first_name and last_name)
+    useEffect(() => {
+        const fetchTherapist = async () => {
+            try {
+                console.log('[Session Notes] ========== Fetching therapist name ==========');
+                const response = await fetch('/api/auth/me');
+                if (response.ok) {
+                    const userData = await response.json();
+                    console.log('[Session Notes] User data from /api/auth/me:', {
+                        id: userData.id,
+                        email: userData.email,
+                        first_name: userData.first_name,
+                        last_name: userData.last_name
+                    });
+                    
+                    // Build therapist name from first_name and last_name
+                    const nameParts: string[] = [];
+                    if (userData.first_name && userData.first_name.trim()) {
+                        nameParts.push(userData.first_name.trim());
+                    }
+                    if (userData.last_name && userData.last_name.trim()) {
+                        nameParts.push(userData.last_name.trim());
+                    }
+                    
+                    if (nameParts.length > 0) {
+                        const therapist = nameParts.join(' ');
+                        console.log('[Session Notes] ✅ Therapist name from profile:', therapist);
+                        setCurrentTherapist(therapist);
+                    } else {
+                        // Fallback to email if first_name/last_name not set
+                        console.warn('[Session Notes] ⚠️ first_name and last_name are empty in database!');
+                        console.warn('[Session Notes] Run this SQL to fix: UPDATE users SET first_name = \'YourName\', last_name = \'YourLastName\' WHERE email = \'' + userData.email + '\';');
+                        
+                        if (userData.email) {
+                            const emailParts = userData.email.split('@')[0].split('.');
+                            const name = emailParts.map((part: string) => 
+                                part.charAt(0).toUpperCase() + part.slice(1)
+                            ).join(' ');
+                            console.log('[Session Notes] Using email fallback:', name);
+                            setCurrentTherapist(name + ' (update profile)');
+                        }
+                    }
+                } else {
+                    console.error('[Session Notes] ❌ Failed to fetch user:', response.status);
+                }
+            } catch (error) {
+                console.error('[Session Notes] ❌ Error fetching therapist:', error);
+            }
+        };
+        fetchTherapist();
+    }, []);
 
     const getTranscriptPreview = (text: string, maxLength: number = 120) => {
         if (!text) return '';
@@ -74,29 +134,103 @@ function SessionNotesContent() {
         return slice;
     };
 
+    // Track if form is pre-filled from a session card (no need to show dropdowns)
+    const [isPrefilledFromSession, setIsPrefilledFromSession] = useState(false);
+    // Store original date string for display (ISO format from URL)
+    const [originalSessionDate, setOriginalSessionDate] = useState<string>("");
+
+    // Helper to convert ISO date to datetime-local format
+    const convertToDatetimeLocal = (dateString: string): string => {
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) {
+                return '';
+            }
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day}T${hours}:${minutes}`;
+        } catch {
+            return '';
+        }
+    };
+
     useEffect(() => {
         const clientParam = searchParams.get('client');
         const clientIdParam = searchParams.get('clientId');
+        const sessionIdParam = searchParams.get('sessionId');
         const dateParam = searchParams.get('date');
         const createParam = searchParams.get('create');
 
+        console.log('[Session Notes] URL params:', { clientParam, clientIdParam, sessionIdParam, dateParam, createParam });
+
+        // If all session info is provided, we're coming from a session card
+        const isFromSessionCard = !!(clientParam && clientIdParam && sessionIdParam && dateParam && createParam === 'true');
+        setIsPrefilledFromSession(isFromSessionCard);
+
         if (clientParam) {
             setSelectedClient(clientParam);
-            setFormData(prev => ({
-                ...prev,
-                clientName: clientParam,
-                clientId: clientIdParam || undefined
-            }));
+            
+            // Store original date for display
+            if (dateParam) {
+                console.log('[Session Notes] Processing date param:', dateParam);
+                // Validate date before storing
+                const testDate = new Date(dateParam);
+                if (!isNaN(testDate.getTime())) {
+                    setOriginalSessionDate(dateParam);
+                    // Convert date to datetime-local format for input field
+                    const formattedDate = convertToDatetimeLocal(dateParam);
+                    console.log('[Session Notes] Converted date:', formattedDate);
+                    setFormData(prev => ({
+                        ...prev,
+                        clientName: clientParam,
+                        clientId: clientIdParam || undefined,
+                        sessionId: sessionIdParam || undefined,
+                        sessionDate: formattedDate || prev.sessionDate
+                    }));
+                } else {
+                    console.warn('[Session Notes] Invalid date param:', dateParam);
+                    setOriginalSessionDate('');
+                    setFormData(prev => ({
+                        ...prev,
+                        clientName: clientParam,
+                        clientId: clientIdParam || undefined,
+                        sessionId: sessionIdParam || undefined
+                    }));
+                }
+            } else {
+                setFormData(prev => ({
+                    ...prev,
+                    clientName: clientParam,
+                    clientId: clientIdParam || undefined,
+                    sessionId: sessionIdParam || undefined
+                }));
+            }
+            
+            // Load sessions if clientId is provided (not needed if pre-filled)
+            if (clientIdParam && clients.length > 0 && !isFromSessionCard) {
+                loadSessionsForClient(clientIdParam);
+            }
         }
 
-        if (dateParam) {
-            setFormData(prev => ({ ...prev, sessionDate: dateParam }));
+        if (dateParam && !clientParam) {
+            // Handle date param even if client param is missing
+            const testDate = new Date(dateParam);
+            if (!isNaN(testDate.getTime())) {
+                setOriginalSessionDate(dateParam);
+                const formattedDate = convertToDatetimeLocal(dateParam);
+                if (formattedDate) {
+                    setFormData(prev => ({ ...prev, sessionDate: formattedDate }));
+                }
+            }
         }
 
         if (createParam === 'true') {
             setIsCreateDialogOpen(true);
         }
-    }, [searchParams]);
+    }, [searchParams, clients]);
 
     useEffect(() => {
         loadNotes();
@@ -116,44 +250,92 @@ function SessionNotesContent() {
 
     const loadClients = async () => {
         try {
+            console.log('[Session Notes] Loading clients...');
             const response = await fetch('/api/clients');
             if (response.ok) {
                 const data = await response.json();
+                console.log('[Session Notes] Loaded', data.length, 'clients');
+                if (data.length > 0) {
+                    console.log('[Session Notes] Sample client:', { id: data[0].id, name: data[0].name });
+                }
                 setClients(data);
+            } else {
+                console.error('[Session Notes] Failed to load clients:', response.status);
             }
         } catch (error) {
-            console.error('Error loading clients:', error);
+            console.error('[Session Notes] Error loading clients:', error);
         }
     };
 
     const loadNotes = async () => {
         try {
+            console.log('[Session Notes] Loading notes from API...');
             const response = await fetch('/api/session-notes');
             if (response.ok) {
                 const data = await response.json();
-                console.log('Session notes loaded:', data);
-                console.log('Number of notes:', data?.length || 0);
+                console.log('[Session Notes] Loaded', data?.length || 0, 'notes');
+                if (data && data.length > 0) {
+                    const sampleNote = data[0];
+                    console.log('[Session Notes] Sample note:', {
+                        id: sampleNote.id,
+                        clientName: sampleNote.clientName,
+                        hasTranscript: !!sampleNote.transcript,
+                        transcriptLength: sampleNote.transcript?.length || 0,
+                        hasAudioURL: !!sampleNote.audioURL,
+                        hasAiOverview: !!sampleNote.aiOverview,
+                        contentLength: sampleNote.content?.length || 0
+                    });
+                }
                 setNotes(data || []);
             } else {
-                console.error('Failed to load session notes:', response.status, response.statusText);
+                console.error('[Session Notes] Failed to load notes:', response.status, response.statusText);
                 const errorData = await response.json().catch(() => ({}));
-                console.error('Error data:', errorData);
+                console.error('[Session Notes] Error data:', errorData);
             }
         } catch (error) {
-            console.error('Error loading session notes:', error);
+            console.error('[Session Notes] Error loading notes:', error);
         }
     };
 
     const saveNotes = async (updatedNotes: SessionNote[]) => {
+        console.log('[Session Notes] saveNotes called with notes:', updatedNotes.length);
+        const noteToSave = updatedNotes.find(n => 
+            (editingNote && n.id === editingNote.id) || 
+            (!editingNote && n.id === updatedNotes[updatedNotes.length - 1]?.id)
+        );
+        if (noteToSave) {
+            console.log('[Session Notes] Note being saved:', {
+                id: noteToSave.id,
+                clientName: noteToSave.clientName,
+                clientId: noteToSave.clientId,
+                sessionId: noteToSave.sessionId,
+                transcript: noteToSave.transcript,
+                transcriptLength: noteToSave.transcript?.length || 0,
+                audioURL: noteToSave.audioURL,
+                aiOverview: noteToSave.aiOverview,
+                content: noteToSave.content?.substring(0, 100)
+            });
+        }
+        
         setNotes(updatedNotes);
         try {
-            await fetch('/api/session-notes', {
+            const response = await fetch('/api/session-notes', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedNotes),
             });
+            
+            if (response.ok) {
+                console.log('[Session Notes] Successfully saved notes');
+                const responseData = await response.json().catch(() => ({}));
+                console.log('[Session Notes] Save response:', responseData);
+            } else {
+                console.error('[Session Notes] Failed to save notes:', response.status, response.statusText);
+                const errorData = await response.json().catch(() => ({}));
+                console.error('[Session Notes] Error data:', errorData);
+            }
         } catch (error) {
-            console.error('Error saving session notes:', error);
+            console.error('[Session Notes] Error saving session notes:', error);
         }
     };
 
@@ -218,7 +400,7 @@ function SessionNotesContent() {
 
     const formatDate = (dateString: string): string => {
         const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
+        return date.toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
@@ -227,19 +409,104 @@ function SessionNotesContent() {
         });
     };
 
-    const handleCreate = () => {
-        setEditingNote(null);
-        setFormData({
-            clientName: "",
-            clientId: undefined,
-            sessionDate: "",
-            content: "",
-            attachments: []
-        });
-        setIsCreateDialogOpen(true);
+    const loadSessionsForClient = async (clientId: string) => {
+        try {
+            console.log('[Session Notes] ========== Loading sessions for client ==========');
+            console.log('[Session Notes] clientId:', clientId);
+            console.log('[Session Notes] clients array length:', clients.length);
+            
+            const response = await fetch('/api/appointments');
+            if (response.ok) {
+                const appointments = await response.json();
+                console.log('[Session Notes] Total appointments loaded:', appointments.length);
+                
+                // Find client either by ID or by looking up in the clients array
+                let client = clients.find(c => c.id === clientId);
+                let clientName = client?.name;
+                
+                // If client not in local array, try to find by name in appointments
+                if (!client && formData.clientName) {
+                    clientName = formData.clientName;
+                    console.log('[Session Notes] Using formData.clientName:', clientName);
+                }
+                
+                if (!clientName) {
+                    console.error('[Session Notes] Could not determine client name. clientId:', clientId, 'formData.clientName:', formData.clientName);
+                    setAvailableSessions([]);
+                    return;
+                }
+                
+                console.log('[Session Notes] Looking for sessions with clientName:', clientName);
+                
+                // Get all sessions for this client (past and future)
+                const sessions = appointments
+                    .filter((apt: any) => {
+                        const matches = apt.clientName === clientName;
+                        if (matches) {
+                            console.log('[Session Notes] MATCH:', apt.clientName, apt.date, apt.id);
+                        }
+                        return matches;
+                    })
+                    .map((apt: any) => ({
+                        id: apt.id,
+                        date: apt.date,
+                        type: apt.type || 'Session',
+                        time: apt.time || new Date(apt.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    }))
+                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Most recent first
+                
+                console.log('[Session Notes] ========== Found', sessions.length, 'sessions ==========');
+                if (sessions.length > 0) {
+                    console.log('[Session Notes] First session:', sessions[0]);
+                }
+                setAvailableSessions(sessions);
+            } else {
+                console.error('[Session Notes] Failed to load appointments:', response.status);
+                setAvailableSessions([]);
+            }
+        } catch (error) {
+            console.error('[Session Notes] Error loading sessions:', error);
+            setAvailableSessions([]);
+        }
     };
 
-    const handleEdit = (note: SessionNote) => {
+    const handleCreate = async () => {
+        console.log('[Session Notes] handleCreate - current therapist:', currentTherapist);
+        setEditingNote(null);
+        const initialFormData = {
+            clientName: "",
+            clientId: undefined,
+            sessionId: undefined,
+            sessionDate: "",
+            therapistName: currentTherapist, // Auto-fill therapist
+            content: "",
+            transcript: "",
+            audioURL: "",
+            aiOverview: "",
+            attachments: []
+        };
+        setFormData(initialFormData);
+        setAvailableSessions([]);
+        setIsCreateDialogOpen(true);
+        
+        // If client is pre-selected from URL params, load sessions
+        const clientIdParam = searchParams.get('clientId');
+        if (clientIdParam) {
+            await loadSessionsForClient(clientIdParam);
+        }
+    };
+
+    const handleEdit = async (note: SessionNote) => {
+        console.log('[Session Notes] handleEdit called with note:', {
+            id: note.id,
+            clientName: note.clientName,
+            clientId: note.clientId,
+            sessionId: note.sessionId,
+            transcript: note.transcript ? `[${note.transcript.length} chars]` : 'null',
+            audioURL: note.audioURL,
+            aiOverview: note.aiOverview ? `[${note.aiOverview.length} chars]` : 'null'
+        });
+        
         if (note.source === 'recording') {
             alert('Voice note recordings cannot be edited from this page. The transcript is automatically generated from the audio recording.');
             return;
@@ -248,34 +515,75 @@ function SessionNotesContent() {
         setFormData({
             clientName: note.clientName,
             clientId: note.clientId,
+            sessionId: note.sessionId,
             sessionDate: note.sessionDate,
+            therapistName: currentTherapist, // Auto-fill therapist
             content: note.content,
+            transcript: note.transcript || "",
+            audioURL: note.audioURL || "",
+            aiOverview: note.aiOverview || "",
             attachments: note.attachments || []
         });
+        // Load sessions for this client
+        if (note.clientId) {
+            await loadSessionsForClient(note.clientId);
+        }
         setIsCreateDialogOpen(true);
     };
 
     const handleSave = () => {
+        console.log('[Session Notes] handleSave called with formData:', {
+            clientName: formData.clientName,
+            clientId: formData.clientId,
+            sessionId: formData.sessionId,
+            sessionDate: formData.sessionDate,
+            content: formData.content,
+            transcript: formData.transcript,
+            audioURL: formData.audioURL,
+            aiOverview: formData.aiOverview,
+            hasContent: !!formData.content,
+            hasTranscript: !!formData.transcript
+        });
+        
         if (!formData.clientName || !formData.sessionDate || !formData.content) {
+            console.warn('[Session Notes] Validation failed:', {
+                hasClientName: !!formData.clientName,
+                hasSessionDate: !!formData.sessionDate,
+                hasContent: !!formData.content
+            });
             alert("Please fill in all required fields");
             return;
         }
 
         if (editingNote) {
+            console.log('[Session Notes] Updating existing note:', editingNote.id);
             // Update existing note
+            const updatedNote = { 
+                ...editingNote, 
+                ...formData,
+                sessionId: formData.sessionId,
+                transcript: formData.transcript,
+                audioURL: formData.audioURL,
+                aiOverview: formData.aiOverview
+            };
+            console.log('[Session Notes] Updated note data:', updatedNote);
             const updatedNotes = notes.map(n =>
-                n.id === editingNote.id
-                    ? { ...n, ...formData }
-                    : n
+                n.id === editingNote.id ? updatedNote : n
             );
             saveNotes(updatedNotes);
         } else {
+            console.log('[Session Notes] Creating new note');
             // Create new note
             const newNote: SessionNote = {
                 id: Date.now().toString(),
                 ...formData,
+                sessionId: formData.sessionId,
+                transcript: formData.transcript,
+                audioURL: formData.audioURL,
+                aiOverview: formData.aiOverview,
                 createdDate: new Date().toISOString()
             };
+            console.log('[Session Notes] New note data:', newNote);
             saveNotes([...notes, newNote]);
         }
 
@@ -540,7 +848,7 @@ function SessionNotesContent() {
                                                     <CardTitle className="text-lg">
                                                         {note.clientId ? (
                                                             <Link
-                                                                href="/clients"
+                                                                href={`/clients?highlight=${note.clientId}${note.sessionId ? `&session=${note.sessionId}` : ''}`}
                                                                 className="hover:underline text-primary"
                                                             >
                                                                 {note.clientName}
@@ -568,11 +876,26 @@ function SessionNotesContent() {
                                                     </CardDescription>
                                                 </div>
                                                 <div className="flex gap-2">
+                                                    {/* View Client/Session button */}
+                                                    {note.clientId && (
+                                                        <Link
+                                                            href={`/clients?highlight=${note.clientId}${note.sessionId ? `&session=${note.sessionId}` : ''}`}
+                                                            title="View client profile"
+                                                        >
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                            >
+                                                                <FileText className="h-4 w-4 text-green-500" />
+                                                            </Button>
+                                                        </Link>
+                                                    )}
                                                     {note.source !== 'recording' && (
                                                         <Button
                                                             variant="ghost"
                                                             size="icon"
                                                             onClick={() => handleEdit(note)}
+                                                            title="Edit note"
                                                         >
                                                             <Edit className="h-4 w-4 text-blue-500" />
                                                         </Button>
@@ -582,6 +905,7 @@ function SessionNotesContent() {
                                                         size="icon"
                                                         onClick={() => handleDeleteClick(note.id)}
                                                         className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                        title="Delete"
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
@@ -639,7 +963,36 @@ function SessionNotesContent() {
                                                     </Accordion>
                                                 </>
                                             ) : (
-                                                <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                                <div className="space-y-4">
+                                                    {note.transcript && (
+                                                        <div>
+                                                            <p className="text-sm font-semibold mb-2">Transcript:</p>
+                                                            <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded">{note.transcript}</p>
+                                                        </div>
+                                                    )}
+                                                    {note.audioURL && (
+                                                        <div>
+                                                            <p className="text-sm font-semibold mb-2">Audio Recording:</p>
+                                                            <audio controls className="w-full">
+                                                                <source src={note.audioURL} type="audio/webm" />
+                                                                <source src={note.audioURL} type="audio/mp3" />
+                                                                Your browser does not support the audio element.
+                                                            </audio>
+                                                        </div>
+                                                    )}
+                                                    {note.aiOverview && (
+                                                        <div>
+                                                            <p className="text-sm font-semibold mb-2">AI Session Overview:</p>
+                                                            <p className="text-sm whitespace-pre-wrap bg-primary/10 p-3 rounded">{note.aiOverview}</p>
+                                                        </div>
+                                                    )}
+                                                    {note.content && (
+                                                        <div>
+                                                            <p className="text-sm font-semibold mb-2">Session Notes:</p>
+                                                            <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             )}
                                             {note.source === 'recording' && note.audioURL && (
                                                 <div className="mt-4 pt-4 border-t">
@@ -683,26 +1036,104 @@ function SessionNotesContent() {
             </div>
 
             {/* Create/Edit Dialog */}
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogContent className="max-w-2xl">
+            <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+                setIsCreateDialogOpen(open);
+                if (!open) {
+                    setIsPrefilledFromSession(false); // Reset when dialog closes
+                    setOriginalSessionDate(""); // Reset original date
+                }
+            }}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>{editingNote ? "Edit Session Note" : "New Session Note"}</DialogTitle>
                         <DialogDescription>
-                            Document your therapy session details and observations
+                            {isPrefilledFromSession 
+                                ? "Add notes for this session"
+                                : "Document your therapy session details and observations"
+                            }
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
+                        {/* Show session info summary when pre-filled from session card */}
+                        {isPrefilledFromSession ? (
+                            <div className="p-4 bg-muted rounded-lg border">
+                                <div className="flex items-center gap-4 text-sm">
+                                    <div>
+                                        <span className="text-muted-foreground">Client:</span>{" "}
+                                        <strong>{formData.clientName}</strong>
+                                    </div>
+                                    <div>
+                                        <span className="text-muted-foreground">Session:</span>{" "}
+                                        <strong>
+                                            {originalSessionDate 
+                                                ? (() => {
+                                                    const date = new Date(originalSessionDate);
+                                                    if (isNaN(date.getTime())) {
+                                                        return 'Invalid date';
+                                                    }
+                                                    return date.toLocaleDateString('en-US', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        year: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    });
+                                                })()
+                                                : formData.sessionDate
+                                                    ? (() => {
+                                                        const date = new Date(formData.sessionDate);
+                                                        if (isNaN(date.getTime())) {
+                                                            return 'Invalid date';
+                                                        }
+                                                        return date.toLocaleDateString('en-US', {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            year: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        });
+                                                    })()
+                                                    : 'Not specified'
+                                            }
+                                        </strong>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                        <>
                         <div className="space-y-2">
                             <Label htmlFor="client">Client *</Label>
                             <Select
                                 value={formData.clientName}
-                                onValueChange={(value) => {
+                                onValueChange={async (value) => {
+                                    console.log('[Session Notes Dialog] Client selected:', value);
                                     const selectedClient = clients.find(c => c.name === value);
-                                    setFormData({
-                                        ...formData,
+                                    console.log('[Session Notes Dialog] Selected client object:', selectedClient);
+                                    const newClientId = selectedClient?.id;
+                                    console.log('[Session Notes Dialog] Setting clientId to:', newClientId);
+                                    
+                                    // Update form data with new client
+                                    setFormData(prev => ({
+                                        ...prev,
                                         clientName: value,
-                                        clientId: selectedClient?.id
-                                    });
+                                        clientId: newClientId,
+                                        sessionId: undefined, // Clear session when client changes
+                                        sessionDate: "" // Clear date when client changes
+                                    }));
+                                    
+                                    // Load sessions for this client
+                                    if (newClientId) {
+                                        console.log('[Session Notes Dialog] Loading sessions for clientId:', newClientId);
+                                        try {
+                                            await loadSessionsForClient(newClientId);
+                                            console.log('[Session Notes Dialog] Sessions loaded, count:', availableSessions.length);
+                                        } catch (err) {
+                                            console.error('[Session Notes Dialog] Error loading sessions:', err);
+                                        }
+                                    } else {
+                                        console.log('[Session Notes Dialog] No clientId found for client:', value);
+                                        setAvailableSessions([]);
+                                    }
                                 }}
                             >
                                 <SelectTrigger id="client">
@@ -718,6 +1149,72 @@ function SessionNotesContent() {
                             </Select>
                         </div>
 
+                        {/* Session Selection - always show when client is selected */}
+                        {formData.clientName && (
+                            <div className="space-y-2">
+                                <Label htmlFor="session-select">Select Session *</Label>
+                                {availableSessions.length > 0 ? (
+                                    <>
+                                        <Select
+                                            value={formData.sessionId || "none"}
+                                            onValueChange={(value) => {
+                                                if (value === "none") {
+                                                    setFormData({
+                                                        ...formData,
+                                                        sessionId: undefined,
+                                                        sessionDate: formData.sessionDate || "" // Keep existing date if set
+                                                    });
+                                                } else {
+                                                    const selectedSession = availableSessions.find(s => s.id === value);
+                                                    if (selectedSession) {
+                                                        // Convert ISO date to datetime-local format (YYYY-MM-DDTHH:mm)
+                                                        const date = new Date(selectedSession.date);
+                                                        const year = date.getFullYear();
+                                                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                                                        const day = String(date.getDate()).padStart(2, '0');
+                                                        const hours = String(date.getHours()).padStart(2, '0');
+                                                        const minutes = String(date.getMinutes()).padStart(2, '0');
+                                                        const datetimeLocal = `${year}-${month}-${day}T${hours}:${minutes}`;
+                                                        
+                                                        setFormData({
+                                                            ...formData,
+                                                            sessionId: selectedSession.id,
+                                                            sessionDate: datetimeLocal
+                                                        });
+                                                    }
+                                                }
+                                            }}
+                                        >
+                                            <SelectTrigger id="session-select">
+                                                <SelectValue placeholder="Select a session (optional)" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">No session (manual date)</SelectItem>
+                                                {availableSessions.map(session => (
+                                                    <SelectItem key={session.id} value={session.id}>
+                                                        {new Date(session.date).toLocaleDateString('en-US', {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            year: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })} - {session.type}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            Select a session to link this note, or leave as "No session" to enter a manual date
+                                        </p>
+                                    </>
+                                ) : (
+                                    <div className="text-sm text-amber-600 dark:text-amber-400 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-md border border-amber-200 dark:border-amber-800">
+                                        ⚠️ No sessions found for this client. Loading sessions... If no sessions appear, you can enter a manual date below, or go to Scheduling to create sessions for this client first.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <Label htmlFor="session-date">Session Date & Time *</Label>
                             <Input
@@ -727,16 +1224,21 @@ function SessionNotesContent() {
                                 onChange={(e) => setFormData({ ...formData, sessionDate: e.target.value })}
                             />
                         </div>
+                        </>
+                        )}
 
                         <div className="space-y-2">
-                            <Label htmlFor="content">Session Notes *</Label>
+                            <Label htmlFor="content">Session Notes / Content *</Label>
                             <Textarea
                                 id="content"
                                 placeholder="Document your session observations, interventions, and client progress..."
-                                className="min-h-[300px]"
+                                className="min-h-[200px]"
                                 value={formData.content}
                                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Your clinical notes and observations from the session
+                            </p>
                         </div>
 
                         <div className="space-y-2">
