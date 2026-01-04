@@ -692,7 +692,30 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 }));
                 console.log(`[Load Session Notes] Found ${notesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
                 console.log(`[Load Session Notes] Matched notes:`, notesForSession);
-                setSessionNotes(notesForSession);
+                
+                // Deduplicate notes by content and timestamp to prevent showing the same voice note twice
+                // This can happen if the same recording exists in both recordings and session_notes tables
+                const seenContentKeys = new Set<string>();
+                const deduplicatedNotes = notesForSession.filter((note: any) => {
+                    // Create a key from content + creation timestamp (rounded to the minute to handle slight differences)
+                    const content = (note.content || note.transcript || '').trim().substring(0, 200);
+                    const timestamp = note.createdDate || note.created_at || '';
+                    const dateKey = timestamp ? new Date(timestamp).toISOString().substring(0, 16) : ''; // Round to minute
+                    const key = `${content}-${dateKey}`;
+                    
+                    if (seenContentKeys.has(key)) {
+                        console.log('[Load Session Notes] Removing duplicate note:', note.id);
+                        return false;
+                    }
+                    seenContentKeys.add(key);
+                    return true;
+                });
+                
+                if (deduplicatedNotes.length !== notesForSession.length) {
+                    console.log(`[Load Session Notes] Removed ${notesForSession.length - deduplicatedNotes.length} duplicate notes`);
+                }
+                
+                setSessionNotes(deduplicatedNotes);
             }
         } catch (error) {
             console.error('Error loading session notes:', error);
