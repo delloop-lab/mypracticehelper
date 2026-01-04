@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info, ChevronDown, ChevronUp } from "lucide-react";
+import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -452,7 +452,11 @@ function DocumentsContent() {
                             variant="outline" 
                             size="sm"
                             onClick={() => setShowDocuments(!showDocuments)}
-                            className="flex items-center gap-2"
+                            className={`flex items-center gap-2 ${
+                                showDocuments 
+                                    ? 'border-red-500 text-red-600 hover:bg-red-50 hover:text-red-700' 
+                                    : 'border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700'
+                            }`}
                         >
                             {showDocuments ? (
                                 <>
@@ -488,16 +492,30 @@ function DocumentsContent() {
                             accept=".doc,.docx,.txt"
                             disabled={isUploading}
                         />
-                        <Upload className={`h-12 w-12 mb-4 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <h3 className="text-lg font-semibold mb-2">
-                            {isDragging ? 'Drop file here' : 'Drag and drop files here'}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mb-2">
-                            or click to browse
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                            MS Word (.doc, .docx) and Text (.txt) files only, max 3 MB
-                        </p>
+                        {isUploading ? (
+                            <>
+                                <Loader2 className="h-12 w-12 mb-4 text-primary animate-spin" />
+                                <h3 className="text-lg font-semibold mb-2 text-primary">
+                                    Uploading document...
+                                </h3>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                    Please wait while your file is being uploaded
+                                </p>
+                            </>
+                        ) : (
+                            <>
+                                <Upload className={`h-12 w-12 mb-4 transition-colors ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+                                <h3 className="text-lg font-semibold mb-2">
+                                    {isDragging ? 'Drop file here' : 'Drag and drop files here'}
+                                </h3>
+                                <p className="text-sm text-muted-foreground mb-2">
+                                    or click to browse
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    MS Word (.doc, .docx) and Text (.txt) files only, max 3 MB
+                                </p>
+                            </>
+                        )}
                     </CardContent>
                 </Card>
 
@@ -567,7 +585,11 @@ function DocumentsContent() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setShowDocuments(!showDocuments)}
-                                className="flex items-center gap-2"
+                                className={`flex items-center gap-2 ${
+                                    showDocuments 
+                                        ? 'border-red-500 text-red-600 hover:bg-red-50 hover:text-red-700' 
+                                        : 'border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700'
+                                }`}
                             >
                                 {showDocuments ? (
                                     <>
