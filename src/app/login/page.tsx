@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,11 +62,14 @@ export default function LoginPage() {
             <Card className="w-full max-w-sm shadow-lg">
                 <CardHeader className="space-y-1.5 px-5 pt-5 pb-3">
                     <div className="flex justify-center mb-3">
-                        {/* Always show the application logo on login page */}
-                        <img
+                        {/* Always show the application logo on login page - using Next.js Image like navbar */}
+                        <Image
                             src="/logo.png"
                             alt="My Practice Helper"
-                            className="h-20 w-auto object-contain"
+                            width={200}
+                            height={64}
+                            className="h-16 w-auto"
+                            priority
                         />
                     </div>
                     <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
