@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
-import { Users, Mic, Calendar, DollarSign, FileText, Bell, X, Link as LinkIcon, Archive } from "lucide-react";
+import { Users, Mic, Calendar, DollarSign, FileText, Bell, X, Link as LinkIcon, Archive, Menu } from "lucide-react";
 import Image from "next/image";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -198,6 +198,10 @@ export function Sidebar() {
                         }
                         return currentLogo;
                     });
+                } else if (response.status === 401) {
+                    // 401 is expected when user is not authenticated - don't log as error
+                    // This can happen during redirects or when session expires
+                    console.log('[Sidebar] Settings API returned 401 (not authenticated)');
                 } else {
                     console.error('[Sidebar] Settings API response not OK:', response.status, response.statusText);
                     const errorText = await response.text();
@@ -289,6 +293,19 @@ export function Sidebar() {
                     </div>
                 </SheetContent>
             </Sheet>
+            
+            {/* Visible menu button/tab on left side - only on mobile, hidden when menu is open */}
+            {!isMobileOpen && (
+                <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsMobileOpen(true)}
+                    className="md:hidden fixed left-0 top-1/2 -translate-y-1/2 z-50 h-16 w-10 rounded-r-lg rounded-l-none shadow-lg bg-background border-l-0 border-2 border-r hover:bg-muted transition-all"
+                    aria-label="Open menu"
+                >
+                    <Menu className="h-6 w-6" />
+                </Button>
+            )}
             
             {/* Touch handler overlay for swipe gesture - only on mobile when menu is closed */}
             {!isMobileOpen && (
