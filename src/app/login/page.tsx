@@ -15,9 +15,9 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    // For login page, always use default logo since user isn't authenticated yet
+    // For login page, always use application logo since user isn't authenticated yet
     // This ensures the logo always displays correctly
-    const DEFAULT_LOGO = "/your-logo-here.png";
+    const DEFAULT_LOGO = "/logo.png";
     const logoSrc = DEFAULT_LOGO;
 
     const handleSubmit = async (e: React.FormEvent) => {
