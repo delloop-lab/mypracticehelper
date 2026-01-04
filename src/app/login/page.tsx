@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,81 +15,10 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [companyLogo, setCompanyLogo] = useState<string | undefined>(undefined);
-    const [logoVersion, setLogoVersion] = useState(0);
-
-    // Fetch company logo from settings
-    useEffect(() => {
-        const fetchCompanyLogo = async () => {
-            try {
-                const response = await fetch(`/api/settings?t=${Date.now()}`, {
-                    credentials: 'include',
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    const newLogo = (data.companyLogo && data.companyLogo.trim() !== "") ? data.companyLogo : undefined;
-                    
-                    setCompanyLogo((currentLogo) => {
-                        if (newLogo !== currentLogo) {
-                            setLogoVersion(prev => prev + 1);
-                            return newLogo;
-                        }
-                        return currentLogo;
-                    });
-                }
-            } catch (error) {
-                console.error('[Login] Error fetching company logo:', error);
-            }
-        };
-        
-        fetchCompanyLogo();
-        
-        // Listen for logo update events
-        const handleLogoUpdate = () => {
-            fetchCompanyLogo();
-        };
-        window.addEventListener('logo-updated', handleLogoUpdate);
-        
-        return () => {
-            window.removeEventListener('logo-updated', handleLogoUpdate);
-        };
-    }, []);
-
-    // Calculate logo source with fallback
-    const logoSrc = useMemo(() => {
-        // Only use companyLogo if it exists, is not empty, and is NOT the default app logo
-        const isDefaultAppLogo = companyLogo === '/logo.png' || companyLogo?.includes('/logo.png');
-        let src = (companyLogo && companyLogo.trim() !== "" && !isDefaultAppLogo) 
-            ? companyLogo 
-            : "/your-logo-here.png";
-        
-        // Multiple safety checks: ensure we NEVER use the default app logo.png
-        if (src === '/logo.png' || src.includes('/logo.png') || !src || src.trim() === '') {
-            src = "/your-logo-here.png";
-        }
-        
-        // Final check before returning
-        if (src.startsWith('http') || src.includes('supabase.co')) {
-            // Add cache-busting for external logos
-            try {
-                const url = new URL(src);
-                url.searchParams.set('v', (logoVersion || 0).toString());
-                url.searchParams.set('t', Date.now().toString());
-                const finalSrc = url.toString();
-                console.log('[Login] Using external logo:', finalSrc);
-                return finalSrc;
-            } catch {
-                console.log('[Login] Error parsing external logo URL, using fallback');
-                return "/your-logo-here.png";
-            }
-        }
-        
-        // Ensure we never return logo.png
-        const finalSrc = src === '/logo.png' ? "/your-logo-here.png" : src;
-        console.log('[Login] Logo source:', { companyLogo, finalSrc, logoVersion });
-        return finalSrc;
-    }, [companyLogo, logoVersion]);
+    // For login page, always use default logo since user isn't authenticated yet
+    // This ensures the logo always displays correctly
+    const DEFAULT_LOGO = "/your-logo-here.png";
+    const logoSrc = DEFAULT_LOGO;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -143,9 +72,9 @@ export default function LoginPage() {
                             onError={(e) => {
                                 const target = e.target as HTMLImageElement;
                                 console.error('[Login] Logo failed to load:', logoSrc);
-                                // Fallback to default logo if current one fails
-                                if (target.src !== '/your-logo-here.png' && !target.src.includes('your-logo-here.png')) {
-                                    target.src = "/your-logo-here.png";
+                                // If default logo fails, try to reload it (might be caching issue)
+                                if (!target.src.includes('?nocache')) {
+                                    target.src = logoSrc + '?nocache=' + Date.now();
                                 }
                             }}
                             onLoad={() => {
