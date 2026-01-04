@@ -1392,7 +1392,7 @@ export function VoiceNotes() {
                 >
                     <input
                         type="file"
-                        accept="audio/mp3, audio/webm, audio/m4u, audio/wav, audio/m4a, audio/mp4, audio/mpeg"
+                        accept="audio/*,.mp3,.wav,.m4a,.webm,.mp4,.mpeg,.ogg,.aac"
                         onChange={handleFileUpload}
                         disabled={!selectedClientId || !selectedSessionId}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
