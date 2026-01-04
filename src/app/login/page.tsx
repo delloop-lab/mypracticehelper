@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,13 +62,10 @@ export default function LoginPage() {
                 <CardHeader className="space-y-1.5 px-5 pt-5 pb-3">
                     <div className="flex justify-center mb-3">
                         {/* Always show the application logo on login page */}
-                        <Image
+                        <img
                             src="/logo.png"
                             alt="My Practice Helper"
-                            width={200}
-                            height={80}
                             className="h-20 w-auto object-contain"
-                            priority
                         />
                     </div>
                     <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
