@@ -70,7 +70,6 @@ export default function LoginPage() {
                             height={80}
                             className="h-20 w-auto object-contain"
                             priority
-                            unoptimized
                         />
                     </div>
                     <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
