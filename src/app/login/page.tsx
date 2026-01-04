@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,10 +16,6 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    // For login page, always use application logo since user isn't authenticated yet
-    // This ensures the logo always displays correctly
-    const DEFAULT_LOGO = "/logo.png";
-    const logoSrc = DEFAULT_LOGO;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -65,21 +62,14 @@ export default function LoginPage() {
             <Card className="w-full max-w-sm shadow-lg">
                 <CardHeader className="space-y-1.5 px-5 pt-5 pb-3">
                     <div className="flex justify-center mb-3">
-                        <img
-                            src={logoSrc}
+                        <Image
+                            src="/logo.png"
                             alt="My Practice Helper"
+                            width={200}
+                            height={80}
                             className="h-20 w-auto object-contain"
-                            onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                console.error('[Login] Logo failed to load:', logoSrc);
-                                // If default logo fails, try to reload it (might be caching issue)
-                                if (!target.src.includes('?nocache')) {
-                                    target.src = logoSrc + '?nocache=' + Date.now();
-                                }
-                            }}
-                            onLoad={() => {
-                                console.log('[Login] Logo loaded successfully:', logoSrc);
-                            }}
+                            priority
+                            unoptimized
                         />
                     </div>
                     <CardTitle className="text-2xl font-bold text-center">Welcome Back</CardTitle>
