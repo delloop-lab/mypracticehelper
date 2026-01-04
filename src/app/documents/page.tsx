@@ -43,7 +43,7 @@ function DocumentsContent() {
     const [selectedClientId, setSelectedClientId] = useState<string>('');
     const [clients, setClients] = useState<any[]>([]);
     const [isDragging, setIsDragging] = useState(false);
-    const [showDocuments, setShowDocuments] = useState(false);
+    const [showDocuments, setShowDocuments] = useState(true); // Show documents by default
     const [showFilters, setShowFilters] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -117,15 +117,19 @@ function DocumentsContent() {
             
             if (userDocsResponse.ok) {
                 userDocs = await userDocsResponse.json();
+                console.log('[Documents] Loaded user documents:', userDocs.length);
                 userDocs.forEach((doc: any) => {
                     if (doc.url) {
                         fileUrls.push(doc.url);
                     }
                 });
+            } else {
+                console.error('[Documents] Failed to fetch user documents:', userDocsResponse.status, userDocsResponse.statusText);
             }
             
             // Combine both types of documents
             const allDocs = [...clientDocs, ...userDocs];
+            console.log('[Documents] Total documents loaded:', allDocs.length, `(${clientDocs.length} client docs, ${userDocs.length} user docs)`);
             setDocuments(allDocs);
             
             // Fetch file sizes if we have URLs
@@ -248,6 +252,13 @@ function DocumentsContent() {
         }
 
         try {
+            console.log('[Documents] Starting upload:', {
+                fileName: selectedFile.name,
+                fileSize: selectedFile.size,
+                documentType,
+                clientId: selectedClientId || 'none'
+            });
+            
             const response = await fetch('/api/documents', {
                 method: 'POST',
                 body: formData,
@@ -255,18 +266,39 @@ function DocumentsContent() {
             });
 
             if (response.ok) {
-                await loadDocuments(); // Reload documents to show the new one
+                const result = await response.json();
+                console.log('[Documents] Upload successful:', result);
+                
+                // Ensure documents are visible after upload
+                setShowDocuments(true);
+                
+                // Small delay to ensure database is updated
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Reload documents to show the new one
+                await loadDocuments();
+                
                 // Reset state
                 setSelectedFile(null);
                 setDocumentType('company');
                 setSelectedClientId('');
+                
+                // Show success message
+                alert(`Document "${selectedFile.name}" uploaded successfully!`);
             } else {
-                const error = await response.json();
+                const errorText = await response.text();
+                let error;
+                try {
+                    error = JSON.parse(errorText);
+                } catch {
+                    error = { error: errorText || 'Unknown error' };
+                }
+                console.error('[Documents] Upload failed:', response.status, error);
                 alert(`Failed to upload document: ${error.error || 'Unknown error'}`);
             }
         } catch (error) {
-            console.error('Error uploading document:', error);
-            alert('Error uploading document. Please try again.');
+            console.error('[Documents] Error uploading document:', error);
+            alert(`Error uploading document: ${error instanceof Error ? error.message : 'Please try again.'}`);
         } finally {
             setIsUploading(false);
         }
