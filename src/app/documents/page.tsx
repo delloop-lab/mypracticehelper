@@ -683,11 +683,17 @@ function DocumentsContent() {
                                         <SelectValue placeholder="Choose a client..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {clients.map(client => (
-                                            <SelectItem key={client.id} value={client.id}>
-                                                {client.name}
-                                            </SelectItem>
-                                        ))}
+                                        {[...clients]
+                                            .sort((a, b) => {
+                                                const firstNameA = (a.firstName || a.name || '').toLowerCase();
+                                                const firstNameB = (b.firstName || b.name || '').toLowerCase();
+                                                return firstNameA.localeCompare(firstNameB);
+                                            })
+                                            .map(client => (
+                                                <SelectItem key={client.id} value={client.id}>
+                                                    {client.name}
+                                                </SelectItem>
+                                            ))}
                                     </SelectContent>
                                 </Select>
                             </div>

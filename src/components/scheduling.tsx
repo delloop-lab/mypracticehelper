@@ -107,6 +107,13 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [isEditingAppointment, setIsEditingAppointment] = useState(false);
     const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string } | null>(null);
+    
+    // New client creation state
+    const [isAddingNewClient, setIsAddingNewClient] = useState(false);
+    const [newClientData, setNewClientData] = useState({ firstName: "", lastName: "", email: "" });
+    
+    // Past date warning state
+    const [pastDateWarningShown, setPastDateWarningShown] = useState(false);
 
     // Load data on mount
     useEffect(() => {
@@ -276,6 +283,11 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             paymentStatus: "unpaid",
             currency: currentCurrency,
         });
+        // Reset new client state
+        setIsAddingNewClient(false);
+        setNewClientData({ firstName: "", lastName: "", email: "" });
+        // Reset past date warning
+        setPastDateWarningShown(false);
         setBookingError(null);
     };
 
@@ -313,6 +325,75 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         e.preventDefault();
         setBookingError(null);
 
+        // Determine the client name - either from existing client or new client
+        let clientName = formData.clientName;
+        
+        // If adding a new client, create them first
+        if (isAddingNewClient) {
+            if (!newClientData.firstName.trim() || !newClientData.lastName.trim()) {
+                setBookingError('Please enter both first and last name for the new client.');
+                return;
+            }
+            
+            clientName = `${newClientData.firstName.trim()} ${newClientData.lastName.trim()}`;
+            
+            // Check if client with same name already exists
+            const existingClient = clients.find(c => c.name.toLowerCase() === clientName.toLowerCase());
+            if (existingClient) {
+                setBookingError(`A client named "${clientName}" already exists. Please select them from the dropdown or use a different name.`);
+                return;
+            }
+            
+            // Create the new client
+            try {
+                // Fetch existing clients to add the new one
+                const existingClientsResponse = await fetch('/api/clients');
+                const existingClients = existingClientsResponse.ok ? await existingClientsResponse.json() : [];
+                
+                const newClient = {
+                    id: Date.now().toString(),
+                    firstName: newClientData.firstName.trim(),
+                    lastName: newClientData.lastName.trim(),
+                    name: clientName,
+                    email: newClientData.email.trim(),
+                    phone: "",
+                    nextAppointment: "",
+                    notes: "",
+                    recordings: 0,
+                    sessions: 0,
+                    sessionFee: undefined,
+                    currency: settings.currency || 'EUR',
+                    documents: [],
+                    relationships: [],
+                };
+                
+                const updatedClients = [...existingClients, newClient];
+                
+                const saveClientResponse = await fetch('/api/clients', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedClients),
+                });
+                
+                if (!saveClientResponse.ok) {
+                    setBookingError('Failed to create new client. Please try again.');
+                    return;
+                }
+                
+                // Update local clients state
+                setClients(updatedClients);
+            } catch (error) {
+                console.error('Error creating new client:', error);
+                setBookingError('Failed to create new client. Please try again.');
+                return;
+            }
+        }
+        
+        if (!clientName) {
+            setBookingError('Please select a client or add a new one.');
+            return;
+        }
+
         // Combine date and time into a full ISO timestamp for the date field
         // Keep time separate for display purposes
         const timeStr = formData.time.length === 5 ? `${formData.time}:00` : formData.time;
@@ -322,11 +403,12 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         const appointmentDateTime = new Date(dateWithTime);
         const now = new Date();
         
-        // Compare dates/times (ignore milliseconds)
-        if (appointmentDateTime < now) {
+        // Compare dates/times - show warning for past appointments but allow proceeding
+        if (appointmentDateTime < now && !pastDateWarningShown) {
             setBookingError(
-                `Cannot book appointments in the past. Please select a future date and time.`
+                `⚠️ This appointment is in the past. Click "Create Appointment" again to confirm.`
             );
+            setPastDateWarningShown(true);
             return;
         }
 
@@ -342,7 +424,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
 
         const newAppointment: Appointment = {
             id: `apt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More unique ID
-            clientName: formData.clientName,
+            clientName: clientName,
             date: dateWithTime, // Full ISO timestamp
             time: formData.time, // Keep time for display
             duration: formData.duration,
@@ -446,7 +528,10 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             return false;
         }).sort((a, b) => {
             if (a.date !== b.date) return a.date.localeCompare(b.date);
-            return a.time.localeCompare(b.time);
+            // Sort by time using minutes since midnight for proper AM/PM sorting
+            const minutesA = timeToMinutes(a.time || '');
+            const minutesB = timeToMinutes(b.time || '');
+            return minutesA - minutesB;
         });
 
         console.log(`[Scheduling] Filtered to ${filtered.length} appointments`);
@@ -640,6 +725,48 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             return parts[0].substring(0, 2).toUpperCase();
         }
         return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    };
+
+    // Get currency symbol from currency code
+    const getCurrencySymbol = (currencyCode?: string): string => {
+        if (!currencyCode) return "€"; // Default to EUR
+        switch (currencyCode.toUpperCase()) {
+            case 'USD': return '$';
+            case 'EUR': return '€';
+            case 'GBP': return '£';
+            case 'AUD': return 'A$';
+            default: return currencyCode; // Return code if unknown
+        }
+    };
+
+    // Convert time string to minutes since midnight for proper sorting
+    // Handles both 24-hour format (HH:MM) and 12-hour format (H:MM AM/PM)
+    const timeToMinutes = (timeStr: string): number => {
+        if (!timeStr) return 0;
+        
+        // Handle 24-hour format (HH:MM or HH:MM:SS)
+        if (timeStr.includes(':') && !timeStr.match(/\s*(AM|PM)/i)) {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return (hours || 0) * 60 + (minutes || 0);
+        }
+        
+        // Handle 12-hour format (H:MM AM/PM)
+        const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (match) {
+            let hours = parseInt(match[1], 10);
+            const minutes = parseInt(match[2], 10);
+            const period = match[3].toUpperCase();
+            
+            if (period === 'PM' && hours !== 12) {
+                hours += 12;
+            } else if (period === 'AM' && hours === 12) {
+                hours = 0;
+            }
+            
+            return hours * 60 + minutes;
+        }
+        
+        return 0;
     };
 
     const getAppointmentDatesByType = (type: Appointment['type']) => {
@@ -845,9 +972,10 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                         return aptDateStr === dayStr;
                                     }).sort((a, b) => {
                                         // Sort by time to ensure consistent display order
-                                        const timeA = a.time || '';
-                                        const timeB = b.time || '';
-                                        return timeA.localeCompare(timeB);
+                                        // Convert times to minutes since midnight for proper AM/PM sorting
+                                        const minutesA = timeToMinutes(a.time || '');
+                                        const minutesB = timeToMinutes(b.time || '');
+                                        return minutesA - minutesB;
                                     });
                                     
                                     // Debug logging for Nov 25th
@@ -1004,7 +1132,11 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 </div>
                             ) : (
                                 <div className="space-y-1.5">
-                                    {selectedDateAppointments.sort((a, b) => a.time.localeCompare(b.time)).map((appointment) => (
+                                    {selectedDateAppointments.sort((a, b) => {
+                                        const minutesA = timeToMinutes(a.time || '');
+                                        const minutesB = timeToMinutes(b.time || '');
+                                        return minutesA - minutesB;
+                                    }).map((appointment) => (
                                         <Card 
                                             key={appointment.id}
                                             className="border-l-4 border-l-primary hover:shadow-md transition-shadow cursor-pointer"
@@ -1033,7 +1165,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                     </div>
                                                     {appointment.fee && (
                                                         <div className="text-[10px] text-muted-foreground leading-tight">
-                                                            €{appointment.fee} - {appointment.paymentStatus || "unpaid"}
+                                                            {getCurrencySymbol(appointment.currency)}{appointment.fee} - {appointment.paymentStatus || "unpaid"}
                                                         </div>
                                                     )}
                                                 </div>
@@ -1210,11 +1342,19 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                                         {appointment.time}
                                                                     </span>
                                                                     <span>{appointment.duration}m</span>
-                                                                    <span>{appointment.type}</span>
+                                                                    <span className={cn(
+                                                                        "px-2 py-0.5 rounded text-xs font-medium",
+                                                                        appointment.type === "Initial Consultation" && "bg-blue-100 text-blue-800",
+                                                                        appointment.type === "Therapy Session" && "bg-green-100 text-green-800",
+                                                                        appointment.type === "Discovery Session" && "bg-purple-100 text-purple-800",
+                                                                        appointment.type === "Couples Therapy Session" && "bg-pink-100 text-pink-800"
+                                                                    )}>
+                                                                        {appointment.type}
+                                                                    </span>
                                                                 </div>
                                                                 {appointment.fee && (
                                                                     <div className={`text-xs mt-1 ${pastDue ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
-                                                                        €{appointment.fee} - {appointment.paymentStatus || "unpaid"}
+                                                                        {getCurrencySymbol(appointment.currency)}{appointment.fee} - {appointment.paymentStatus || "unpaid"}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -1254,32 +1394,92 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                     <form onSubmit={handleSubmit}>
                         <div className="space-y-4 py-4">
                             <div className="space-y-2">
-                                <Label htmlFor="client">Client</Label>
-                                <Select
-                                    value={formData.clientName}
-                                    onValueChange={(value) => {
-                                        const client = clients.find(c => c.name === value);
-                                        // Only use client.sessionFee if it's a valid positive number, otherwise use default fee
-                                        const clientFee = (client?.sessionFee && client.sessionFee > 0) ? client.sessionFee : undefined;
-                                        setFormData({
-                                            ...formData,
-                                            clientName: value,
-                                            fee: clientFee ?? settings.defaultFee ?? 80,
-                                            currency: client?.currency ?? settings.currency ?? "EUR",
-                                        });
-                                    }}
-                                >
-                                    <SelectTrigger id="client">
-                                        <SelectValue placeholder="Select a client..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {clients.map((client) => (
-                                            <SelectItem key={client.id} value={client.name}>
-                                                {client.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <div className="flex items-center justify-between">
+                                    <Label htmlFor="client">Client</Label>
+                                    {!isAddingNewClient ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsAddingNewClient(true);
+                                                setFormData({ ...formData, clientName: "" });
+                                            }}
+                                            className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                        >
+                                            + Add new client
+                                        </button>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsAddingNewClient(false);
+                                                setNewClientData({ firstName: "", lastName: "", email: "" });
+                                            }}
+                                            className="text-xs text-gray-600 hover:text-gray-800 hover:underline"
+                                        >
+                                            Select existing client
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                {!isAddingNewClient ? (
+                                    <Select
+                                        value={formData.clientName}
+                                        onValueChange={(value) => {
+                                            const client = clients.find(c => c.name === value);
+                                            // Only use client.sessionFee if it's a valid positive number, otherwise use default fee
+                                            const clientFee = (client?.sessionFee && client.sessionFee > 0) ? client.sessionFee : undefined;
+                                            setFormData({
+                                                ...formData,
+                                                clientName: value,
+                                                fee: clientFee ?? settings.defaultFee ?? 80,
+                                                currency: client?.currency ?? settings.currency ?? "EUR",
+                                            });
+                                        }}
+                                    >
+                                        <SelectTrigger id="client">
+                                            <SelectValue placeholder="Select a client..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {[...clients]
+                                                .sort((a, b) => a.name.localeCompare(b.name))
+                                                .map((client) => (
+                                                    <SelectItem key={client.id} value={client.name}>
+                                                        {client.name}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <Input
+                                                    id="firstName"
+                                                    placeholder="First name"
+                                                    value={newClientData.firstName}
+                                                    onChange={(e) => setNewClientData({ ...newClientData, firstName: e.target.value })}
+                                                    required={isAddingNewClient}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Input
+                                                    id="lastName"
+                                                    placeholder="Last name"
+                                                    value={newClientData.lastName}
+                                                    onChange={(e) => setNewClientData({ ...newClientData, lastName: e.target.value })}
+                                                    required={isAddingNewClient}
+                                                />
+                                            </div>
+                                        </div>
+                                        <Input
+                                            id="newClientEmail"
+                                            type="email"
+                                            placeholder="Email (optional)"
+                                            value={newClientData.email}
+                                            onChange={(e) => setNewClientData({ ...newClientData, email: e.target.value })}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-2">
@@ -1293,9 +1493,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 date: date.toISOString().split("T")[0],
                                             });
                                             setBookingError(null);
+                                            setPastDateWarningShown(false);
                                         }
                                     }}
-                                    minDate={new Date()}
                                     blockedDays={settings.blockedDays}
                                 />
                             </div>
@@ -1309,21 +1509,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     onChange={(e) => {
                                         setFormData({ ...formData, time: e.target.value });
                                         setBookingError(null);
+                                        setPastDateWarningShown(false);
                                     }}
-                                    min={formData.date === new Date().toISOString().split('T')[0] ? new Date().toTimeString().slice(0, 5) : "00:00"}
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="duration">Duration (minutes)</Label>
-                                <Input
-                                    id="duration"
-                                    type="number"
-                                    min="15"
-                                    step="1"
-                                    value={formData.duration}
-                                    onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
                                     required
                                 />
                             </div>
@@ -1336,14 +1523,22 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                         // Find the selected appointment type to get its default duration and fee
                                         const selectedType = appointmentTypes.find(t => t.name === value);
                                         const duration = selectedType?.duration || 60;
-                                        const fee = selectedType?.fee || settings.defaultFee || 80;
+                                        
+                                        // Check if a client is selected and has custom fee/currency
+                                        const selectedClient = formData.clientName ? clients.find(c => c.name === formData.clientName) : null;
+                                        const clientFee = (selectedClient?.sessionFee && selectedClient.sessionFee > 0) ? selectedClient.sessionFee : undefined;
+                                        const clientCurrency = selectedClient?.currency;
+                                        
+                                        // Use client's custom fee/currency if available, otherwise use appointment type defaults
+                                        const fee = clientFee ?? (selectedType?.fee || settings.defaultFee || 80);
+                                        const currency = clientCurrency ?? (settings.currency || formData.currency || "EUR");
 
                                         setFormData({
                                             ...formData,
                                             type: value,
                                             duration,
                                             fee,
-                                            currency: settings.currency || formData.currency || "EUR"
+                                            currency
                                         });
                                     }}
                                 >
@@ -1366,6 +1561,19 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                             ))}
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="duration">Duration (minutes)</Label>
+                                <Input
+                                    id="duration"
+                                    type="number"
+                                    min="15"
+                                    step="1"
+                                    value={formData.duration}
+                                    onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
+                                    required
+                                />
                             </div>
 
                             <div className="space-y-2">
@@ -1456,8 +1664,12 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                             }}>
                                 Cancel
                             </Button>
-                            <Button type="submit" disabled={!formData.clientName} className="bg-green-500 hover:bg-green-600 text-white">
-                                Create Appointment
+                            <Button 
+                                type="submit" 
+                                disabled={!isAddingNewClient ? !formData.clientName : (!newClientData.firstName.trim() || !newClientData.lastName.trim())} 
+                                className="bg-green-500 hover:bg-green-600 text-white"
+                            >
+                                {isAddingNewClient ? "Create Client & Appointment" : "Create Appointment"}
                             </Button>
                         </DialogFooter>
                     </form>
@@ -1602,7 +1814,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
                                             <p className="text-sm text-muted-foreground">Fee</p>
-                                            <p className="text-lg font-bold">€{selectedAppointment.fee}</p>
+                                            <p className="text-lg font-bold">{getCurrencySymbol(selectedAppointment.currency)}{selectedAppointment.fee}</p>
                                         </div>
                                         <div className="space-y-1">
                                             <p className="text-sm text-muted-foreground">Method</p>

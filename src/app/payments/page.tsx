@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DollarSign, Calendar, TrendingUp, CheckCircle2, XCircle, Clock, RefreshCw } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays, startOfWeek, endOfWeek, startOfDay, endOfDay, subMonths, startOfISOWeek, endOfISOWeek, eachWeekOfInterval } from "date-fns";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 interface Appointment {
     id: string;
@@ -50,6 +50,9 @@ export default function PaymentsPage() {
     const [isUnpaidReportOpen, setIsUnpaidReportOpen] = useState(false);
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
     const [isLoadingRates, setIsLoadingRates] = useState(false);
+    const [selectedWeekSessions, setSelectedWeekSessions] = useState<Appointment[]>([]);
+    const [isWeekSessionsDialogOpen, setIsWeekSessionsDialogOpen] = useState(false);
+    const [selectedWeekLabel, setSelectedWeekLabel] = useState<string>("");
 
     useEffect(() => {
         loadData();
@@ -428,6 +431,7 @@ export default function PaymentsPage() {
         // Group by week
         const weeklyData: Record<string, number> = {};
         const weekLabels: Record<string, string> = {};
+        const weekSessions: Record<string, Appointment[]> = {};
         
         // Initialize all 8 weeks with 0
         for (let i = 7; i >= 0; i--) {
@@ -435,9 +439,10 @@ export default function PaymentsPage() {
             const weekKey = format(weekStart, 'yyyy-MM-dd');
             weeklyData[weekKey] = 0;
             weekLabels[weekKey] = format(weekStart, 'MMM d');
+            weekSessions[weekKey] = [];
         }
         
-        // Calculate revenue for each week
+        // Calculate revenue for each week and store sessions
         paidSessionsLast8Weeks.forEach(apt => {
             const appointmentDate = new Date(apt.date);
             const weekStart = startOfISOWeek(appointmentDate);
@@ -446,19 +451,26 @@ export default function PaymentsPage() {
             
             if (weeklyData.hasOwnProperty(weekKey)) {
                 weeklyData[weekKey] += fee;
+                weekSessions[weekKey].push(apt);
             }
         });
         
         // Convert to array format for chart
-        return Object.entries(weeklyData)
-            .map(([weekKey, revenue]) => ({
-                week: weekLabels[weekKey],
-                revenue: Math.round(revenue * 100) / 100 // Round to 2 decimal places
-            }))
-            .reverse(); // Show oldest week first
+        return {
+            data: Object.entries(weeklyData)
+                .map(([weekKey, revenue]) => ({
+                    week: weekLabels[weekKey],
+                    weekKey: weekKey,
+                    revenue: Math.round(revenue * 100) / 100 // Round to 2 decimal places
+                }))
+                .reverse(), // Show oldest week first
+            sessions: weekSessions
+        };
     };
     
-    const weeklyRevenueData = calculateWeeklyRevenue();
+    const weeklyRevenueResult = calculateWeeklyRevenue();
+    const weeklyRevenueData = weeklyRevenueResult.data;
+    const weeklySessionsMap = weeklyRevenueResult.sessions;
 
     // Format currency symbol
     const getCurrencySymbol = (currency: string): string => {
@@ -818,9 +830,33 @@ export default function PaymentsPage() {
                                 formatter={(value: number) => [`${settings?.currency ? getCurrencySymbol(settings.currency) : '€'}${value.toFixed(2)}`, 'Revenue']}
                                 labelStyle={{ color: '#000' }}
                             />
-                            <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                            <Bar 
+                                dataKey="revenue" 
+                                fill="hsl(var(--primary))" 
+                                radius={[4, 4, 0, 0]}
+                                onClick={(data: any, index: number) => {
+                                    if (data && weeklyRevenueData[index]) {
+                                        const weekData = weeklyRevenueData[index];
+                                        const sessions = weeklySessionsMap[weekData.weekKey] || [];
+                                        setSelectedWeekSessions(sessions);
+                                        setSelectedWeekLabel(weekData.week);
+                                        setIsWeekSessionsDialogOpen(true);
+                                    }
+                                }}
+                            >
+                                {weeklyRevenueData.map((entry, index) => (
+                                    <Cell 
+                                        key={`cell-${index}`} 
+                                        fill="hsl(var(--primary))"
+                                        style={{ cursor: 'pointer' }}
+                                    />
+                                ))}
+                            </Bar>
                         </BarChart>
                     </ResponsiveContainer>
+                    <p className="text-xs text-muted-foreground mt-2 text-center">
+                        Click on a bar to see the sessions that make up that week's revenue
+                    </p>
                 </CardContent>
             </Card>
 
@@ -1113,6 +1149,82 @@ export default function PaymentsPage() {
                     </div>
                     <div className="flex justify-end pt-4 border-t">
                         <Button variant="outline" onClick={() => setIsUnpaidReportOpen(false)}>
+                            Close
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Week Sessions Dialog */}
+            <Dialog open={isWeekSessionsDialogOpen} onOpenChange={setIsWeekSessionsDialogOpen}>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Sessions for Week of {selectedWeekLabel}</DialogTitle>
+                        <DialogDescription>
+                            {selectedWeekSessions.length > 0 ? (
+                                <>
+                                    Total Revenue: {settings?.currency ? getCurrencySymbol(settings.currency) : '€'}
+                                    {selectedWeekSessions.reduce((sum, apt) => sum + getAppointmentFee(apt), 0).toFixed(2)}
+                                    {' '}({selectedWeekSessions.length} session{selectedWeekSessions.length !== 1 ? 's' : ''})
+                                </>
+                            ) : (
+                                'No sessions found for this week'
+                            )}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        {selectedWeekSessions.length === 0 ? (
+                            <p className="text-muted-foreground text-center py-8">
+                                No paid sessions found for this week.
+                            </p>
+                        ) : (
+                            <div className="space-y-2">
+                                {selectedWeekSessions
+                                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                    .map((apt) => {
+                                        const fee = getAppointmentFee(apt);
+                                        const currency = getAppointmentCurrency(apt);
+                                        return (
+                                            <button
+                                                key={apt.id}
+                                                onClick={() => {
+                                                    setSelectedAppointment(apt);
+                                                    setSelectedPaymentMethod(apt.paymentMethod || "Cash");
+                                                    setIsWeekSessionsDialogOpen(false);
+                                                    setIsDialogOpen(true);
+                                                }}
+                                                className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
+                                            >
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3">
+                                                        <div>
+                                                            <p className="font-semibold">{apt.clientName}</p>
+                                                            <p className="text-sm text-muted-foreground">
+                                                                {new Date(apt.date).toLocaleDateString()} at {apt.time}
+                                                            </p>
+                                                            <p className="text-xs text-muted-foreground mt-1">
+                                                                {apt.type} • {apt.duration} min • {apt.paymentMethod || "Cash"}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-bold text-lg">
+                                                        {getCurrencySymbol(currency)}{fee.toFixed(2)}
+                                                    </p>
+                                                    <div className="flex items-center gap-1 justify-end">
+                                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                                        <p className="text-xs text-green-600">Paid</p>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                            </div>
+                        )}
+                    </div>
+                    <div className="flex justify-end pt-4 border-t">
+                        <Button variant="outline" onClick={() => setIsWeekSessionsDialogOpen(false)}>
                             Close
                         </Button>
                     </div>

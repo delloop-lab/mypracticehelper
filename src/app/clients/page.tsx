@@ -383,8 +383,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 
                 // Open the target client's details dialog
                 setEditingClient(targetClient);
+                // Calculate actual values from appointments
+                const actualSessions = getClientAppointments(targetClient.name).length;
+                const nextApt = getNextAppointment(targetClient.name);
                 setFormData({
                     ...targetClient,
+                    sessions: actualSessions,
+                    nextAppointment: nextApt ? new Date(nextApt.date).toISOString().slice(0, 16) : '',
                     // Pre-populate with the reciprocal relationship
                     relationships: [
                         ...(targetClient.relationships || []),
@@ -810,6 +815,19 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         loadAppointments();
     }, []);
 
+    // Update form data when appointments change (to refresh calculated values)
+    useEffect(() => {
+        if (editingClient) {
+            const actualSessions = getClientAppointments(editingClient.name).length;
+            const nextApt = getNextAppointment(editingClient.name);
+            setFormData(prev => ({
+                ...prev,
+                sessions: actualSessions,
+                nextAppointment: nextApt ? new Date(nextApt.date).toISOString().slice(0, 16) : ''
+            }));
+        }
+    }, [appointments, editingClient]);
+
     // Note: Sessions count is now user-editable and won't be auto-updated from appointments
     // Users can manually set the total number of sessions if needed
 
@@ -841,8 +859,38 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const getLastAppointment = (clientName: string) => {
         const clientAppointments = getClientAppointments(clientName);
         if (clientAppointments.length === 0) return null;
-        // Appointments are already sorted by date (newest first)
-        return clientAppointments[0];
+        
+        const now = new Date();
+        // Filter to only past appointments and sort by date (newest first)
+        const pastAppointments = clientAppointments
+            .filter(apt => {
+                const aptDate = new Date(apt.date);
+                return aptDate < now; // Only appointments that have already passed
+            })
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        
+        if (pastAppointments.length === 0) return null;
+        // Return the most recent past appointment
+        return pastAppointments[0];
+    };
+
+    const getNextAppointment = (clientName: string) => {
+        if (!clientName) return null;
+        const now = new Date();
+        const normalizedClientName = clientName.trim().toLowerCase();
+        
+        // Get all future appointments for this client
+        const futureAppointments = appointments
+            .filter(apt => {
+                const normalizedAptName = (apt.clientName || '').trim().toLowerCase();
+                if (normalizedAptName !== normalizedClientName) return false;
+                
+                const aptDate = new Date(apt.date);
+                return aptDate > now; // Only future appointments
+            })
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Sort by date ascending
+        
+        return futureAppointments.length > 0 ? futureAppointments[0] : null;
     };
 
     const getClientRelationships = (client: Client) => {
@@ -1160,11 +1208,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             return; // Archived clients are view-only in the archived tab
         }
         setEditingClient(client);
-        // Use the stored sessions count from client data, or default to 0
-        // Don't auto-calculate - let user edit it manually if needed
+        // Calculate actual values from appointments
+        const actualSessions = getClientAppointments(client.name).length;
+        const nextApt = getNextAppointment(client.name);
         setFormData({
             ...client,
-            sessions: client.sessions || 0
+            sessions: actualSessions,
+            nextAppointment: nextApt ? new Date(nextApt.date).toISOString().slice(0, 16) : ''
         });
         setIsAddDialogOpen(true);
     };
@@ -1686,9 +1736,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 <Input
                                                     id="nextAppointment"
                                                     type="datetime-local"
-                                                    value={formData.nextAppointment || ''}
+                                                    value={editingClient && getNextAppointment(editingClient.name)
+                                                        ? new Date(getNextAppointment(editingClient.name)!.date).toISOString().slice(0, 16)
+                                                        : (formData.nextAppointment || '')}
                                                     onChange={(e) => setFormData({ ...formData, nextAppointment: e.target.value })}
                                                 />
+                                                {editingClient && !getNextAppointment(editingClient.name) && (
+                                                    <p className="text-xs text-muted-foreground">No future appointments scheduled</p>
+                                                )}
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="lastAppointment">
@@ -1733,9 +1788,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     type="number"
                                                     min="0"
                                                     placeholder="0"
-                                                    value={formData.sessions || 0}
+                                                    value={editingClient ? getClientAppointments(editingClient.name).length : (formData.sessions || 0)}
                                                     onChange={(e) => setFormData({ ...formData, sessions: parseInt(e.target.value) || 0 })}
                                                 />
+                                                {editingClient && (
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Calculated from {getClientAppointments(editingClient.name).length} appointment{getClientAppointments(editingClient.name).length !== 1 ? 's' : ''} in calendar
+                                                    </p>
+                                                )}
                                             </div>
                                             <div className="space-y-2">
                                                 <Label htmlFor="sessionFee">
@@ -2765,10 +2825,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         <span>Last: {new Date(getLastAppointment(client.name)!.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                                     </div>
                                                 )}
-                                                {client.nextAppointment && (
+                                                {getNextAppointment(client.name) && (
                                                     <div className="flex items-center gap-1 text-[10px] text-muted-foreground truncate">
                                                         <Calendar className="h-2.5 w-2.5 shrink-0 text-green-500" />
-                                                        <span>Next: {new Date(client.nextAppointment).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                                                        <span>Next: {new Date(getNextAppointment(client.name)!.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -2796,26 +2856,29 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             )}
                                             {/* Stats Row */}
                                             <div className="mt-2 pt-2 border-t flex items-center justify-between text-[10px] text-muted-foreground">
-                                                {((client.sessions || 0) > 0) ? (
-                                                    <Link
-                                                        href={`/schedule?client=${encodeURIComponent(client.name)}`}
-                                                        className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                                                        title="View Sessions"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <Calendar className="h-3 w-3 text-green-500" />
-                                                        <span>{client.sessions || 0}</span>
-                                                    </Link>
-                                                ) : (
-                                                    <div
-                                                        className="flex items-center gap-1 text-green-300/80 cursor-default"
-                                                        title="No Sessions"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <Calendar className="h-3 w-3 text-green-300/80" />
-                                                        <span>0</span>
-                                                    </div>
-                                                )}
+                                                {(() => {
+                                                    const actualSessions = getClientAppointments(client.name).length;
+                                                    return actualSessions > 0 ? (
+                                                        <Link
+                                                            href={`/schedule?client=${encodeURIComponent(client.name)}`}
+                                                            className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                                                            title="View Sessions"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <Calendar className="h-3 w-3 text-green-500" />
+                                                            <span>{actualSessions}</span>
+                                                        </Link>
+                                                    ) : (
+                                                        <div
+                                                            className="flex items-center gap-1 text-green-300/80 cursor-default"
+                                                            title="No Sessions"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <Calendar className="h-3 w-3 text-green-300/80" />
+                                                            <span>0</span>
+                                                        </div>
+                                                    );
+                                                })()}
                                                 {(getRecordingCount(client.name) > 0) ? (
                                                     <Link
                                                         href={`/recordings?client=${encodeURIComponent(client.name)}`}
