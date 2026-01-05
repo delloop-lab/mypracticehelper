@@ -88,10 +88,7 @@ export function DatePicker({
           mode="single"
           selected={parsedDate}
           onSelect={(date) => {
-            // Prevent selection of blocked days - double check
-            if (date && isDateDisabled(date)) {
-              return; // Don't allow selection of disabled/blocked days
-            }
+            // Allow selection of blocked days (warning will be shown in the form)
             onChange?.(date);
           }}
           initialFocus
@@ -106,13 +103,7 @@ export function DatePicker({
               checkDate.setHours(0, 0, 0, 0);
               if (checkDate < today) return true;
             }
-            // Disable blocked days of the week (0=Sunday, 1=Monday, ..., 6=Saturday)
-            if (safeBlockedDays.length > 0) {
-              const dayOfWeek = date.getDay();
-              if (safeBlockedDays.includes(dayOfWeek)) {
-                return true;
-              }
-            }
+            // Allow blocked days to be selected (they will show a warning instead)
             return false;
           }}
         />

@@ -540,10 +540,11 @@ function RecordingsContent() {
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
             <div className="mb-8">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Voice Notes</h1>
-                <p className="text-sm sm:text-base text-muted-foreground">
-                    Record Clinical Notes with automatic AI transcription and clinical analysis
-                </p>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Recording</h1>
+                <div className="text-sm sm:text-base text-muted-foreground space-y-1">
+                    <p>Record Clinical Notes with AI transcription</p>
+                    <p>Upload Session Recording for AI Clinical Analysis</p>
+                </div>
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -560,7 +561,7 @@ function RecordingsContent() {
 
                 <TabsContent value="new" className="space-y-6">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight">New Recording</h2>
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight">New Voice Recording / Upload Session Recording</h2>
                     </div>
                     <VoiceNotes />
                 </TabsContent>

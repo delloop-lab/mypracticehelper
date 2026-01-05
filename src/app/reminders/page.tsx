@@ -13,7 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { FileText, Calendar, Search, AlertCircle, Clock, Plus, ClipboardCheck, CheckCircle2, X, ChevronDown, DollarSign } from "lucide-react";
+import { FileText, Calendar, Search, AlertCircle, Clock, ClipboardCheck, CheckCircle2, X, ChevronDown, Landmark, Mic, Plus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
@@ -32,8 +32,13 @@ interface Appointment {
 interface SessionNote {
     id: string;
     clientName: string;
+    clientId?: string;
     sessionDate: string;
     content: string;
+    transcript?: string;
+    audioURL?: string | null;
+    attachments?: { name: string; url: string }[];
+    source?: 'session_note' | 'recording' | 'session';
 }
 
 interface Client {
@@ -99,19 +104,85 @@ export default function RemindersPage() {
 
             // Calculate reminders for sessions awaiting notes
             const now = new Date();
+            console.log('[Reminders Page] Now:', now.toLocaleString());
+            console.log('[Reminders Page] Total appointments:', appointmentsData.length);
+            console.log('[Reminders Page] Total notes:', notesData.length);
+            
             const pastSessions = appointmentsData.filter((a: Appointment) => {
-                const aptDate = new Date(`${a.date}T${a.time}`);
-                return aptDate < now;
+                // Extract date part (YYYY-MM-DD) from date string
+                const dateStr = a.date.split('T')[0];
+                const timeStr = a.time || '00:00';
+                
+                // Handle 12-hour format (e.g., "02:00 pm")
+                let aptHours = 0;
+                let aptMinutes = 0;
+                const timeLower = timeStr.toLowerCase().trim();
+                const isPM = timeLower.includes('pm');
+                const isAM = timeLower.includes('am');
+                const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                if (timeMatch) {
+                    aptHours = parseInt(timeMatch[1], 10);
+                    aptMinutes = parseInt(timeMatch[2], 10);
+                    if (isPM && aptHours !== 12) aptHours += 12;
+                    else if (isAM && aptHours === 12) aptHours = 0;
+                }
+                
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
+                const isPast = aptDate < now;
+                
+                console.log(`[Reminders Page] Session: ${a.clientName} on ${dateStr} at ${a.time} (parsed: ${aptDate.toLocaleString()}) - isPast: ${isPast}`);
+                
+                return isPast;
             });
+            
+            console.log('[Reminders Page] Past sessions:', pastSessions.length);
 
             const missingNotes = pastSessions.filter((apt: Appointment) => {
-                const hasNote = notesData.some((n: SessionNote) =>
-                    n.clientName === apt.clientName &&
-                    n.sessionDate &&
-                    n.sessionDate.startsWith(apt.date)
-                );
+                // Extract date part for comparison
+                const aptDateStr = apt.date.split('T')[0];
+                
+                // Check if a note exists for this appointment
+                // A note is considered to exist if it has:
+                // 1. Matching client (by name or ID)
+                // 2. Matching date
+                // 3. Has actual content (content, transcript, audio, or attachments)
+                const hasNote = notesData.some((n: SessionNote) => {
+                    // Match by client name or client ID
+                    const clientMatches = 
+                        (n.clientName && apt.clientName && n.clientName.toLowerCase() === apt.clientName.toLowerCase()) ||
+                        (n.clientId && apt.clientId && n.clientId === apt.clientId);
+                    
+                    if (!clientMatches) return false;
+                    
+                    // Match by date - handle both date-only and ISO timestamp formats
+                    const noteDateStr = n.sessionDate ? n.sessionDate.split('T')[0] : '';
+                    if (!noteDateStr || !noteDateStr.startsWith(aptDateStr)) return false;
+                    
+                    // Only Voice Notes recordings count as therapist session notes
+                    const hasVoiceNotes = 
+                        (n.audioURL && n.audioURL.trim().length > 0) ||
+                        (n.transcript && n.transcript.trim().length > 0);
+                    
+                    console.log(`[Reminders] Checking note for ${apt.clientName} on ${aptDateStr}:`, {
+                        noteClient: n.clientName,
+                        noteDate: noteDateStr,
+                        hasVoiceNotes,
+                        audioURL: n.audioURL ? 'yes' : 'no',
+                        transcript: n.transcript ? `${n.transcript.length} chars` : 'none'
+                    });
+                    
+                    return hasVoiceNotes;
+                });
+                
+                if (!hasNote) {
+                    console.log(`[Reminders] Missing note for ${apt.clientName} on ${aptDateStr}`);
+                }
+                
                 return !hasNote;
             });
+            
+            console.log(`[Reminders] Total past sessions: ${pastSessions.length}, Missing notes: ${missingNotes.length}`);
 
             // Add clientId to reminders
             const remindersWithClientId = missingNotes.map((apt: Appointment) => {
@@ -132,7 +203,10 @@ export default function RemindersPage() {
 
             // Calculate unpaid past sessions (reusing 'now' from above)
             const pastUnpaidSessions = appointmentsData.filter((apt: Appointment) => {
-                const aptDate = new Date(`${apt.date}T${apt.time}`);
+                // Extract date part (YYYY-MM-DD) from date string (handles both date-only and ISO timestamp formats)
+                const dateStr = apt.date.split('T')[0];
+                const timeStr = apt.time && apt.time.length === 5 ? `${apt.time}:00` : (apt.time || '00:00:00');
+                const aptDate = new Date(`${dateStr}T${timeStr}`);
                 const isPast = aptDate < now;
                 const isUnpaid = apt.paymentStatus !== 'paid';
                 return isPast && isUnpaid;
@@ -185,7 +259,25 @@ export default function RemindersPage() {
     };
 
     const getTimeAgo = (dateString: string, timeString: string): string => {
-        const sessionDate = new Date(`${dateString}T${timeString}`);
+        // Parse date
+        const datePart = dateString.split('T')[0];
+        const [year, month, day] = datePart.split('-').map(Number);
+        
+        // Parse 12-hour time format (e.g., "10:00 am")
+        let hours = 0;
+        let minutes = 0;
+        const timeLower = (timeString || '00:00').toLowerCase().trim();
+        const isPM = timeLower.includes('pm');
+        const isAM = timeLower.includes('am');
+        const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+        if (timeMatch) {
+            hours = parseInt(timeMatch[1], 10);
+            minutes = parseInt(timeMatch[2], 10);
+            if (isPM && hours !== 12) hours += 12;
+            else if (isAM && hours === 12) hours = 0;
+        }
+        
+        const sessionDate = new Date(year, month - 1, day, hours, minutes, 0);
         const now = new Date();
         const diffMs = now.getTime() - sessionDate.getTime();
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -195,20 +287,6 @@ export default function RemindersPage() {
         if (diffDays < 7) return `${diffDays} days ago`;
         if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
         return `${Math.floor(diffDays / 30)} months ago`;
-    };
-
-    const handleCreateNote = (reminder: Appointment) => {
-        const params = new URLSearchParams({
-            client: reminder.clientName,
-            date: `${reminder.date}T${reminder.time}`,
-            create: 'true'
-        });
-
-        if (reminder.clientId) {
-            params.append('clientId', reminder.clientId);
-        }
-
-        router.push(`/session-notes?${params.toString()}`);
     };
 
     const handleViewClient = (client: Client) => {
@@ -238,7 +316,7 @@ export default function RemindersPage() {
                                     : "text-red-800 dark:text-red-200"
                             }`}>
                                 <AlertCircle className="h-5 w-5" />
-                                {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Notes
+                                {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Clinical Notes
                             </CardTitle>
                             <CardDescription className={
                                 reminders.length === 0
@@ -246,7 +324,7 @@ export default function RemindersPage() {
                                     : "text-red-700 dark:text-red-300"
                             }>
                                 {reminders.length === 0
-                                    ? "Great! All your past sessions have notes."
+                                    ? "Great! All your past sessions have therapist notes."
                                     : "These sessions need clinical documentation to maintain complete records."}
                             </CardDescription>
                         </CardHeader>
@@ -319,7 +397,7 @@ export default function RemindersPage() {
                                     ? "text-green-800 dark:text-green-200"
                                     : "text-red-800 dark:text-red-200"
                             }`}>
-                                <DollarSign className="h-5 w-5" />
+                                <Landmark className="h-5 w-5" />
                                 {unpaidSessions.length} Unpaid Session{unpaidSessions.length !== 1 ? 's' : ''}
                             </CardTitle>
                             <CardDescription className={
@@ -336,15 +414,21 @@ export default function RemindersPage() {
                 </div>
 
 
-                {/* Reminders List */}
+                {/* Sessions Awaiting Clinical Notes Section */}
                 {isLoading ? (
                     <Card>
                         <CardContent className="flex items-center justify-center py-16">
                             <p className="text-muted-foreground">Loading reminders...</p>
                         </CardContent>
                     </Card>
-                ) : (
+                ) : sortedReminders.length > 0 ? (
                     <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-2xl font-semibold flex items-center gap-2">
+                                <Mic className="h-6 w-6 text-amber-600" />
+                                Sessions Awaiting Clinical Notes
+                            </h2>
+                        </div>
                         <AnimatePresence>
                             {sortedReminders.map((reminder, index) => (
                                 <motion.div
@@ -387,11 +471,21 @@ export default function RemindersPage() {
                                                     </div>
                                                 </div>
                                                 <Button
-                                                    onClick={() => handleCreateNote(reminder)}
+                                                    onClick={() => {
+                                                        const params = new URLSearchParams({
+                                                            client: reminder.clientName,
+                                                            date: reminder.date.split('T')[0]
+                                                        });
+                                                        if (reminder.clientId) {
+                                                            params.append('clientId', reminder.clientId);
+                                                        }
+                                                        router.push(`/voice-notes?${params.toString()}`);
+                                                    }}
                                                     className="shrink-0"
                                                 >
-                                                    <Plus className="mr-2 h-4 w-4" />
-                                                    Create Note
+                                                    <Plus className="mr-1 h-4 w-4" />
+                                                    <Mic className="mr-2 h-4 w-4" />
+                                                    Record Clinical Notes
                                                 </Button>
                                             </div>
                                         </CardContent>
@@ -400,7 +494,7 @@ export default function RemindersPage() {
                             ))}
                         </AnimatePresence>
                     </div>
-                )}
+                ) : null}
 
                 {/* New Client Forms Section */}
                 {showFormsSection ? (
@@ -477,7 +571,7 @@ export default function RemindersPage() {
                 {unpaidSessions.length > 0 && (
                     <div className="space-y-4">
                         <h2 className="text-2xl font-semibold flex items-center gap-2">
-                            <DollarSign className="h-6 w-6 text-red-600" />
+                            <Landmark className="h-6 w-6 text-red-600" />
                             Unpaid Sessions ({unpaidSessions.length})
                         </h2>
                         <div className="space-y-3">
@@ -503,7 +597,7 @@ export default function RemindersPage() {
                                                     </p>
                                                 )}
                                             </div>
-                                            <DollarSign className="h-5 w-5 text-red-500 shrink-0" />
+                                            <Landmark className="h-5 w-5 text-red-500 shrink-0" />
                                         </div>
                                     </CardContent>
                                 </Card>

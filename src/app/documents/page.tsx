@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload, Info, ChevronDown, ChevronUp, Loader2, Copy, Download, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -45,6 +45,7 @@ function DocumentsContent() {
     const [isDragging, setIsDragging] = useState(false);
     const [showDocuments, setShowDocuments] = useState(true); // Show documents by default
     const [showFilters, setShowFilters] = useState(false);
+    const [uploadSuccessDialog, setUploadSuccessDialog] = useState<{ isOpen: boolean, fileName: string }>({ isOpen: false, fileName: '' });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync client filter from URL
@@ -269,6 +270,9 @@ function DocumentsContent() {
                 const result = await response.json();
                 console.log('[Documents] Upload successful:', result);
                 
+                // Store filename before resetting
+                const uploadedFileName = selectedFile.name;
+                
                 // Ensure documents are visible after upload
                 setShowDocuments(true);
                 
@@ -283,8 +287,8 @@ function DocumentsContent() {
                 setDocumentType('company');
                 setSelectedClientId('');
                 
-                // Show success message
-                alert(`Document "${selectedFile.name}" uploaded successfully!`);
+                // Show success modal
+                setUploadSuccessDialog({ isOpen: true, fileName: uploadedFileName });
             } else {
                 const errorText = await response.text();
                 let error;
@@ -393,6 +397,34 @@ function DocumentsContent() {
             console.log('Opening directly in browser');
             window.open(doc.url, '_blank');
         }
+    };
+
+    const handleCopyLink = async (doc: ClientDocument) => {
+        if (!doc.url) {
+            alert('No URL available for this document');
+            return;
+        }
+        const fullUrl = `${window.location.origin}${doc.url}`;
+        try {
+            await navigator.clipboard.writeText(fullUrl);
+            alert('Link copied to clipboard!');
+        } catch (error) {
+            console.error('Failed to copy link:', error);
+            alert('Failed to copy link. Please copy manually.');
+        }
+    };
+
+    const handleDownload = (doc: ClientDocument) => {
+        if (!doc.url) {
+            alert('No URL available for this document');
+            return;
+        }
+        const link = document.createElement('a');
+        link.href = doc.url;
+        link.download = doc.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const handleDeleteClick = (doc: ClientDocument) => {
@@ -631,6 +663,39 @@ function DocumentsContent() {
                                                 </div>
                                             </div>
                                         </CardHeader>
+                                        <CardContent>
+                                            <div className="flex flex-col gap-2">
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        variant="default"
+                                                        size="sm"
+                                                        className="flex-1"
+                                                        onClick={() => handleCopyLink(doc)}
+                                                    >
+                                                        <Copy className="h-4 w-4 mr-2" />
+                                                        Copy Link
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="flex-1"
+                                                        onClick={() => handleView(doc)}
+                                                    >
+                                                        <ExternalLink className="h-4 w-4 mr-2" />
+                                                        Open
+                                                    </Button>
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="w-full"
+                                                    onClick={() => handleDownload(doc)}
+                                                >
+                                                    <Download className="h-4 w-4 mr-2" />
+                                                    Download
+                                                </Button>
+                                            </div>
+                                        </CardContent>
                                     </Card>
                                 </motion.div>
                             ))}
@@ -719,6 +784,26 @@ function DocumentsContent() {
                             disabled={isUploading || (documentType === 'client' && !selectedClientId)}
                         >
                             {isUploading ? 'Uploading...' : 'Upload'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Upload Success Dialog */}
+            <Dialog open={uploadSuccessDialog.isOpen} onOpenChange={(open) => setUploadSuccessDialog({ isOpen: open, fileName: uploadSuccessDialog.fileName })}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-500" />
+                            Upload Complete
+                        </DialogTitle>
+                        <DialogDescription>
+                            Document &quot;{uploadSuccessDialog.fileName}&quot; has been uploaded successfully.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button onClick={() => setUploadSuccessDialog({ isOpen: false, fileName: '' })}>
+                            OK
                         </Button>
                     </DialogFooter>
                 </DialogContent>

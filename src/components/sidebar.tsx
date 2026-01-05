@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
-import { Users, Mic, Calendar, DollarSign, FileText, Bell, X, Link as LinkIcon, Archive, Menu } from "lucide-react";
+import { Users, Mic, Calendar, Landmark, FileText, Bell, X, Link as LinkIcon, Archive, Menu, LayoutDashboard } from "lucide-react";
 import Image from "next/image";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -12,13 +12,19 @@ import { useState, useEffect, useMemo } from "react";
 
 const sidebarItems = [
     {
+        title: "Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+        color: "text-indigo-500",
+    },
+    {
         title: "Clients",
         href: "/clients",
         icon: Users,
         color: "text-blue-500",
     },
     {
-        title: "Voice Notes",
+        title: "Recording",
         href: "/recordings",
         icon: Mic,
         color: "text-purple-500",
@@ -44,7 +50,7 @@ const sidebarItems = [
     {
         title: "Revenue",
         href: "/payments",
-        icon: DollarSign,
+        icon: Landmark,
         color: "text-pink-500",
     },
     {

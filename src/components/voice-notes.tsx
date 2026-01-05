@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Upload, ExternalLink } from "lucide-react";
+import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Upload, ExternalLink, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,6 +23,8 @@ interface Client {
 }
 
 export function VoiceNotes() {
+    const searchParams = useSearchParams();
+    
     // Core state
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -42,6 +45,7 @@ export function VoiceNotes() {
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
     const [isDragging, setIsDragging] = useState(false);
     const [currentTherapist, setCurrentTherapist] = useState<string>("");
+    const [isUploadedFile, setIsUploadedFile] = useState(false);
 
     // Refs
     const recognitionRef = useRef<any>(null);
@@ -60,13 +64,39 @@ export function VoiceNotes() {
                     const data = await res.json();
                     console.log('[Voice Notes] Loaded', data.length, 'clients');
                     setClients(data);
+                    
+                    // Check for URL params to auto-select client
+                    const clientParam = searchParams.get('client');
+                    const clientIdParam = searchParams.get('clientId');
+                    
+                    if (clientIdParam) {
+                        // Try to find by ID first
+                        const clientById = data.find((c: Client) => c.id === clientIdParam);
+                        if (clientById) {
+                            console.log('[Voice Notes] Auto-selecting client by ID:', clientById.name);
+                            setSelectedClientId(clientById.id);
+                            // Load sessions for this client
+                            loadSessionsForClient(clientById.id);
+                        }
+                    } else if (clientParam) {
+                        // Try to find by name
+                        const clientByName = data.find((c: Client) => 
+                            c.name.toLowerCase() === clientParam.toLowerCase()
+                        );
+                        if (clientByName) {
+                            console.log('[Voice Notes] Auto-selecting client by name:', clientByName.name);
+                            setSelectedClientId(clientByName.id);
+                            // Load sessions for this client
+                            loadSessionsForClient(clientByName.id);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error("[Voice Notes] Error loading clients", e);
             }
         };
         loadClients();
-    }, []);
+    }, [searchParams]);
 
     // Load therapist name on mount (from logged-in user's first_name and last_name)
     useEffect(() => {
@@ -247,6 +277,7 @@ export function VoiceNotes() {
         setRecordingTime(0);
         setAudioURL("");
         setAudioBlob(null);
+        setIsUploadedFile(false);
         setSaveStatus("idle");
         audioChunksRef.current = [];
 
@@ -408,6 +439,7 @@ export function VoiceNotes() {
             const url = URL.createObjectURL(blob);
             setAudioBlob(blob);
             setAudioURL(url);
+            setIsUploadedFile(false); // Reset flag when recording is made
             
             // Get the final transcript - use transcriptRef which has final results only
             let currentTranscript = transcriptRef.current.trim();
@@ -455,6 +487,7 @@ export function VoiceNotes() {
         const url = URL.createObjectURL(blob);
         setAudioBlob(blob);
         setAudioURL(url);
+        setIsUploadedFile(true); // Mark as uploaded file
 
         // Calculate duration from audio file BEFORE processing
         let durationInSeconds = 0;
@@ -1018,7 +1051,7 @@ export function VoiceNotes() {
             <Card className="border-primary/20">
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                        <Mic className="h-5 w-5 text-primary" /> Voice Notes
+                        <Mic className="h-5 w-5 text-primary" /> Recording
                     </CardTitle>
                     <CardDescription>Record Clinical Notes with automatic transcription (Chrome/Edge only).</CardDescription>
                 </CardHeader>
@@ -1042,11 +1075,18 @@ export function VoiceNotes() {
                                     <SelectValue placeholder="Select a client..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {clients.map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>
-                                            {c.name}
-                                        </SelectItem>
-                                    ))}
+                                    {[...clients]
+                                        .sort((a, b) => {
+                                            // Extract first name (everything before first space)
+                                            const firstNameA = a.name.split(' ')[0] || a.name;
+                                            const firstNameB = b.name.split(' ')[0] || b.name;
+                                            return firstNameA.localeCompare(firstNameB);
+                                        })
+                                        .map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                {c.name}
+                                            </SelectItem>
+                                        ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -1277,11 +1317,18 @@ export function VoiceNotes() {
                                     <SelectValue placeholder="Select a client..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {clients.map((c) => (
-                                        <SelectItem key={c.id} value={c.id}>
-                                            {c.name}
-                                        </SelectItem>
-                                    ))}
+                                    {[...clients]
+                                        .sort((a, b) => {
+                                            // Extract first name (everything before first space)
+                                            const firstNameA = a.name.split(' ')[0] || a.name;
+                                            const firstNameB = b.name.split(' ')[0] || b.name;
+                                            return firstNameA.localeCompare(firstNameB);
+                                        })
+                                        .map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                {c.name}
+                                            </SelectItem>
+                                        ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -1354,15 +1401,23 @@ export function VoiceNotes() {
             </Dialog>
 
             {/* File upload UI */}
-            <div className="mt-6">
-                <div
-                    className={`relative border-2 border-dashed rounded-lg p-8 transition-colors ${
-                        !selectedClientId || !selectedSessionId
-                            ? "border-muted-foreground/10 bg-muted/20 opacity-50 cursor-not-allowed"
-                            : isDragging 
-                            ? "border-primary bg-primary/5" 
-                            : "border-muted-foreground/25 hover:border-primary/50"
-                    }`}
+            <Card className="border-primary/20">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" />
+                        New Upload
+                    </CardTitle>
+                    <CardDescription>Create a Clinical Analysis of a Session Recording using AI</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div
+                        className={`relative border-2 border-dashed rounded-lg p-8 transition-colors ${
+                            !selectedClientId || !selectedSessionId
+                                ? "border-muted-foreground/10 bg-muted/20 opacity-50 cursor-not-allowed"
+                                : isDragging 
+                                ? "border-primary bg-primary/5" 
+                                : "border-muted-foreground/25 hover:border-primary/50"
+                        }`}
                     onDragOver={(e) => {
                         if (!selectedClientId || !selectedSessionId) {
                             e.preventDefault();
@@ -1405,16 +1460,16 @@ export function VoiceNotes() {
                             <p className={`text-sm font-medium ${!selectedClientId || !selectedSessionId ? "text-muted-foreground" : ""}`}>
                                 {!selectedClientId || !selectedSessionId
                                     ? "Please select a client and session to enable file upload"
-                                    : "Drag & drop your audio file here or click to browse"}
+                                    : "Drag & drop an actual Session Audio Recording file here or click to browse"}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                                Supports MP3, WAV, M4A, WebM (max 25MB) - Uploaded files will be transcribed into session notes
+                                Supports MP3, WAV, M4A, WebM (max 25MB) - Uploaded actual session recordings will be transcribed and formed into Clinical Analysis using AI
                             </p>
                         </div>
                     </div>
                 </div>
 
-                {audioBlob && (
+                {audioBlob && isUploadedFile && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -1433,7 +1488,8 @@ export function VoiceNotes() {
                         </div>
                     </motion.div>
                 )}
-            </div>
+                </CardContent>
+            </Card>
         </div>
     );
 }

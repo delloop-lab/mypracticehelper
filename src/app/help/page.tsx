@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { HelpCircle, BookOpen, MessageCircle, Settings, Users, Calendar, DollarSign, FileText, Bell, Mic, Upload, Search } from "lucide-react";
+import { HelpCircle, BookOpen, MessageCircle, Settings, Users, Calendar, Landmark, FileText, Bell, Mic, Upload, Search } from "lucide-react";
 
 export default function HelpPage() {
     return (
@@ -58,8 +58,8 @@ export default function HelpPage() {
                 <Card className="hover:shadow-md transition-shadow">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                            <DollarSign className="h-5 w-5" />
-                            Revenue & Payments
+                            <Landmark className="h-5 w-5" />
+                            Revenue
                         </CardTitle>
                         <CardDescription>
                             Track revenue and manage payments
@@ -79,18 +79,16 @@ export default function HelpPage() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <FileText className="h-5 w-5" />
-                            Sessions & Notes
+                            Clinical and Session Notes
                         </CardTitle>
-                        <CardDescription>
-                            Document sessions and clinical notes
-                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ul className="space-y-2 text-sm text-muted-foreground">
-                            <li>• Record session notes</li>
-                            <li>• Use voice notes with AI transcription</li>
+                            <li>• Write Session Notes</li>
+                            <li>• Record Clinical Notes audio</li>
+                            <li>• Automatic AI Transcription of recordings</li>
+                            <li>• Automatic Clinical Assessment of of actual session recordings</li>
                             <li>• Filter and search notes</li>
-                            <li>• Link notes to clients</li>
                         </ul>
                     </CardContent>
                 </Card>
@@ -107,10 +105,30 @@ export default function HelpPage() {
                     </CardHeader>
                     <CardContent>
                         <ul className="space-y-2 text-sm text-muted-foreground">
-                            <li>• Track sessions awaiting notes</li>
-                            <li>• Monitor unsigned client</li>
+                            <li>• Track sessions awaiting clinical notes</li>
+                            <li>• Monitor unsigned client forms</li>
                             <li>• View unpaid sessions</li>
                             <li>• Create custom reminders</li>
+                        </ul>
+                    </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-md transition-shadow">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <FileText className="h-5 w-5" />
+                            Documents
+                        </CardTitle>
+                        <CardDescription>
+                            Manage client and company documents
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <ul className="space-y-2 text-sm text-muted-foreground">
+                            <li>• Upload company or client documents</li>
+                            <li>• View and download documents</li>
+                            <li>• Share document links</li>
+                            <li>• Organize by client or type</li>
                         </ul>
                     </CardContent>
                 </Card>
@@ -160,9 +178,16 @@ export default function HelpPage() {
                         </div>
 
                         <div>
-                            <h3 className="font-semibold mb-2">How do I record session notes?</h3>
+                            <h3 className="font-semibold mb-2">How do I record Clinical Notes?</h3>
                             <p className="text-sm text-muted-foreground">
-                                You can record session notes in two ways: 1) Go to Sessions page and create a new note, or 2) Use Voice Notes to record with automatic AI transcription. Voice notes work best in Chrome or Edge browsers.
+                                Go to the Recording page and create a new recording with automatic AI transcription. Recordings work best in Chrome or Edge browsers.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-semibold mb-2">How to add Session Notes</h3>
+                            <p className="text-sm text-muted-foreground">
+                                You can add simple notes about the session and the person's demeanour by going to Sessions and editing the relevant session.
                             </p>
                         </div>
 
@@ -183,7 +208,7 @@ export default function HelpPage() {
                         <div>
                             <h3 className="font-semibold mb-2">How do I upload documents for a client?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Open the client's details dialog and go to the Documents tab. Click "Upload Document" and select the file. Documents are stored securely and can be viewed or deleted at any time.
+                                You can upload documents in two ways: 1) Open the client's details dialog and go to the Documents tab, then click "Upload Document" and select the file, or 2) Go to the Documents page and upload company documents or client-specific documents. Documents are stored securely and can be viewed or deleted at any time.
                             </p>
                         </div>
 
@@ -234,9 +259,9 @@ export default function HelpPage() {
                         <div className="flex gap-3">
                             <Mic className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
                             <div>
-                                <h3 className="font-semibold mb-1">Use voice notes for efficiency</h3>
+                                <h3 className="font-semibold mb-1">Use audio recordings for efficiency</h3>
                                 <p className="text-sm text-muted-foreground">
-                                    Voice Notes with AI transcription can save you time. Speak naturally about the session, and the AI will structure it into clinical sections.
+                                    Recordings with AI transcription can save you time. Speak naturally about the session, and the AI will structure it into clinical sections.
                                 </p>
                             </div>
                         </div>

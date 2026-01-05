@@ -53,7 +53,7 @@ function SessionNotesContent() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedClient, setSelectedClient] = useState<string>("all");
     const [selectedSource, setSelectedSource] = useState<string>("all"); // Filter by source type
-    const [sortBy, setSortBy] = useState<SortOption>('date-desc');
+    const [sortBy, setSortBy] = useState<SortOption>('session-desc');
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [editingNote, setEditingNote] = useState<SessionNote | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; note: SessionNote | null }>({ isOpen: false, note: null });
@@ -1049,7 +1049,7 @@ function SessionNotesContent() {
                         <DialogDescription>
                             {isPrefilledFromSession 
                                 ? "Add notes for this session"
-                                : "Document your therapy session details and observations"
+                                : "Document your therapy session and observations (not Clinical Notes)"
                             }
                         </DialogDescription>
                     </DialogHeader>
@@ -1237,7 +1237,7 @@ function SessionNotesContent() {
                                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                             />
                             <p className="text-xs text-muted-foreground">
-                                Your clinical notes and observations from the session
+                                To record Session Notes (not Clinical Notes)
                             </p>
                         </div>
 

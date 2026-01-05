@@ -76,6 +76,10 @@ export function RemindersModal() {
             const clientRes = await fetch('/api/clients', { cache: 'no-store' });
             const clientsData = clientRes.ok ? await clientRes.json() : [];
 
+            // Load session notes to check which sessions have notes
+            const notesRes = await fetch('/api/session-notes', { cache: 'no-store' });
+            const notesData = notesRes.ok ? await notesRes.json() : [];
+
             // Load admin reminders
             const adminRemindersRes = await fetch('/api/admin-reminders', { cache: 'no-store' });
             const adminRemindersData = adminRemindersRes.ok ? await adminRemindersRes.json() : [];
@@ -89,19 +93,73 @@ export function RemindersModal() {
             const remindersList: Appointment[] = [];
             const unpaidList: Appointment[] = [];
 
+            console.log('[Reminders Modal] Checking appointments for notes. Total appointments:', appointmentsData.length, 'Total notes:', notesData.length);
+
             appointmentsData.forEach((apt: Appointment) => {
-                const aptDate = new Date(`${apt.date}T${apt.time}`);
-                if (aptDate < now) {
-                    // Check if session has notes
-                    const hasNotes = false; // You might want to check notes API
+                // Parse appointment date/time properly
+                const aptDateStr = apt.date.split('T')[0];
+                const timeStr = apt.time || '00:00';
+                
+                // Handle 12-hour format
+                let aptHours = 0;
+                let aptMinutes = 0;
+                const timeLower = timeStr.toLowerCase().trim();
+                const isPM = timeLower.includes('pm');
+                const isAM = timeLower.includes('am');
+                const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                if (timeMatch) {
+                    aptHours = parseInt(timeMatch[1], 10);
+                    aptMinutes = parseInt(timeMatch[2], 10);
+                    if (isPM && aptHours !== 12) aptHours += 12;
+                    else if (isAM && aptHours === 12) aptHours = 0;
+                }
+                
+                const [year, month, day] = aptDateStr.split('-').map(Number);
+                const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
+                
+                const isPast = aptDate < now;
+                
+                if (isPast) {
+                    // Check if session has notes - look for matching note with content
+                    const hasNotes = notesData.some((n: any) => {
+                        const clientMatches = 
+                            (n.clientName && apt.clientName && n.clientName.toLowerCase() === apt.clientName.toLowerCase()) ||
+                            (n.clientId && apt.clientId && n.clientId === apt.clientId);
+                        
+                        if (!clientMatches) return false;
+                        
+                        const noteDateStr = n.sessionDate ? n.sessionDate.split('T')[0] : '';
+                        if (!noteDateStr || !noteDateStr.startsWith(aptDateStr)) return false;
+                        
+                        // Only Voice Notes recordings count as therapist session notes
+                        const hasVoiceNotes = 
+                            (n.audioURL && n.audioURL.trim().length > 0) ||
+                            (n.transcript && n.transcript.trim().length > 0);
+                        
+                        console.log(`[Reminders Modal] Note check for ${apt.clientName}:`, {
+                            noteClient: n.clientName,
+                            noteDate: noteDateStr,
+                            hasVoiceNotes,
+                            audioURL: n.audioURL ? 'yes' : 'no',
+                            transcript: n.transcript ? `${n.transcript.length} chars` : 'none'
+                        });
+                        
+                        return hasVoiceNotes;
+                    });
+                    
+                    console.log(`[Reminders Modal] Past session: ${apt.clientName} on ${aptDateStr} at ${apt.time} - hasNotes: ${hasNotes}`);
+                    
                     if (!hasNotes) {
                         remindersList.push(apt);
                     }
                 }
+                
                 if (apt.paymentStatus === 'unpaid' || apt.paymentStatus === 'pending') {
                     unpaidList.push(apt);
                 }
             });
+
+            console.log('[Reminders Modal] Sessions awaiting notes:', remindersList.length);
 
             // Get clients without signed forms
             const unsignedClients = clientsData.filter((c: Client) => !c.newClientFormSigned && !c.archived);
@@ -181,7 +239,7 @@ export function RemindersModal() {
                                             : "text-red-800 dark:text-red-200"
                                     }`}>
                                         <AlertCircle className="h-4 w-4" />
-                                        {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Notes
+                                        {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Clinical Notes
                                     </CardTitle>
                                 </CardHeader>
                             </Card>
@@ -244,7 +302,7 @@ export function RemindersModal() {
                                 ))}
                                 {reminders.length > 5 && (
                                     <p className="text-sm text-muted-foreground text-center py-2">
-                                        + {reminders.length - 5} more session{reminders.length - 5 > 1 ? 's' : ''} awaiting notes
+                                        + {reminders.length - 5} more session{reminders.length - 5 > 1 ? 's' : ''} awaiting clinical notes
                                     </p>
                                 )}
                             </div>
@@ -280,6 +338,7 @@ export function RemindersModal() {
         </Dialog>
     );
 }
+
 
 
 

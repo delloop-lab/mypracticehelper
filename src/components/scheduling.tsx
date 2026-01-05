@@ -114,6 +114,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     
     // Past date warning state
     const [pastDateWarningShown, setPastDateWarningShown] = useState(false);
+    // Blocked day warning state
+    const [blockedDayWarningShown, setBlockedDayWarningShown] = useState(false);
 
     // Load data on mount
     useEffect(() => {
@@ -125,6 +127,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         const handleFocus = () => {
             console.log('[Scheduling] Window focused - reloading appointments');
             loadAppointments();
+            loadAppointmentTypes(); // Also reload appointment types
         };
 
         // Reload when appointments are updated elsewhere (e.g., from clients page)
@@ -141,6 +144,13 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             window.removeEventListener('appointments-updated', handleAppointmentsUpdated);
         };
     }, []);
+
+    // Reload appointment types when dialog opens to ensure latest types are available
+    useEffect(() => {
+        if (isDialogOpen) {
+            loadAppointmentTypes();
+        }
+    }, [isDialogOpen]);
 
     // Handle pre-selected client from query parameter
     useEffect(() => {
@@ -222,10 +232,11 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
 
     const loadAppointmentTypes = async () => {
         try {
-            const response = await fetch('/api/settings');
+            const response = await fetch(`/api/settings?t=${Date.now()}`); // Add cache-busting
             if (response.ok) {
                 const data = await response.json();
                 const loadedTypes = data.appointmentTypes || [];
+                console.log('[Scheduling] Loaded appointment types:', loadedTypes.map((t: any) => ({ name: t.name, enabled: t.enabled })));
                 setAppointmentTypes(loadedTypes);
                 
                 // Validate current formData.type - if it doesn't exist or is disabled, reset to first enabled type
@@ -286,8 +297,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         // Reset new client state
         setIsAddingNewClient(false);
         setNewClientData({ firstName: "", lastName: "", email: "" });
-        // Reset past date warning
+        // Reset past date warning and blocked day warning
         setPastDateWarningShown(false);
+        setBlockedDayWarningShown(false);
         setBookingError(null);
     };
 
@@ -324,6 +336,21 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setBookingError(null);
+
+        // Check if selected date is on a blocked day
+        if (formData.date) {
+            const selectedDate = new Date(formData.date);
+            const dayOfWeek = selectedDate.getDay();
+            const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
+            
+            if (isBlocked && !blockedDayWarningShown) {
+                setBookingError(
+                    `⚠️ This appointment is scheduled on a non-working day. Click "Create Appointment" again to confirm.`
+                );
+                setBlockedDayWarningShown(true);
+                return;
+            }
+        }
 
         // Determine the client name - either from existing client or new client
         let clientName = formData.clientName;
@@ -471,11 +498,11 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
 
     const getFilteredAppointments = () => {
         const now = new Date();
-        const today = now.toISOString().split('T')[0];
-        const todayDate = new Date(today);
+        // Use local date string to avoid timezone issues with toISOString()
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         todayDate.setHours(0, 0, 0, 0);
 
-        console.log(`[Scheduling] Filtering appointments: viewRange=${viewRange}, selectedDate=${selectedDate}, total appointments=${appointments.length}`);
 
         const filtered = appointments.filter(apt => {
             if (!apt.date) {
@@ -483,32 +510,67 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                 return false;
             }
 
-            // Check if appointment has passed
-            // apt.date is already a full ISO timestamp (e.g., "2025-11-25T12:00:00+00:00" or "2025-11-25T12:00:00.000Z")
-            // apt.time is just for display, so we use apt.date directly
-            const aptDateTime = new Date(apt.date);
-            if (isNaN(aptDateTime.getTime())) {
-                console.warn('[Scheduling] Invalid date format:', apt.date);
-                return false;
-            }
-            // Compare dates - if appointment date/time is before now, exclude it
-            // Use getTime() for accurate comparison
-            if (aptDateTime.getTime() < now.getTime()) {
-                // Appointment has passed, exclude it
-                console.log(`[Scheduling] Filtering out past appointment: ${apt.clientName} on ${apt.date} (${aptDateTime.toISOString()} < ${now.toISOString()})`);
-                return false;
-            }
-
+            // Extract date part for comparison
+            const aptDateStr = apt.date.split('T')[0]; // Get YYYY-MM-DD
+            
             if (viewRange === "today") {
-                // Normalize both dates to YYYY-MM-DD format for comparison
-                const aptDateStr = apt.date.split('T')[0];
+                // For "today" view, show ALL appointments for the selected date (both past and future)
                 const selectedDateStr = selectedDate.split('T')[0];
                 const matches = aptDateStr === selectedDateStr;
                 console.log(`[Scheduling] Today filter: ${apt.clientName} on ${aptDateStr} matches ${selectedDateStr}: ${matches}`);
                 return matches;
             }
 
-            const aptDate = new Date(apt.date);
+            // Combine date and time to get the full datetime for accurate comparison
+            // Handle both 24-hour format (14:00) and 12-hour format (02:00 pm)
+            let aptHours = 0;
+            let aptMinutes = 0;
+            
+            if (apt.time) {
+                const timeLower = apt.time.toLowerCase().trim();
+                const isPM = timeLower.includes('pm');
+                const isAM = timeLower.includes('am');
+                
+                // Extract hours and minutes from time string
+                const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                if (timeMatch) {
+                    aptHours = parseInt(timeMatch[1], 10);
+                    aptMinutes = parseInt(timeMatch[2], 10);
+                    
+                    // Convert 12-hour to 24-hour format
+                    if (isPM && aptHours !== 12) {
+                        aptHours += 12;
+                    } else if (isAM && aptHours === 12) {
+                        aptHours = 0;
+                    }
+                }
+            }
+            
+            const [aptYear, aptMonth, aptDay] = aptDateStr.split('-').map(Number);
+            const aptDateTime = new Date(aptYear, aptMonth - 1, aptDay, aptHours, aptMinutes, 0);
+            
+            if (isNaN(aptDateTime.getTime())) {
+                console.warn('[Scheduling] Invalid date/time format:', apt.date, apt.time);
+                return false;
+            }
+            
+            // Compare dates - if appointment date/time is before now, exclude it
+            // This applies to both today's past appointments and any past appointments
+            const appointmentTime = aptDateTime.getTime();
+            const currentTime = now.getTime();
+            const isPast = appointmentTime < currentTime;
+            
+            if (isPast) {
+                // Appointment has passed, exclude it (including today's past appointments)
+                return false;
+            }
+            
+            // Include this appointment - it's in the future (including today's future appointments)
+
+            // Extract date part for comparison (already extracted above, reuse it)
+            // Create date in local timezone to avoid timezone conversion issues
+            const [aptYear2, aptMonth2, aptDay2] = aptDateStr.split('-').map(Number);
+            const aptDate = new Date(aptYear2, aptMonth2 - 1, aptDay2);
             aptDate.setHours(0, 0, 0, 0);
             const diffTime = aptDate.getTime() - todayDate.getTime();
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -534,7 +596,6 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             return minutesA - minutesB;
         });
 
-        console.log(`[Scheduling] Filtered to ${filtered.length} appointments`);
         return filtered;
     };
 
@@ -553,6 +614,34 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         } catch {
             return false;
         }
+    };
+
+    // Get color classes for appointment type
+    const getAppointmentTypeColor = (typeName: string): { bg: string; text: string; border: string; dot: string } => {
+        const normalizedName = typeName.toLowerCase();
+        
+        // Map common appointment types to colors
+        if (normalizedName.includes('discovery')) {
+            return { bg: 'bg-purple-100', text: 'text-purple-800', border: 'border-purple-300', dot: 'bg-purple-500' };
+        }
+        if (normalizedName.includes('initial') || normalizedName.includes('consultation')) {
+            return { bg: 'bg-cyan-100', text: 'text-cyan-800', border: 'border-cyan-300', dot: 'bg-cyan-500' };
+        }
+        if (normalizedName.includes('couples')) {
+            return { bg: 'bg-pink-100', text: 'text-pink-800', border: 'border-pink-300', dot: 'bg-pink-500' };
+        }
+        if (normalizedName.includes('family')) {
+            return { bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-300', dot: 'bg-orange-500' };
+        }
+        if (normalizedName.includes('reiki')) {
+            return { bg: 'bg-blue-100', text: 'text-blue-800', border: 'border-blue-300', dot: 'bg-blue-500' };
+        }
+        if (normalizedName.includes('therapy') || normalizedName.includes('session')) {
+            return { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', dot: 'bg-green-500' };
+        }
+        
+        // Default color for unknown types
+        return { bg: 'bg-gray-100', text: 'text-gray-800', border: 'border-gray-300', dot: 'bg-gray-500' };
     };
 
     const handleDeleteAppointment = async () => {
@@ -617,6 +706,21 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         console.log('[Appointment Edit] Edited values:', editedAppointment);
         
         setBookingError(null);
+
+        // Check if selected date is on a blocked day
+        if (editedAppointment.date) {
+            const selectedDate = new Date(editedAppointment.date);
+            const dayOfWeek = selectedDate.getDay();
+            const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
+            
+            if (isBlocked && !blockedDayWarningShown) {
+                setBookingError(
+                    `⚠️ This appointment is scheduled on a non-working day. Click "Save Changes" again to confirm.`
+                );
+                setBlockedDayWarningShown(true);
+                return;
+            }
+        }
 
         // Combine date and time into a full ISO timestamp
         const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
@@ -715,6 +819,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         setIsEditingAppointment(false);
         setEditedAppointment(null);
         setBookingError(null);
+        setBlockedDayWarningShown(false);
     };
 
     // Convert full name to initials (e.g., "Lilly Schillaci" -> "LS")
@@ -986,6 +1091,10 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     const dayOfWeek = day.getDay();
                                     const isBlockedDay = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
                                     
+                                    // Only apply heavy fading to blocked days WITHOUT appointments
+                                    // Days with appointments should be clearly visible
+                                    const hasAppointments = dayAppointments.length > 0;
+                                    
                                     return (
                                         <div
                                             key={day.toString()}
@@ -993,14 +1102,16 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 "border-b border-r p-1.5 transition-colors relative group overflow-hidden flex flex-col",
                                                 !isSameMonth(day, currentMonth) && "bg-muted/20 text-muted-foreground",
                                                 isToday(day) && !isBlockedDay && "bg-primary/5",
-                                                dayAppointments.length > 0 && !isBlockedDay && "bg-muted/30",
-                                                isBlockedDay && "opacity-25 bg-muted/20 grayscale cursor-not-allowed pointer-events-none",
-                                                !isBlockedDay && "hover:bg-muted/50 cursor-pointer"
+                                                hasAppointments && !isBlockedDay && "bg-muted/30",
+                                                // Blocked days WITHOUT appointments: heavy fade
+                                                isBlockedDay && !hasAppointments && "opacity-30 bg-muted/20 grayscale",
+                                                // Blocked days WITH appointments: light background but fully visible
+                                                isBlockedDay && hasAppointments && "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800",
+                                                !isBlockedDay && "hover:bg-muted/50 cursor-pointer",
+                                                "cursor-pointer" // Always allow clicking to view/delete appointments
                                             )}
                                             onClick={() => {
-                                                // Prevent clicking on blocked days
-                                                if (isBlockedDay) return;
-                                                
+                                                // Allow clicking on blocked days (they can still create appointments with warning)
                                                 const dateStr = format(day, 'yyyy-MM-dd');
                                                 setSelectedDate(dateStr);
                                                 setViewRange("today"); // Ensure viewRange is set to show selected date
@@ -1042,10 +1153,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                                 className={cn(
                                                                     "px-1 py-0.5 rounded text-[9px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
                                                                     idx < dayAppointments.length - 1 && "mb-0.5",
-                                                                    apt.type === "Initial Consultation" && "bg-blue-100 text-blue-800 border-blue-300",
-                                                                    apt.type === "Therapy Session" && "bg-green-100 text-green-800 border-green-300",
-                                                                    apt.type === "Discovery Session" && "bg-purple-100 text-purple-800 border-purple-300",
-                                                                    apt.type === "Couples Therapy Session" && "bg-pink-100 text-pink-800 border-pink-300"
+                                                                    getAppointmentTypeColor(apt.type).bg,
+                                                                    getAppointmentTypeColor(apt.type).text,
+                                                                    getAppointmentTypeColor(apt.type).border
                                                                 )}
                                                                 title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
                                                             >
@@ -1071,22 +1181,17 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                     <div className="px-6 pb-4 pt-4 border-t flex-shrink-0">
                         <h3 className="text-sm font-semibold mb-3">Appointment Types</h3>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                <span>Initial Consultation</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                <span>Therapy Session</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                                <span>Discovery Session</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-full bg-pink-500"></div>
-                                <span>Couples Therapy</span>
-                            </div>
+                            {appointmentTypes
+                                .filter(type => type.enabled)
+                                .map((type) => {
+                                    const colors = getAppointmentTypeColor(type.name);
+                                    return (
+                                        <div key={type.name} className="flex items-center gap-2">
+                                            <div className={`w-3 h-3 rounded-full ${colors.dot}`}></div>
+                                            <span>{type.name}</span>
+                                        </div>
+                                    );
+                                })}
                         </div>
                     </div>
                 </Card>
@@ -1148,10 +1253,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                         <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
                                                         <span className={cn(
                                                             "text-[10px] px-1.5 py-0.5 rounded leading-tight whitespace-nowrap",
-                                                            appointment.type === "Initial Consultation" && "bg-blue-100 text-blue-700",
-                                                            appointment.type === "Therapy Session" && "bg-green-100 text-green-700",
-                                                            appointment.type === "Discovery Session" && "bg-purple-100 text-purple-700",
-                                                            appointment.type === "Couples Therapy Session" && "bg-pink-100 text-pink-700"
+                                                            getAppointmentTypeColor(appointment.type).bg,
+                                                            getAppointmentTypeColor(appointment.type).text
                                                         )}>
                                                             {appointment.type}
                                                         </span>
@@ -1344,10 +1447,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                                     <span>{appointment.duration}m</span>
                                                                     <span className={cn(
                                                                         "px-2 py-0.5 rounded text-xs font-medium",
-                                                                        appointment.type === "Initial Consultation" && "bg-blue-100 text-blue-800",
-                                                                        appointment.type === "Therapy Session" && "bg-green-100 text-green-800",
-                                                                        appointment.type === "Discovery Session" && "bg-purple-100 text-purple-800",
-                                                                        appointment.type === "Couples Therapy Session" && "bg-pink-100 text-pink-800"
+                                                                        getAppointmentTypeColor(appointment.type).bg,
+                                                                        getAppointmentTypeColor(appointment.type).text
                                                                     )}>
                                                                         {appointment.type}
                                                                     </span>
@@ -1488,16 +1589,25 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     value={formData.date ? new Date(formData.date) : undefined}
                                     onChange={(date) => {
                                         if (date) {
+                                            const dayOfWeek = date.getDay();
+                                            const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
+                                            
                                             setFormData({
                                                 ...formData,
                                                 date: date.toISOString().split("T")[0],
                                             });
                                             setBookingError(null);
                                             setPastDateWarningShown(false);
+                                            setBlockedDayWarningShown(isBlocked);
                                         }
                                     }}
                                     blockedDays={settings.blockedDays}
                                 />
+                                {blockedDayWarningShown && formData.date && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                                        ⚠️ This date falls on a non-working day. You can still create the appointment, but please note this is outside your usual working schedule.
+                                    </p>
+                                )}
                             </div>
 
                             <div className="space-y-2">
@@ -1552,7 +1662,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 // Move Discovery Session to the top
                                                 if (a.name === "Discovery Session") return -1;
                                                 if (b.name === "Discovery Session") return 1;
-                                                return 0;
+                                                // Sort alphabetically for the rest
+                                                return a.name.localeCompare(b.name);
                                             })
                                             .map(type => (
                                                 <SelectItem key={type.name} value={type.name}>
@@ -1712,20 +1823,31 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 <div className="space-y-1">
                                     <Label className="text-xs text-muted-foreground uppercase">Date</Label>
                                     {isEditingAppointment && editedAppointment ? (
-                                        <DatePicker
-                                            value={editedAppointment.date ? new Date(editedAppointment.date) : undefined}
-                                            onChange={(date) => {
-                                                if (date) {
-                                                    setEditedAppointment({
-                                                        ...editedAppointment,
-                                                        date: date.toISOString().split("T")[0]
-                                                    });
-                                                    setBookingError(null);
-                                                }
-                                            }}
-                                            minDate={new Date()}
-                                            blockedDays={settings.blockedDays}
-                                        />
+                                        <div className="space-y-1">
+                                            <DatePicker
+                                                value={editedAppointment.date ? new Date(editedAppointment.date) : undefined}
+                                                onChange={(date) => {
+                                                    if (date) {
+                                                        const dayOfWeek = date.getDay();
+                                                        const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
+                                                        
+                                                        setEditedAppointment({
+                                                            ...editedAppointment,
+                                                            date: date.toISOString().split("T")[0]
+                                                        });
+                                                        setBookingError(null);
+                                                        setBlockedDayWarningShown(isBlocked);
+                                                    }
+                                                }}
+                                                minDate={new Date()}
+                                                blockedDays={settings.blockedDays}
+                                            />
+                                            {blockedDayWarningShown && editedAppointment.date && (
+                                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                                    ⚠️ This date falls on a non-working day. You can still save the appointment, but please note this is outside your usual working schedule.
+                                                </p>
+                                            )}
+                                        </div>
                                     ) : (
                                         <div className="flex items-center gap-2">
                                             <CalendarIcon className="h-4 w-4 text-muted-foreground" />

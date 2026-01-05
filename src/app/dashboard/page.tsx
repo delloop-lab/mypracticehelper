@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Calendar, DollarSign, Users, Mic, FileText } from "lucide-react";
+import { Calendar, DollarSign, Users, Mic, FileText, Landmark } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { RemindersModal } from "@/components/reminders-modal";
 
@@ -41,6 +41,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
     const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
     const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "all">("month");
     const [reminders, setReminders] = useState<any[]>([]);
+    const [remindersTotalCount, setRemindersTotalCount] = useState<number>(0);
 
     useEffect(() => {
         const loadData = async () => {
@@ -64,14 +65,48 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 const notes = notesRes.ok ? await notesRes.json() : [];
 
                 // Calculate stats
-                const today = new Date().toISOString().split('T')[0];
                 const now = new Date();
+                const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                
+                console.log('[Dashboard] Today is:', today);
+                console.log('[Dashboard] All appointments:', appointments.map((a: any) => ({ client: a.clientName, date: a.date, dateStr: a.date.split('T')[0] })));
 
-                const todayApts = appointments.filter((a: any) => a.date === today);
+                // Filter today's appointments - compare date parts only
+                const todayApts = appointments.filter((a: any) => {
+                    const aptDateStr = a.date.split('T')[0];
+                    const isToday = aptDateStr === today;
+                    console.log(`[Dashboard] Checking ${a.clientName}: ${aptDateStr} === ${today} ? ${isToday}`);
+                    return isToday;
+                });
+                
+                console.log('[Dashboard] Today appointments:', todayApts.length);
 
-                // Filter upcoming sessions (today and future)
+                // Filter upcoming sessions - exclude past appointments (including today's past ones)
                 const upcoming = appointments
-                    .filter((a: any) => a.date >= today)
+                    .filter((a: any) => {
+                        const dateStr = a.date.split('T')[0];
+                        const timeStr = a.time || '00:00';
+                        
+                        // Handle 12-hour format (e.g., "02:00 pm")
+                        let aptHours = 0;
+                        let aptMinutes = 0;
+                        const timeLower = timeStr.toLowerCase().trim();
+                        const isPM = timeLower.includes('pm');
+                        const isAM = timeLower.includes('am');
+                        const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                        if (timeMatch) {
+                            aptHours = parseInt(timeMatch[1], 10);
+                            aptMinutes = parseInt(timeMatch[2], 10);
+                            if (isPM && aptHours !== 12) aptHours += 12;
+                            else if (isAM && aptHours === 12) aptHours = 0;
+                        }
+                        
+                        const [year, month, day] = dateStr.split('-').map(Number);
+                        const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
+                        
+                        // Only include appointments that haven't passed yet
+                        return aptDate >= now;
+                    })
                     .sort((a: any, b: any) => {
                         if (a.date !== b.date) return a.date.localeCompare(b.date);
                         return a.time.localeCompare(b.time);
@@ -80,23 +115,65 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
 
                 // Identify past sessions without notes (Reminders)
                 const pastSessions = appointments.filter((a: any) => {
-                    const aptDate = new Date(`${a.date}T${a.time}`);
+                    // Extract date part (YYYY-MM-DD) from date string
+                    const dateStr = a.date.split('T')[0];
+                    const timeStr = a.time || '00:00';
+                    
+                    // Handle 12-hour format (e.g., "02:00 pm")
+                    let aptHours = 0;
+                    let aptMinutes = 0;
+                    const timeLower = timeStr.toLowerCase().trim();
+                    const isPM = timeLower.includes('pm');
+                    const isAM = timeLower.includes('am');
+                    const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                    if (timeMatch) {
+                        aptHours = parseInt(timeMatch[1], 10);
+                        aptMinutes = parseInt(timeMatch[2], 10);
+                        if (isPM && aptHours !== 12) aptHours += 12;
+                        else if (isAM && aptHours === 12) aptHours = 0;
+                    }
+                    
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
                     return aptDate < now;
                 });
 
-                const missingNotes = pastSessions.filter((apt: any) => {
-                    // Check if a note exists for this client on this date
-                    // Note: This is a simple check, might need more robust matching in production
-                    const hasNote = notes.some((n: any) =>
-                        n.clientName === apt.clientName &&
-                        n.sessionDate &&
-                        n.sessionDate.startsWith(apt.date)
-                    );
+                const allMissingNotes = pastSessions.filter((apt: any) => {
+                    // Extract date part for comparison
+                    const aptDateStr = apt.date.split('T')[0];
+                    
+                    // Check if a note exists for this appointment
+                    // A note is considered to exist if it has:
+                    // 1. Matching client (by name or ID)
+                    // 2. Matching date
+                    // 3. Has actual content (content, transcript, audio, or attachments)
+                    const hasNote = notes.some((n: any) => {
+                        // Match by client name or client ID
+                        const clientMatches = 
+                            (n.clientName && apt.clientName && n.clientName.toLowerCase() === apt.clientName.toLowerCase()) ||
+                            (n.clientId && apt.clientId && n.clientId === apt.clientId);
+                        
+                        if (!clientMatches) return false;
+                        
+                        // Match by date - handle both date-only and ISO timestamp formats
+                        const noteDateStr = n.sessionDate ? n.sessionDate.split('T')[0] : '';
+                        if (!noteDateStr || !noteDateStr.startsWith(aptDateStr)) return false;
+                        
+                        // Only Voice Notes recordings count as therapist session notes
+                        const hasVoiceNotes = 
+                            (n.audioURL && n.audioURL.trim().length > 0) ||
+                            (n.transcript && n.transcript.trim().length > 0);
+                        
+                        return hasVoiceNotes;
+                    });
+                    
                     return !hasNote;
-                }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                    .slice(0, 3); // Show top 3 reminders
+                }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+                // Store total count and show top 3 for display
+                const missingNotes = allMissingNotes.slice(0, 3);
                 setReminders(missingNotes);
+                setRemindersTotalCount(allMissingNotes.length);
 
                 // Calculate revenue based on period
                 const revenue = calculateRevenue(appointments, revenuePeriod);
@@ -156,7 +233,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative min-h-[400px]">
             <div>
                 <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
                 <p className="text-muted-foreground">Here's what's happening with your practice today.</p>
@@ -186,7 +263,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 <div className="rounded-lg border bg-card p-6">
                     <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-muted-foreground">Revenue ({getRevenuePeriodLabel()})</p>
-                        <DollarSign className="h-4 w-4 text-pink-500" />
+                        <Landmark className="h-4 w-4 text-pink-500" />
                     </div>
                     <p className="mt-2 text-3xl font-bold">€{stats.revenue.toLocaleString()}</p>
                     <div className="mt-2 flex gap-1">
@@ -223,22 +300,22 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         <FileText className="h-4 w-4 text-green-500" />
                     </div>
                     <p className="mt-2 text-3xl font-bold">{stats.recordings}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Voice notes saved</p>
+                    <p className="text-xs text-muted-foreground mt-1">Recordings saved</p>
                 </div>
             </div>
 
             {/* Super Reminder Banner */}
-            {reminders.length > 0 && (
+            {remindersTotalCount > 0 && (
                 <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
                     <CardContent className="p-6">
                         <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
                                 <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2">
                                     <FileText className="h-5 w-5 text-green-500" />
-                                    Action Required: {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Need{reminders.length === 1 ? 's' : ''} Notes
+                                    Action Required: {remindersTotalCount} Session{remindersTotalCount !== 1 ? 's' : ''} Need{remindersTotalCount === 1 ? 's' : ''} Notes
                                 </h3>
                                 <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
-                                    You have {reminders.length} past session{reminders.length !== 1 ? 's' : ''} that need clinical documentation.
+                                    You have {remindersTotalCount} past session{remindersTotalCount !== 1 ? 's' : ''} that need clinical documentation.
                                 </p>
                                 <Button
                                     onClick={() => router.push('/reminders')}

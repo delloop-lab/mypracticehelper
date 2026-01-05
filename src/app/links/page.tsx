@@ -297,7 +297,7 @@ export default function LinksPage() {
 
     if (isLoading) {
         return (
-            <div className="container mx-auto px-4 py-8 max-w-6xl">
+            <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 max-w-6xl">
                 <h1 className="text-4xl font-bold mb-8">Links</h1>
                 <Card>
                     <CardContent className="py-8">
@@ -309,13 +309,13 @@ export default function LinksPage() {
     }
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
-            <div className="flex items-center justify-between mb-8">
+        <div className="container mx-auto px-4 sm:px-6 py-6 sm:py-8 max-w-6xl">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
-                    <h1 className="text-4xl font-bold mb-2">Links</h1>
+                    <h1 className="text-3xl sm:text-4xl font-bold mb-2">Links</h1>
                     <p className="text-muted-foreground">Manage frequently used links</p>
                 </div>
-                <Button onClick={() => handleOpenDialog()} className="bg-green-500 hover:bg-green-600 text-white">
+                <Button onClick={() => handleOpenDialog()} className="bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto">
                     <Plus className="h-4 w-4 mr-2" />
                     Add Link
                 </Button>
@@ -336,9 +336,9 @@ export default function LinksPage() {
                     {links.map((link) => (
                         <Card key={link.id} className="flex flex-col">
                             <CardHeader>
-                                <div className="flex items-start justify-between">
-                                    <CardTitle className="text-lg">{link.title}</CardTitle>
-                                    <div className="flex gap-1">
+                                <div className="flex items-start justify-between gap-2">
+                                    <CardTitle className="text-lg break-words flex-1 min-w-0">{link.title}</CardTitle>
+                                    <div className="flex gap-1 shrink-0">
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -358,7 +358,7 @@ export default function LinksPage() {
                                     </div>
                                 </div>
                                 {link.description && (
-                                    <CardDescription className="mt-2">{link.description}</CardDescription>
+                                    <CardDescription className="mt-2 break-words">{link.description}</CardDescription>
                                 )}
                             </CardHeader>
                             <CardContent className="flex-1 flex flex-col">
@@ -372,11 +372,11 @@ export default function LinksPage() {
                                         {link.url}
                                     </a>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex flex-col gap-2">
                                     <Button
                                         variant="default"
                                         size="sm"
-                                        className="flex-1 bg-green-500 hover:bg-green-600 text-white"
+                                        className="w-full bg-green-500 hover:bg-green-600 text-white"
                                         onClick={() => handleCopyLink(link.url, link.id)}
                                     >
                                         {copiedLinkId === link.id ? (
@@ -392,11 +392,11 @@ export default function LinksPage() {
                                         )}
                                     </Button>
                                     {isDocumentLink(link.url) ? (
-                                        <>
+                                        <div className="grid grid-cols-2 gap-2">
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                className="flex-1"
+                                                className="w-full"
                                                 onClick={() => handleOpenLink(link.url)}
                                             >
                                                 <ExternalLink className="h-4 w-4 mr-2" />
@@ -405,18 +405,18 @@ export default function LinksPage() {
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                className="flex-1"
+                                                className="w-full"
                                                 onClick={() => handleDownloadLink(link.url, link.title)}
                                             >
                                                 <Download className="h-4 w-4 mr-2" />
                                                 Download
                                             </Button>
-                                        </>
+                                        </div>
                                     ) : (
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            className="flex-1"
+                                            className="w-full"
                                             onClick={() => handleOpenLink(link.url)}
                                         >
                                             <ExternalLink className="h-4 w-4 mr-2" />

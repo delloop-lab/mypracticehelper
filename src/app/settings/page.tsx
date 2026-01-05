@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, Plus, Trash2, Edit, FileText, ClipboardCheck } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, Plus, Trash2, Edit, FileText, ClipboardCheck, Landmark } from "lucide-react";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -1027,7 +1027,7 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                             <div className="space-y-2">
                                 <Label htmlFor="defaultFee">Default Fee</Label>
                                 <div className="flex items-center gap-2">
-                                    <DollarSign className="h-5 w-5 text-pink-500" />
+                                    <Landmark className="h-5 w-5 text-pink-500" />
                                     <span className="text-lg font-bold">€</span>
                                     <Input
                                         id="defaultFee"

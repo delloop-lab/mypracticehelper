@@ -210,7 +210,7 @@ export function Navbar() {
                 </SheetClose>
                 <SheetClose asChild>
                   <Link href="/recordings" className="flex items-center py-2 text-lg font-medium">
-                    Voice Notes
+                    Recording
                   </Link>
                 </SheetClose>
                 <SheetClose asChild>
