@@ -43,6 +43,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
     const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "year" | "all">("month");
     const [reminders, setReminders] = useState<any[]>([]);
     const [remindersTotalCount, setRemindersTotalCount] = useState<number>(0);
+    const [userFirstName, setUserFirstName] = useState<string>("");
 
     useEffect(() => {
         const loadData = async () => {
@@ -195,6 +196,24 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
         loadData();
     }, [revenuePeriod]);
 
+    // Load user's first name
+    useEffect(() => {
+        const loadUserData = async () => {
+            try {
+                const response = await fetch('/api/auth/me');
+                if (response.ok) {
+                    const userData = await response.json();
+                    if (userData.first_name && userData.first_name.trim()) {
+                        setUserFirstName(userData.first_name.trim());
+                    }
+                }
+            } catch (error) {
+                console.error('[Dashboard] Error fetching user data:', error);
+            }
+        };
+        loadUserData();
+    }, []);
+
     const calculateRevenue = (appointments: any[], period: string) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -241,8 +260,10 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
     return (
         <div className="space-y-6 relative min-h-[400px]">
             <div>
-                <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
-                <p className="text-muted-foreground">Here's what's happening with your practice today.</p>
+                <h2 className="text-3xl font-bold tracking-tight">
+                    Welcome back{userFirstName ? ` ${userFirstName}` : ''}!
+                </h2>
+                <p className="text-muted-foreground">Here's what's happening with your practice lately.</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
