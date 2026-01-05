@@ -1,4 +1,9 @@
+import { Suspense } from "react";
 import { VoiceNotes } from "@/components/voice-notes";
+
+function VoiceNotesContent() {
+    return <VoiceNotes />;
+}
 
 export default function DemoPage() {
     return (
@@ -13,7 +18,9 @@ export default function DemoPage() {
                     </p>
                 </div>
 
-                <VoiceNotes />
+                <Suspense fallback={<div className="text-center py-8 text-muted-foreground">Loading...</div>}>
+                    <VoiceNotesContent />
+                </Suspense>
 
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-6 space-y-4">
                     <h3 className="font-semibold">How it works:</h3>

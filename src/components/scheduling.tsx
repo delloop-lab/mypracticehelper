@@ -1590,7 +1590,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     onChange={(date) => {
                                         if (date) {
                                             const dayOfWeek = date.getDay();
-                                            const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
+                                            const isBlocked: boolean = !!(settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek));
                                             
                                             setFormData({
                                                 ...formData,
@@ -1829,7 +1829,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 onChange={(date) => {
                                                     if (date) {
                                                         const dayOfWeek = date.getDay();
-                                                        const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
+                                                        const isBlocked: boolean = !!(settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek));
                                                         
                                                         setEditedAppointment({
                                                             ...editedAppointment,

@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Calendar, DollarSign, Users, Mic, FileText, Landmark } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { RemindersModal } from "@/components/reminders-modal";
+import { startOfYear, endOfYear } from "date-fns";
 
 type Tab = "overview" | "schedule" | "clients" | "billing" | "notes" | "documents";
 
@@ -39,7 +40,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
         recordings: 0
     });
     const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
-    const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "all">("month");
+    const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "year" | "all">("month");
     const [reminders, setReminders] = useState<any[]>([]);
     const [remindersTotalCount, setRemindersTotalCount] = useState<number>(0);
 
@@ -213,6 +214,10 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
             } else if (period === "month") {
                 const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
                 return aptDate >= monthStart && aptDate <= today;
+            } else if (period === "year") {
+                const yearStart = startOfYear(today); // January 1
+                const yearEnd = endOfYear(today); // December 31
+                return aptDate >= yearStart && aptDate <= yearEnd;
             } else {
                 // all time
                 return aptDate <= today;
@@ -227,6 +232,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
             case "today": return "Today";
             case "week": return "This Week";
             case "month": return "This Month";
+            case "year": return "This Year";
             case "all": return "All Time";
             default: return "This Month";
         }
@@ -284,6 +290,12 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             className={`text-xs px-2 py-1 rounded ${revenuePeriod === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
                         >
                             Month
+                        </button>
+                        <button
+                            onClick={() => setRevenuePeriod("year")}
+                            className={`text-xs px-2 py-1 rounded ${revenuePeriod === "year" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                        >
+                            Year
                         </button>
                         <button
                             onClick={() => setRevenuePeriod("all")}
