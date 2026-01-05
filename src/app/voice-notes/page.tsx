@@ -1,5 +1,4 @@
-"use client";
-
+import { Suspense } from "react";
 import { VoiceNotes } from "@/components/voice-notes";
 
 export default function VoiceNotesPage() {
@@ -11,7 +10,9 @@ export default function VoiceNotesPage() {
                     Record new sessions and automatically generate structured notes.
                 </p>
             </div>
-            <VoiceNotes />
+            <Suspense fallback={null}>
+                <VoiceNotes />
+            </Suspense>
         </div>
     );
 }
