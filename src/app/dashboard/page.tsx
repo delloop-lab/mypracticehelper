@@ -263,7 +263,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 <h2 className="text-3xl font-bold tracking-tight">
                     Welcome back{userFirstName ? ` ${userFirstName}` : ''}!
                 </h2>
-                <p className="text-muted-foreground">Here's what's happening with your practice lately.</p>
+                <p className="text-muted-foreground">Here's what's happening with your practice today!</p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
