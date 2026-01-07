@@ -65,6 +65,7 @@ interface AppointmentType {
 const DEFAULT_APPOINTMENT_TYPES: AppointmentType[] = [
     { name: "Initial Consultation", duration: 60, fee: 80, enabled: true },
     { name: "Therapy Session", duration: 60, fee: 80, enabled: true },
+    { name: "Singles Therapy", duration: 60, fee: 80, enabled: true },
     { name: "Couples Therapy Session", duration: 60, fee: 100, enabled: true },
     { name: "Discovery Session", duration: 30, fee: 0, enabled: true },
 ];
@@ -93,9 +94,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const [formData, setFormData] = useState({
         clientName: "",
         date: new Date().toISOString().split('T')[0],
-        time: "09:00",
+        time: "10:00",
         duration: 60,
-        type: "Singles Therapy" as Appointment['type'],
+        type: "Singles Therapy Session" as Appointment['type'],
         notes: "",
         fee: 80,
         paymentMethod: "Cash" as "Cash" | "PayPal" | "Multibanco" | "Bank Deposit",
@@ -106,7 +107,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [isEditingAppointment, setIsEditingAppointment] = useState(false);
-    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string } | null>(null);
+    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
     
     // New client creation state
     const [isAddingNewClient, setIsAddingNewClient] = useState(false);
@@ -244,8 +245,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                 if (enabledTypes.length > 0) {
                     const currentTypeExists = enabledTypes.some((t: any) => t.name === formData.type);
                     if (!currentTypeExists) {
-                        // Reset to first enabled type (Discovery Session if available, otherwise first)
-                        const defaultType = enabledTypes.find((t: any) => t.name === "Discovery Session") || enabledTypes[0];
+                        // Reset to first enabled type (Singles Therapy Session if available, otherwise first)
+                        const defaultType = enabledTypes.find((t: any) => t.name === "Singles Therapy Session") || enabledTypes[0];
                         setFormData(prev => ({
                             ...prev,
                             type: defaultType.name,
@@ -285,9 +286,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         setFormData({
             clientName: "",
             date: new Date().toISOString().split('T')[0],
-            time: "09:00",
+            time: "10:00",
             duration: 60,
-            type: "Singles Therapy",
+            type: "Singles Therapy Session",
             notes: "",
             fee: currentDefaultFee,
             paymentMethod: "Cash",
@@ -683,7 +684,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         setEditedAppointment({
             date: dateStr,
             time: selectedAppointment.time,
-            type: selectedAppointment.type
+            type: selectedAppointment.type,
+            fee: selectedAppointment.fee,
+            paymentMethod: selectedAppointment.paymentMethod || "Cash"
         });
         setIsEditingAppointment(true);
         setBookingError(null);
@@ -755,7 +758,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             }
         }
 
-        // Update the appointment with new date, time, and type
+        // Update the appointment with new date, time, type, fee, and paymentMethod
         const updated = appointments.map(apt => {
             if (apt.id === selectedAppointment.id) {
                 // Extract time from dateWithTime for the time field
@@ -764,7 +767,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                     ...apt, 
                     date: dateWithTime, // Full ISO timestamp
                     time: timeFromDate, // HH:MM format for display
-                    type: editedAppointment.type 
+                    type: editedAppointment.type,
+                    fee: editedAppointment.fee !== undefined ? editedAppointment.fee : apt.fee,
+                    paymentMethod: editedAppointment.paymentMethod || apt.paymentMethod || "Cash"
                 };
                 console.log('[Appointment Edit] Updated appointment:', updatedApt);
                 return updatedApt;
@@ -791,7 +796,14 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                 console.log('[Appointment Edit] Save successful, updating local state');
                 
                 setAppointments(updated);
-                setSelectedAppointment({ ...selectedAppointment, date: dateWithTime, time: editedAppointment.time, type: editedAppointment.type });
+                setSelectedAppointment({ 
+                    ...selectedAppointment, 
+                    date: dateWithTime, 
+                    time: editedAppointment.time, 
+                    type: editedAppointment.type,
+                    fee: editedAppointment.fee !== undefined ? editedAppointment.fee : selectedAppointment.fee,
+                    paymentMethod: editedAppointment.paymentMethod || selectedAppointment.paymentMethod || "Cash"
+                });
                 setIsEditingAppointment(false);
                 setEditedAppointment(null);
                 
@@ -919,7 +931,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                             ...formData,
                             fee: currentDefaultFee,
                             currency: currentCurrency,
-                            type: "Singles Therapy" // Reset to default type
+                            type: "Singles Therapy Session" // Reset to default type
                         });
                         setIsDialogOpen(true);
                     }}>
@@ -979,7 +991,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                     date: singleDayView || new Date().toISOString().split('T')[0],
                                                     fee: settings.defaultFee || 80,
                                                     currency: settings.currency || "EUR",
-                                                    type: "Singles Therapy" // Reset to default type
+                                                    type: "Singles Therapy Session" // Reset to default type
                                                 });
                                                 setIsDialogOpen(true);
                                                 setSingleDayView(null);
@@ -1226,7 +1238,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 date: selectedDate,
                                                 fee: settings.defaultFee || 80,
                                                 currency: settings.currency || "EUR",
-                                                type: "Singles Therapy" // Reset to default type
+                                                type: "Singles Therapy Session" // Reset to default type
                                             });
                                             setIsDialogOpen(true);
                                         }}
@@ -1283,7 +1295,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 date: selectedDate,
                                                 fee: settings.defaultFee || 80,
                                                 currency: settings.currency || "EUR",
-                                                type: "Singles Therapy" // Reset to default type
+                                                type: "Singles Therapy Session" // Reset to default type
                                             });
                                             setIsDialogOpen(true);
                                         }}
@@ -1842,7 +1854,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 minDate={new Date()}
                                                 blockedDays={settings.blockedDays}
                                             />
-                                            {blockedDayWarningShown && editedAppointment.date && (
+                                            {blockedDayWarningShown && editedAppointment.date && !bookingError && (
                                                 <p className="text-xs text-amber-600 dark:text-amber-400">
                                                     ⚠️ This date falls on a non-working day. You can still save the appointment, but please note this is outside your usual working schedule.
                                                 </p>
@@ -1935,12 +1947,53 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     <Label className="text-xs text-muted-foreground uppercase">Payment Details</Label>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-1">
-                                            <p className="text-sm text-muted-foreground">Fee</p>
-                                            <p className="text-lg font-bold">{getCurrencySymbol(selectedAppointment.currency)}{selectedAppointment.fee}</p>
+                                            <Label className="text-sm text-muted-foreground">Fee</Label>
+                                            {isEditingAppointment && editedAppointment ? (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-lg font-bold">{getCurrencySymbol(selectedAppointment.currency)}</span>
+                                                    <Input
+                                                        type="number"
+                                                        min="0"
+                                                        step="5"
+                                                        value={editedAppointment.fee !== undefined ? editedAppointment.fee : selectedAppointment.fee}
+                                                        onChange={(e) => {
+                                                            setEditedAppointment({
+                                                                ...editedAppointment,
+                                                                fee: parseInt(e.target.value) || 0
+                                                            });
+                                                        }}
+                                                        className="w-24"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <p className="text-lg font-bold">{getCurrencySymbol(selectedAppointment.currency)}{selectedAppointment.fee}</p>
+                                            )}
                                         </div>
                                         <div className="space-y-1">
-                                            <p className="text-sm text-muted-foreground">Method</p>
-                                            <p className="font-medium">{selectedAppointment.paymentMethod || "Cash"}</p>
+                                            <Label className="text-sm text-muted-foreground">Method</Label>
+                                            {isEditingAppointment && editedAppointment ? (
+                                                <Select
+                                                    value={editedAppointment.paymentMethod || selectedAppointment.paymentMethod || "Cash"}
+                                                    onValueChange={(value: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit") => {
+                                                        setEditedAppointment({
+                                                            ...editedAppointment,
+                                                            paymentMethod: value
+                                                        });
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="w-full">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="Cash">Cash</SelectItem>
+                                                        <SelectItem value="PayPal">PayPal</SelectItem>
+                                                        <SelectItem value="Multibanco">Multibanco</SelectItem>
+                                                        <SelectItem value="Bank Deposit">Bank Deposit</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : (
+                                                <p className="font-medium">{selectedAppointment.paymentMethod || "Cash"}</p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">

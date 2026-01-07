@@ -274,12 +274,18 @@ export async function POST(request: Request) {
             }
             console.log(`[Appointments API POST] Appointment ${index + 1} - Final dateValue:`, dateValue);
             
-            // Store fee, currency, and paymentStatus in metadata JSONB
+            // Store fee, currency, paymentStatus, and paymentMethod in metadata JSONB
             const metadata: any = {};
             if (apt.fee !== undefined) metadata.fee = apt.fee;
             if (apt.currency) metadata.currency = apt.currency;
             if (apt.paymentStatus) metadata.paymentStatus = apt.paymentStatus;
+            if (apt.paymentMethod) {
+                metadata.paymentMethod = apt.paymentMethod;
+                console.log(`[Appointments API POST] Appointment ${index + 1} - Including paymentMethod:`, apt.paymentMethod);
+            }
             if (apt.status) metadata.status = apt.status;
+            
+            console.log(`[Appointments API POST] Appointment ${index + 1} - Final metadata:`, metadata);
 
             const record: any = {
                 id: apt.id,

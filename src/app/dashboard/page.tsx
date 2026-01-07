@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Calendar, DollarSign, Users, Mic, FileText, Landmark } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Calendar, Users, Mic, FileText, Landmark } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { RemindersModal } from "@/components/reminders-modal";
-import { startOfYear, endOfYear } from "date-fns";
+import { startOfYear, endOfYear, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth } from "date-fns";
 
 type Tab = "overview" | "schedule" | "clients" | "billing" | "notes" | "documents";
 
@@ -40,13 +42,24 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
         recordings: 0
     });
     const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
-    const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "year" | "all">("month");
+    const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "year" | "custom">("month");
+    const [customDateFrom, setCustomDateFrom] = useState<string>("");
+    const [customDateTo, setCustomDateTo] = useState<string>("");
     const [reminders, setReminders] = useState<any[]>([]);
     const [remindersTotalCount, setRemindersTotalCount] = useState<number>(0);
+    const [unsignedFormClients, setUnsignedFormClients] = useState<any[]>([]);
+    const [unpaidSessions, setUnpaidSessions] = useState<any[]>([]);
+    const [adminReminders, setAdminReminders] = useState<any[]>([]);
     const [userFirstName, setUserFirstName] = useState<string>("");
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [isRevenueLoading, setIsRevenueLoading] = useState<boolean>(true);
+    const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
 
     useEffect(() => {
-        const loadData = async () => {
+        const loadData = async (skipFullLoad = false) => {
+            if (!skipFullLoad) {
+                setIsLoading(true);
+            }
             try {
                 console.log('Fetching dashboard data...');
 
@@ -65,6 +78,11 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 // Load session notes
                 const notesRes = await fetch('/api/session-notes', { cache: 'no-store' });
                 const notes = notesRes.ok ? await notesRes.json() : [];
+
+                // Load admin reminders (custom reminders from templates)
+                const adminRemindersRes = await fetch('/api/admin-reminders', { cache: 'no-store' });
+                const adminRemindersData = adminRemindersRes.ok ? await adminRemindersRes.json() : [];
+                setAdminReminders(adminRemindersData);
 
                 // Calculate stats
                 const now = new Date();
@@ -161,7 +179,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         const noteDateStr = n.sessionDate ? n.sessionDate.split('T')[0] : '';
                         if (!noteDateStr || !noteDateStr.startsWith(aptDateStr)) return false;
                         
-                        // Only Voice Notes recordings count as therapist session notes
+                        // Only Voice Notes recordings count as Clinical Notes
                         const hasVoiceNotes = 
                             (n.audioURL && n.audioURL.trim().length > 0) ||
                             (n.transcript && n.transcript.trim().length > 0);
@@ -175,7 +193,31 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 // Store total count and show top 3 for display
                 const missingNotes = allMissingNotes.slice(0, 3);
                 setReminders(missingNotes);
-                setRemindersTotalCount(allMissingNotes.length);
+
+                // Calculate clients with unsigned forms
+                const clientsWithoutSignedForms = clients.filter((c: any) => 
+                    !c.newClientFormSigned
+                );
+                setUnsignedFormClients(clientsWithoutSignedForms);
+
+                // Calculate unpaid past sessions
+                const pastUnpaidSessions = appointments.filter((apt: any) => {
+                    const dateStr = apt.date.split('T')[0];
+                    const timeStr = apt.time && apt.time.length === 5 ? `${apt.time}:00` : (apt.time || '00:00:00');
+                    const aptDate = new Date(`${dateStr}T${timeStr}`);
+                    const isPast = aptDate < now;
+                    const isUnpaid = apt.paymentStatus !== 'paid';
+                    return isPast && isUnpaid;
+                });
+                setUnpaidSessions(pastUnpaidSessions);
+
+                // Calculate total reminders count (all types)
+                const totalRemindersCount = 
+                    allMissingNotes.length + 
+                    clientsWithoutSignedForms.length + 
+                    pastUnpaidSessions.length + 
+                    adminRemindersData.length;
+                setRemindersTotalCount(totalRemindersCount);
 
                 // Calculate revenue based on period
                 const revenue = calculateRevenue(appointments, revenuePeriod);
@@ -187,14 +229,113 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                     recordings: recordings.length
                 });
                 setUpcomingSessions(upcoming);
+                setIsRevenueLoading(false);
 
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
+                setIsRevenueLoading(false);
+            } finally {
+                setIsLoading(false);
             }
         };
 
+        // Initial load - load all data
         loadData();
-    }, [revenuePeriod]);
+    }, []); // Only run on mount
+
+    // Load exchange rates
+    useEffect(() => {
+        const loadExchangeRates = async () => {
+            try {
+                const response = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.rates) {
+                        // Store rates for conversion TO EUR
+                        // API returns rates FROM EUR, e.g., USD: 1.10 means 1 EUR = 1.10 USD
+                        // To convert TO EUR, we divide: 1 USD = 1/1.10 EUR = 0.909 EUR
+                        const rates: Record<string, number> = { EUR: 1 };
+                        Object.keys(data.rates).forEach(currency => {
+                            if (currency !== 'EUR' && data.rates[currency]) {
+                                const currencyUpper = currency.toUpperCase();
+                                const rate = 1 / data.rates[currency];
+                                rates[currencyUpper] = rate;
+                                rates[currency] = rate;
+                            }
+                        });
+                        setExchangeRates(rates);
+                    }
+                } else {
+                    // Try fallback API
+                    try {
+                        const fallbackResponse = await fetch('https://api.exchangerate.host/latest?base=EUR');
+                        if (fallbackResponse.ok) {
+                            const fallbackData = await fallbackResponse.json();
+                            if (fallbackData.rates) {
+                                const rates: Record<string, number> = { EUR: 1 };
+                                Object.keys(fallbackData.rates).forEach(currency => {
+                                    if (currency !== 'EUR' && fallbackData.rates[currency]) {
+                                        const currencyUpper = currency.toUpperCase();
+                                        const rate = 1 / fallbackData.rates[currency];
+                                        rates[currencyUpper] = rate;
+                                        rates[currency] = rate;
+                                    }
+                                });
+                                setExchangeRates(rates);
+                            }
+                        }
+                    } catch (fallbackError) {
+                        console.error('[Dashboard] Fallback exchange rate API failed:', fallbackError);
+                    }
+                }
+            } catch (error) {
+                console.error('[Dashboard] Error loading exchange rates:', error);
+                // If API fails, set EUR rate to 1 so at least EUR amounts show correctly
+                setExchangeRates({ EUR: 1 });
+            }
+        };
+        loadExchangeRates();
+    }, []);
+
+    // Load user's first name
+    useEffect(() => {
+        const loadUserData = async () => {
+            try {
+                const response = await fetch('/api/auth/me');
+                if (response.ok) {
+                    const userData = await response.json();
+                    if (userData.first_name && userData.first_name.trim()) {
+                        setUserFirstName(userData.first_name.trim());
+                    }
+                }
+            } catch (error) {
+                console.error('[Dashboard] Error fetching user data:', error);
+            }
+        };
+        loadUserData();
+    }, []);
+
+    // Separate effect for revenue period changes - only update revenue without reloading all data
+    useEffect(() => {
+        // Skip on initial mount (handled by the effect above)
+        // Only recalculate if we already have data loaded
+        if (!isLoading) {
+            const recalculateRevenue = async () => {
+                setIsRevenueLoading(true);
+                try {
+                    const aptRes = await fetch('/api/appointments', { cache: 'no-store' });
+                    const appointments = aptRes.ok ? await aptRes.json() : [];
+                    const revenue = calculateRevenue(appointments, revenuePeriod);
+                    setStats(prev => ({ ...prev, revenue }));
+                } catch (error) {
+                    console.error('Error recalculating revenue:', error);
+                } finally {
+                    setIsRevenueLoading(false);
+                }
+            };
+            recalculateRevenue();
+        }
+    }, [revenuePeriod, customDateFrom, customDateTo, isLoading, exchangeRates]);
 
     // Load user's first name
     useEffect(() => {
@@ -215,35 +356,73 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
     }, []);
 
     const calculateRevenue = (appointments: any[], period: string) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const now = new Date();
+        const today = startOfDay(now);
 
         const filtered = appointments.filter((apt: any) => {
             if (!apt.fee || apt.paymentStatus !== "paid") return false;
 
-            const aptDate = new Date(apt.date);
-            aptDate.setHours(0, 0, 0, 0);
+            // Extract date part only (handle ISO strings with time)
+            const aptDateStr = apt.date.split('T')[0];
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const aptDate = startOfDay(new Date(year, month - 1, day));
 
             if (period === "today") {
                 return aptDate.getTime() === today.getTime();
             } else if (period === "week") {
-                const weekAgo = new Date(today);
-                weekAgo.setDate(weekAgo.getDate() - 7);
-                return aptDate >= weekAgo && aptDate <= today;
+                const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
+                const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
+                return aptDate >= weekStart && aptDate <= weekEnd;
             } else if (period === "month") {
-                const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                const monthStart = startOfMonth(now);
                 return aptDate >= monthStart && aptDate <= today;
             } else if (period === "year") {
-                const yearStart = startOfYear(today); // January 1
-                const yearEnd = endOfYear(today); // December 31
-                return aptDate >= yearStart && aptDate <= yearEnd;
+                const yearStart = startOfYear(now);
+                return aptDate >= yearStart && aptDate <= today; // This year so far, not full year
+            } else if (period === "custom") {
+                if (!customDateFrom || !customDateTo) return false;
+                const fromDate = startOfDay(new Date(customDateFrom));
+                const toDate = endOfDay(new Date(customDateTo));
+                return aptDate >= fromDate && aptDate <= toDate;
             } else {
-                // all time
-                return aptDate <= today;
+                return false;
             }
         });
 
-        return filtered.reduce((sum: number, apt: any) => sum + (apt.fee || 0), 0);
+        // Group revenue by currency
+        const revenueByCurrency: Record<string, number> = {};
+        filtered.forEach(apt => {
+            const currency = apt.currency || 'EUR';
+            const fee = apt.fee || 0;
+            revenueByCurrency[currency] = (revenueByCurrency[currency] || 0) + fee;
+        });
+
+        // Convert all currencies to EUR
+        let totalEUR = 0;
+        Object.entries(revenueByCurrency).forEach(([currency, amount]) => {
+            const currencyUpper = currency.toUpperCase();
+            if (currencyUpper === 'EUR') {
+                totalEUR += amount;
+            } else {
+                // Try both original and uppercase currency codes
+                const rate = exchangeRates[currency] || exchangeRates[currencyUpper];
+                if (rate !== undefined && rate !== null && !isNaN(rate) && rate > 0) {
+                    // Rate is already the conversion factor TO EUR (e.g., 0.909 for USD)
+                    const convertedAmount = amount * rate;
+                    totalEUR += convertedAmount;
+                } else if (Object.keys(exchangeRates).length > 0) {
+                    // Exchange rates have loaded but this currency is missing
+                    // Just add the amount as-is (better than nothing, but not ideal)
+                    console.warn(`[Dashboard Revenue] Missing exchange rate for ${currency}, using amount as-is`);
+                    totalEUR += amount;
+                } else {
+                    // Exchange rates haven't loaded yet - just add the amount
+                    totalEUR += amount;
+                }
+            }
+        });
+
+        return totalEUR;
     };
 
     const getRevenuePeriodLabel = () => {
@@ -252,7 +431,13 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
             case "week": return "This Week";
             case "month": return "This Month";
             case "year": return "This Year";
-            case "all": return "All Time";
+            case "custom": 
+                if (customDateFrom && customDateTo) {
+                    const from = new Date(customDateFrom).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const to = new Date(customDateTo).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    return `${from} - ${to}`;
+                }
+                return "Custom Range";
             default: return "This Month";
         }
     };
@@ -272,10 +457,16 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         <p className="text-sm font-medium text-muted-foreground">Today's Sessions</p>
                         <Calendar className="h-4 w-4 text-blue-500" />
                     </div>
-                    <p className="mt-2 text-3xl font-bold">{stats.todaySessions}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        {stats.todaySessions === 0 ? "No sessions today" : `${stats.todaySessions} scheduled`}
-                    </p>
+                    {isLoading ? (
+                        <p className="mt-2 text-sm text-muted-foreground">Loading...</p>
+                    ) : (
+                        <>
+                            <p className="mt-2 text-3xl font-bold">{stats.todaySessions}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                {stats.todaySessions === 0 ? "No sessions today" : `${stats.todaySessions} scheduled`}
+                            </p>
+                        </>
+                    )}
                 </div>
 
                 <div className="rounded-lg border bg-card p-6">
@@ -283,8 +474,14 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         <p className="text-sm font-medium text-muted-foreground">Active Clients</p>
                         <Users className="h-4 w-4 text-blue-500" />
                     </div>
-                    <p className="mt-2 text-3xl font-bold">{stats.activeClients}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Total clients</p>
+                    {isLoading ? (
+                        <p className="mt-2 text-sm text-muted-foreground">Loading...</p>
+                    ) : (
+                        <>
+                            <p className="mt-2 text-3xl font-bold">{stats.activeClients}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Total clients</p>
+                        </>
+                    )}
                 </div>
 
                 <div className="rounded-lg border bg-card p-6">
@@ -292,38 +489,99 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         <p className="text-sm font-medium text-muted-foreground">Revenue ({getRevenuePeriodLabel()})</p>
                         <Landmark className="h-4 w-4 text-pink-500" />
                     </div>
-                    <p className="mt-2 text-3xl font-bold">€{stats.revenue.toLocaleString()}</p>
-                    <div className="mt-2 flex gap-1">
-                        <button
-                            onClick={() => setRevenuePeriod("today")}
-                            className={`text-xs px-2 py-1 rounded ${revenuePeriod === "today" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                        >
-                            Today
-                        </button>
-                        <button
-                            onClick={() => setRevenuePeriod("week")}
-                            className={`text-xs px-2 py-1 rounded ${revenuePeriod === "week" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                        >
-                            Week
-                        </button>
-                        <button
-                            onClick={() => setRevenuePeriod("month")}
-                            className={`text-xs px-2 py-1 rounded ${revenuePeriod === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                        >
-                            Month
-                        </button>
-                        <button
-                            onClick={() => setRevenuePeriod("year")}
-                            className={`text-xs px-2 py-1 rounded ${revenuePeriod === "year" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                        >
-                            Year
-                        </button>
-                        <button
-                            onClick={() => setRevenuePeriod("all")}
-                            className={`text-xs px-2 py-1 rounded ${revenuePeriod === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                        >
-                            All
-                        </button>
+                    {isRevenueLoading ? (
+                        <div className="mt-2 min-h-[2.5rem] flex items-center">
+                            <p className="text-sm text-muted-foreground">Loading...</p>
+                        </div>
+                    ) : stats.revenue > 0 ? (
+                        <p className="mt-2 text-3xl font-bold">€{stats.revenue.toLocaleString()}</p>
+                    ) : (
+                        <p className="mt-2 text-3xl font-bold">&nbsp;</p>
+                    )}
+                    <div className="mt-2 space-y-2">
+                        <div className="flex flex-wrap gap-1">
+                            <button
+                                onClick={() => {
+                                    setIsRevenueLoading(true);
+                                    setRevenuePeriod("today");
+                                    setCustomDateFrom("");
+                                    setCustomDateTo("");
+                                }}
+                                className={`text-xs px-2 py-1 rounded ${revenuePeriod === "today" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                            >
+                                Today
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsRevenueLoading(true);
+                                    setRevenuePeriod("week");
+                                    setCustomDateFrom("");
+                                    setCustomDateTo("");
+                                }}
+                                className={`text-xs px-2 py-1 rounded ${revenuePeriod === "week" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                            >
+                                Week
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsRevenueLoading(true);
+                                    setRevenuePeriod("month");
+                                    setCustomDateFrom("");
+                                    setCustomDateTo("");
+                                }}
+                                className={`text-xs px-2 py-1 rounded ${revenuePeriod === "month" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                            >
+                                Month
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setIsRevenueLoading(true);
+                                    setRevenuePeriod("year");
+                                    setCustomDateFrom("");
+                                    setCustomDateTo("");
+                                }}
+                                className={`text-xs px-2 py-1 rounded ${revenuePeriod === "year" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                            >
+                                Year
+                            </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    setIsRevenueLoading(true);
+                                    setRevenuePeriod("custom");
+                                }}
+                                className={`text-xs px-2 py-1 rounded ${revenuePeriod === "custom" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                            >
+                                Custom
+                            </button>
+                            {revenuePeriod === "custom" && (
+                                <>
+                                    <Label htmlFor="date-from" className="text-xs">From:</Label>
+                                    <Input
+                                        id="date-from"
+                                        type="date"
+                                        value={customDateFrom}
+                                        onChange={(e) => {
+                                            setCustomDateFrom(e.target.value);
+                                            setIsRevenueLoading(true);
+                                        }}
+                                        className="h-7 text-xs"
+                                    />
+                                    <Label htmlFor="date-to" className="text-xs">To:</Label>
+                                    <Input
+                                        id="date-to"
+                                        type="date"
+                                        value={customDateTo}
+                                        onChange={(e) => {
+                                            setCustomDateTo(e.target.value);
+                                            setIsRevenueLoading(true);
+                                        }}
+                                        className="h-7 text-xs"
+                                    />
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -332,8 +590,14 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         <p className="text-sm font-medium text-muted-foreground">Recordings</p>
                         <FileText className="h-4 w-4 text-green-500" />
                     </div>
-                    <p className="mt-2 text-3xl font-bold">{stats.recordings}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Recordings saved</p>
+                    {isLoading ? (
+                        <p className="mt-2 text-sm text-muted-foreground">Loading...</p>
+                    ) : (
+                        <>
+                            <p className="mt-2 text-3xl font-bold">{stats.recordings}</p>
+                            <p className="text-xs text-muted-foreground mt-1">Recordings saved</p>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -345,10 +609,10 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             <div className="flex-1">
                                 <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2">
                                     <FileText className="h-5 w-5 text-green-500" />
-                                    Action Required: {remindersTotalCount} Session{remindersTotalCount !== 1 ? 's' : ''} Need{remindersTotalCount === 1 ? 's' : ''} Notes
+                                    Action Required: {remindersTotalCount} Reminder{remindersTotalCount !== 1 ? 's' : ''}
                                 </h3>
                                 <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
-                                    You have {remindersTotalCount} past session{remindersTotalCount !== 1 ? 's' : ''} that need clinical documentation.
+                                    You have {remindersTotalCount} outstanding reminder{remindersTotalCount !== 1 ? 's' : ''} including Clinical Notes, Unsigned Forms, Unpaid Sessions, and Custom Reminders.
                                 </p>
                                 <Button
                                     onClick={() => router.push('/reminders')}
@@ -389,7 +653,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             onClick={() => onNavigate("notes")}
                         >
                             <Mic className="h-4 w-4 text-purple-500" />
-                            Record Session Notes
+                            Record Clinical Notes
                         </Button>
                         <Button
                             variant="outline"
@@ -405,7 +669,11 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 <div className="rounded-lg border bg-card p-6">
                     <h3 className="font-semibold mb-4">Upcoming Sessions</h3>
                     <div className="space-y-3">
-                        {upcomingSessions.length === 0 ? (
+                        {isLoading ? (
+                            <div className="flex items-center justify-center py-8 text-muted-foreground">
+                                <p className="text-sm">Loading...</p>
+                            </div>
+                        ) : upcomingSessions.length === 0 ? (
                             <div className="flex items-center justify-center py-8 text-muted-foreground">
                                 <p className="text-sm">No upcoming sessions scheduled</p>
                             </div>

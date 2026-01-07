@@ -199,6 +199,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 } else {
                     // Search in specific field
                     switch (searchField) {
+                        case "firstName":
+                            return (
+                                (client.firstName || '').toLowerCase().includes(query) ||
+                                (client.preferredName || '').toLowerCase().includes(query)
+                            );
+                        case "lastName":
+                            return (client.lastName || '').toLowerCase().includes(query);
                         case "name":
                             return (
                                 (client.name || '').toLowerCase().includes(query) ||
@@ -2525,6 +2532,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Fields</SelectItem>
+                                        <SelectItem value="firstName">First Name</SelectItem>
+                                        <SelectItem value="lastName">Last Name</SelectItem>
                                         <SelectItem value="name">Name</SelectItem>
                                         <SelectItem value="email">Email</SelectItem>
                                         <SelectItem value="phone">Phone</SelectItem>

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DollarSign, Calendar, TrendingUp, CheckCircle2, XCircle, Clock, RefreshCw } from "lucide-react";
+import { Landmark, Calendar, TrendingUp, CheckCircle2, XCircle, Clock, RefreshCw, Banknote, CreditCard } from "lucide-react";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays, startOfWeek, endOfWeek, startOfDay, endOfDay, subMonths, startOfISOWeek, endOfISOWeek, eachWeekOfInterval } from "date-fns";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
@@ -134,9 +134,11 @@ export default function PaymentsPage() {
         }
     };
 
-    const loadData = async () => {
+    const loadData = async (showLoading = true) => {
         try {
-            setIsLoading(true);
+            if (showLoading) {
+                setIsLoading(true);
+            }
             // Load appointments with cache-busting to ensure fresh data
             const appointmentsRes = await fetch(`/api/appointments?t=${Date.now()}`);
             if (appointmentsRes.ok) {
@@ -218,21 +220,24 @@ export default function PaymentsPage() {
 
     // Filter sessions: include all paid sessions (past and future) and all unpaid/pending past sessions
     // Exclude cancelled, deleted, or invalid sessions
-    const allRelevantSessions = appointments.filter(apt => {
-        // First check if session is valid (not cancelled or deleted)
-        if (!isSessionValid(apt)) return false;
-        
-        const appointmentDate = new Date(apt.date);
-        const now = new Date();
-        
-        // Include all paid sessions (past and future) - but only if valid
-        if (apt.paymentStatus === "paid") {
-            return true;
-        }
-        
-        // Include unpaid/pending sessions that have already occurred
-        return appointmentDate < now;
-    });
+    // Memoize to avoid recalculating on every render
+    const allRelevantSessions = useMemo(() => {
+        return appointments.filter(apt => {
+            // First check if session is valid (not cancelled or deleted)
+            if (!isSessionValid(apt)) return false;
+            
+            const appointmentDate = new Date(apt.date);
+            const now = new Date();
+            
+            // Include all paid sessions (past and future) - but only if valid
+            if (apt.paymentStatus === "paid") {
+                return true;
+            }
+            
+            // Include unpaid/pending sessions that have already occurred
+            return appointmentDate < now;
+        });
+    }, [appointments]);
 
     // Filter by time period
     const getFilteredSessions = (): Appointment[] => {
@@ -293,23 +298,88 @@ export default function PaymentsPage() {
     // Calculate totals - only include sessions with fee > 0 for revenue calculations
     const sessionsWithFees = passedSessions.filter(apt => getAppointmentFee(apt) > 0);
     
-    // Total Revenue = always past 12 months (regardless of selected period filter)
-    const now = new Date();
-    const twelveMonthsAgo = subMonths(now, 12);
-    const sessionsLast12Months = allRelevantSessions.filter(apt => {
-        const appointmentDate = new Date(apt.date);
-        return appointmentDate >= twelveMonthsAgo && appointmentDate <= now;
-    });
-    const sessionsWithFeesLast12Months = sessionsLast12Months.filter(apt => getAppointmentFee(apt) > 0);
-    const paidSessionsLast12Months = sessionsWithFeesLast12Months.filter(apt => apt.paymentStatus === "paid");
+    // Total Revenue = based on selected period filter (not always past 12 months)
+    // Memoize period-dependent calculations to prevent unnecessary recalculations
+    const periodRevenueData = useMemo(() => {
+        const now = new Date();
+        let totalRevenueSessions = allRelevantSessions;
+        
+        console.log(`[Total Revenue] Selected period: ${selectedPeriod}, Total sessions before filter: ${allRelevantSessions.length}`);
+        
+        // Filter by selected period - include future paid appointments for all periods
+        if (selectedPeriod === "today") {
+        const today = startOfDay(now);
+        const todayEnd = endOfDay(now);
+        totalRevenueSessions = allRelevantSessions.filter(apt => {
+            const appointmentDate = new Date(apt.date);
+            // For paid appointments, include if they're today (past or future)
+            // For unpaid, only include if they're in the past
+            if (apt.paymentStatus === "paid") {
+                return appointmentDate >= today && appointmentDate <= todayEnd;
+            }
+            return appointmentDate >= today && appointmentDate <= todayEnd && appointmentDate <= now;
+        });
+    } else if (selectedPeriod === "week") {
+        const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
+        const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
+        totalRevenueSessions = allRelevantSessions.filter(apt => {
+            const appointmentDate = new Date(apt.date);
+            // For paid appointments, include if they're in this week (past or future)
+            // For unpaid, only include if they're in the past
+            if (apt.paymentStatus === "paid") {
+                return appointmentDate >= weekStart && appointmentDate <= weekEnd;
+            }
+            return appointmentDate >= weekStart && appointmentDate <= weekEnd && appointmentDate <= now;
+        });
+    } else if (selectedPeriod === "30days") {
+        const thirtyDaysAgo = subDays(now, 30);
+        totalRevenueSessions = allRelevantSessions.filter(apt => {
+            const appointmentDate = new Date(apt.date);
+            // For paid appointments, include if they're in the last 30 days or future
+            // For unpaid, only include if they're in the past
+            if (apt.paymentStatus === "paid") {
+                return appointmentDate >= thirtyDaysAgo;
+            }
+            return appointmentDate >= thirtyDaysAgo && appointmentDate <= now;
+        });
+    } else if (selectedPeriod === "month") {
+        const monthStart = startOfMonth(now);
+        totalRevenueSessions = allRelevantSessions.filter(apt => {
+            const appointmentDate = new Date(apt.date);
+            // For paid appointments, include if they're in this month or future
+            // For unpaid, only include if they're in the past
+            if (apt.paymentStatus === "paid") {
+                return appointmentDate >= monthStart;
+            }
+            return appointmentDate >= monthStart && appointmentDate <= now;
+        });
+    } else if (selectedPeriod === "year") {
+        const yearStart = startOfYear(now);
+        totalRevenueSessions = allRelevantSessions.filter(apt => {
+            const appointmentDate = new Date(apt.date);
+            // For paid appointments, include if they're in this year or future
+            // For unpaid, only include if they're in the past
+            if (apt.paymentStatus === "paid") {
+                return appointmentDate >= yearStart;
+            }
+            return appointmentDate >= yearStart && appointmentDate <= now;
+        });
+    }
+    // "all" period includes all sessions (no date filter)
     
-    // Group revenue by currency for past 12 months
+    // Include all paid sessions (past and future) - remove the <= now check
+    const sessionsWithFeesForPeriod = totalRevenueSessions.filter(apt => getAppointmentFee(apt) > 0);
+    const paidSessionsForPeriod = sessionsWithFeesForPeriod.filter(apt => apt.paymentStatus === "paid");
+    
+    // Group revenue by currency for selected period
     const revenueByCurrency: Record<string, number> = {};
-    paidSessionsLast12Months.forEach(apt => {
+    paidSessionsForPeriod.forEach(apt => {
         const currency = getAppointmentCurrency(apt);
         const fee = getAppointmentFee(apt);
         revenueByCurrency[currency] = (revenueByCurrency[currency] || 0) + fee;
+        console.log(`[Revenue by Currency] Appointment: ${apt.clientName}, Date: ${apt.date}, Currency: ${currency}, Fee: ${fee}, Running total for ${currency}: ${revenueByCurrency[currency]}`);
     });
+    console.log('[Revenue by Currency] Final breakdown:', revenueByCurrency);
     
     // Calculate cumulative total in EUR
     const calculateTotalInEUR = (revenueByCurrency: Record<string, number>): number | null => {
@@ -341,17 +411,94 @@ export default function PaymentsPage() {
                 } else {
                     // Exchange rates haven't loaded yet
                     console.log(`[Calculate Total] Exchange rates not loaded yet for ${currency}`);
+                    // Don't add the amount - we'll recalculate when rates load
                 }
             }
         });
         
         console.log(`[Calculate Total] Final total: ${totalEUR}, hasMissingRates: ${hasMissingRates}`);
         
-        // Return null if we have missing rates (so we can show a warning)
+        // If exchange rates haven't loaded yet (empty object), return null to show loading
+        // This ensures we don't show incorrect totals before rates are available
+        if (Object.keys(exchangeRates).length === 0) {
+            console.log('[Calculate Total] Exchange rates not loaded, returning null');
+            return null; // Rates not loaded yet - show loading state
+        }
+        
+        // Return null only if we have missing rates AND we know rates have loaded (hasMissingRates flag)
         return hasMissingRates ? null : totalEUR;
     };
     
-    const totalRevenueInEUR = calculateTotalInEUR(revenueByCurrency);
+        // Calculate revenue by payment method (only for paid sessions - based on selected period filter)
+        // Use paidSessionsForPeriod to match the Total Revenue period filter
+        const revenueByPaymentMethod: Record<string, number> = {
+            "Cash": 0,
+            "PayPal": 0,
+            "Bank Deposit": 0,
+            "Multibanco": 0
+        };
+        
+        console.log(`[Revenue by Payment Method] Calculating for ${paidSessionsForPeriod.length} paid sessions in selected period`);
+        
+        paidSessionsForPeriod.forEach(apt => {
+            const paymentMethod = apt.paymentMethod || "Cash"; // Default to Cash if not specified
+            const fee = getAppointmentFee(apt);
+            const currency = getAppointmentCurrency(apt);
+            
+            console.log(`[Revenue by Payment Method] Processing: ${apt.clientName}, Date: ${apt.date}, PaymentMethod: ${paymentMethod}, Fee: ${fee}, Currency: ${currency}, Raw paymentMethod field: ${apt.paymentMethod}`);
+            
+            // Convert to EUR for consistent totals
+            let feeInEUR = fee;
+            const currencyUpper = currency.toUpperCase();
+            if (currencyUpper !== 'EUR') {
+                const rate = exchangeRates[currency] || exchangeRates[currencyUpper];
+                if (rate !== undefined && rate !== null && !isNaN(rate) && rate > 0) {
+                    feeInEUR = fee * rate;
+                }
+            }
+            
+            // Normalize payment method to match the keys in revenueByPaymentMethod
+            // Handle case-insensitive matching for all payment methods
+            const paymentMethodLower = paymentMethod.toLowerCase().trim();
+            let normalizedPaymentMethod: string;
+            
+            if (paymentMethodLower === "paypal") {
+                normalizedPaymentMethod = "PayPal";
+            } else if (paymentMethodLower === "cash") {
+                normalizedPaymentMethod = "Cash";
+            } else if (paymentMethodLower === "bank deposit" || paymentMethodLower === "bankdeposit") {
+                normalizedPaymentMethod = "Bank Deposit";
+            } else if (paymentMethodLower === "multibanco") {
+                normalizedPaymentMethod = "Multibanco";
+            } else {
+                // If it doesn't match any known method, default to Cash
+                normalizedPaymentMethod = "Cash";
+                console.warn(`[Revenue by Payment Method] Unknown payment method "${paymentMethod}", defaulting to Cash for appointment:`, apt);
+            }
+            
+            if (revenueByPaymentMethod.hasOwnProperty(normalizedPaymentMethod)) {
+                revenueByPaymentMethod[normalizedPaymentMethod] = (revenueByPaymentMethod[normalizedPaymentMethod] || 0) + feeInEUR;
+                console.log(`[Revenue by Payment Method] ${apt.clientName}: ${paymentMethod} -> ${normalizedPaymentMethod}, ${currency} ${fee} = EUR ${feeInEUR.toFixed(2)}, Total for ${normalizedPaymentMethod}: ${revenueByPaymentMethod[normalizedPaymentMethod].toFixed(2)}`);
+            } else {
+                console.warn(`[Revenue by Payment Method] Payment method "${paymentMethod}" (normalized: "${normalizedPaymentMethod}") not found in revenueByPaymentMethod. Available:`, Object.keys(revenueByPaymentMethod), `Appointment:`, apt);
+            }
+        });
+        
+        console.log('[Revenue by Payment Method] Final totals:', revenueByPaymentMethod);
+    
+        const totalRevenueInEUR = calculateTotalInEUR(revenueByCurrency);
+    
+        return {
+            totalRevenueSessions,
+            paidSessionsForPeriod,
+            revenueByCurrency,
+            totalRevenueInEUR,
+            revenueByPaymentMethod
+        };
+    }, [selectedPeriod, allRelevantSessions, exchangeRates, settings]);
+
+    // Destructure the memoized values
+    const { totalRevenueSessions, paidSessionsForPeriod, revenueByCurrency, totalRevenueInEUR, revenueByPaymentMethod } = periodRevenueData;
     
     // Paid Revenue = based on selected period filter
     const paidSessions = sessionsWithFees.filter(apt => apt.paymentStatus === "paid");
@@ -398,22 +545,6 @@ export default function PaymentsPage() {
     // This ensures Outstanding always shows the real total, regardless of period filter
     const unpaidRevenue = totalUnpaidAmount;
 
-    // Calculate revenue by payment method (only for paid sessions - based on selected period filter)
-    const revenueByPaymentMethod: Record<string, number> = {
-        "Cash": 0,
-        "PayPal": 0,
-        "Bank Deposit": 0,
-        "Multibanco": 0
-    };
-    
-    paidSessions.forEach(apt => {
-        const paymentMethod = apt.paymentMethod || "Cash"; // Default to Cash if not specified
-        const fee = getAppointmentFee(apt);
-        if (revenueByPaymentMethod.hasOwnProperty(paymentMethod)) {
-            revenueByPaymentMethod[paymentMethod] = (revenueByPaymentMethod[paymentMethod] || 0) + fee;
-        }
-    });
-
     // Calculate weekly revenue for past 8 weeks
     const calculateWeeklyRevenue = () => {
         const now = new Date();
@@ -443,14 +574,26 @@ export default function PaymentsPage() {
         }
         
         // Calculate revenue for each week and store sessions
+        // Convert all currencies to EUR for consistent totals
         paidSessionsLast8Weeks.forEach(apt => {
             const appointmentDate = new Date(apt.date);
             const weekStart = startOfISOWeek(appointmentDate);
             const weekKey = format(weekStart, 'yyyy-MM-dd');
             const fee = getAppointmentFee(apt);
+            const currency = getAppointmentCurrency(apt);
+            
+            // Convert to EUR
+            let feeInEUR = fee;
+            const currencyUpper = currency.toUpperCase();
+            if (currencyUpper !== 'EUR') {
+                const rate = exchangeRates[currency] || exchangeRates[currencyUpper];
+                if (rate !== undefined && rate !== null && !isNaN(rate) && rate > 0) {
+                    feeInEUR = fee * rate;
+                }
+            }
             
             if (weeklyData.hasOwnProperty(weekKey)) {
-                weeklyData[weekKey] += fee;
+                weeklyData[weekKey] += feeInEUR;
                 weekSessions[weekKey].push(apt);
             }
         });
@@ -490,42 +633,60 @@ export default function PaymentsPage() {
     };
 
     const handleUpdatePaymentMethod = async (paymentMethod: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit") => {
-        if (!selectedAppointment) return;
+        if (!selectedAppointment) {
+            console.error('[Update Payment Method] No appointment selected');
+            return;
+        }
+
+        if (!paymentMethod) {
+            console.error('[Update Payment Method] No payment method provided');
+            return;
+        }
+
+        console.log(`[Update Payment Method] Updating payment method for appointment ${selectedAppointment.id} to ${paymentMethod}`);
 
         setUpdatingPaymentStatus(true);
         try {
             const fee = getAppointmentFee(selectedAppointment);
             const currency = getAppointmentCurrency(selectedAppointment);
             
-            // If fee is 0, try to preserve existing fee or get from settings
-            if (fee === 0) {
-                // Check if appointment already has a fee stored
-                if (selectedAppointment.fee !== undefined && selectedAppointment.fee !== null && selectedAppointment.fee > 0) {
-                    // Keep existing fee
-                } else if (settings && settings.appointmentTypes) {
-                    // Try settings lookup again
-                    const appointmentType = settings.appointmentTypes.find(t => t.name === selectedAppointment.type);
-                    if (appointmentType && appointmentType.fee > 0) {
-                        // Will use calculated fee
-                    }
-                }
+            // Preserve existing fee if it exists, otherwise use calculated fee
+            let feeToSend = fee;
+            if (fee === 0 && selectedAppointment.fee !== undefined && selectedAppointment.fee !== null && selectedAppointment.fee > 0) {
+                feeToSend = selectedAppointment.fee;
             }
+
+            // Prepare the request body - always include paymentMethod and paymentStatus
+            const requestBody: any = {
+                id: selectedAppointment.id,
+                paymentMethod: paymentMethod, // Always send the payment method
+                paymentStatus: selectedAppointment.paymentStatus || "unpaid",
+            };
+
+            // Only include fee if it's > 0, to avoid overwriting with 0
+            if (feeToSend > 0) {
+                requestBody.fee = feeToSend;
+            }
+
+            // Always include currency if it exists
+            if (currency) {
+                requestBody.currency = currency;
+            }
+
+            console.log('[Update Payment Method] Request body:', requestBody);
 
             const response = await fetch('/api/appointments', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    id: selectedAppointment.id,
-                    paymentMethod: paymentMethod,
-                    paymentStatus: selectedAppointment.paymentStatus || "unpaid",
-                    fee: fee > 0 ? fee : undefined,
-                    currency: currency
-                }),
+                body: JSON.stringify(requestBody),
             });
 
             if (response.ok) {
+                const responseData = await response.json();
+                console.log('[Update Payment Method] API response:', responseData);
+                
                 // Small delay to ensure database update is complete
                 await new Promise(resolve => setTimeout(resolve, 300));
                 
@@ -543,16 +704,24 @@ export default function PaymentsPage() {
                     // Update selected appointment
                     const updatedApt = appointmentsData.find((apt: Appointment) => apt.id === selectedAppointment.id);
                     if (updatedApt) {
+                        console.log('[Update Payment Method] Updated appointment from API:', updatedApt);
+                        console.log('[Update Payment Method] Payment method in updated appointment:', updatedApt.paymentMethod);
                         setSelectedAppointment(updatedApt);
                         setSelectedPaymentMethod(updatedApt.paymentMethod || "Cash");
+                    } else {
+                        console.warn('[Update Payment Method] Updated appointment not found in API response');
                     }
+                } else {
+                    console.error('[Update Payment Method] Failed to reload appointments:', appointmentsRes.status);
                 }
             } else {
                 const errorData = await response.json().catch(() => ({ error: 'Unknown error', message: '' }));
-                console.error('Failed to update payment method:', errorData);
+                console.error('[Update Payment Method] Failed to update payment method:', response.status, errorData);
+                alert(`Failed to update payment method: ${errorData.error || errorData.message || 'Unknown error'}`);
             }
         } catch (error: any) {
-            console.error('Error updating payment method:', error);
+            console.error('[Update Payment Method] Error updating payment method:', error);
+            alert(`Error updating payment method: ${error?.message || 'Unknown error'}`);
         } finally {
             setUpdatingPaymentStatus(false);
         }
@@ -683,7 +852,7 @@ export default function PaymentsPage() {
                 <div className="flex items-center gap-2">
                     <Button 
                         variant="outline" 
-                        onClick={loadData}
+                        onClick={() => loadData(false)}
                         className="flex items-center gap-2"
                         title="Refresh revenue data"
                     >
@@ -723,16 +892,22 @@ export default function PaymentsPage() {
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <Landmark className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {Object.entries(revenueByCurrency).map(([currency, amount]) => (
-                                <div key={currency}>
-                                    {getCurrencySymbol(currency)}{amount.toFixed(2)}
-                                </div>
-                            ))}
-                            {Object.keys(revenueByCurrency).length === 0 && (
+                            {isLoadingRates || (Object.keys(exchangeRates).length === 0 && Object.keys(revenueByCurrency).length > 0 && Object.keys(revenueByCurrency).some(c => c.toUpperCase() !== 'EUR')) ? (
+                                <div>Loading...</div>
+                            ) : totalRevenueInEUR !== null ? (
+                                <div>€{totalRevenueInEUR.toFixed(2)}</div>
+                            ) : Object.keys(revenueByCurrency).length > 0 ? (
+                                // Fallback: show individual currencies if conversion failed
+                                Object.entries(revenueByCurrency).map(([currency, amount]) => (
+                                    <div key={currency}>
+                                        {getCurrencySymbol(currency)}{amount.toFixed(2)}
+                                    </div>
+                                ))
+                            ) : (
                                 <div>€0.00</div>
                             )}
                         </div>
@@ -743,9 +918,23 @@ export default function PaymentsPage() {
                                         Loading exchange rates...
                                     </div>
                                 ) : totalRevenueInEUR !== null ? (
-                                    <div className="text-lg font-semibold text-primary">
-                                        Total: €{totalRevenueInEUR.toFixed(2)} EUR
-                                    </div>
+                                    <>
+                                        {Object.keys(revenueByCurrency).length > 1 && (
+                                            <>
+                                                <div className="text-xs text-blue-600 dark:text-blue-400 font-normal mb-1">
+                                                    (Exchange Rate Applied)
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {Object.entries(revenueByCurrency).map(([currency, amount], index) => (
+                                                        <span key={currency}>
+                                                            {index > 0 && ' + '}
+                                                            {getCurrencySymbol(currency)}{amount.toFixed(2)} {currency}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </>
                                 ) : (
                                     <div className="text-sm text-muted-foreground">
                                         Total in EUR: Exchange rates unavailable for some currencies
@@ -754,7 +943,7 @@ export default function PaymentsPage() {
                             </div>
                         )}
                         <p className="text-xs text-muted-foreground mt-1">
-                            {paidSessionsLast12Months.length} session{paidSessionsLast12Months.length !== 1 ? 's' : ''} (past 12 months)
+                            {paidSessionsForPeriod.length} session{paidSessionsForPeriod.length !== 1 ? 's' : ''} ({selectedPeriod === "today" ? "today" : selectedPeriod === "week" ? "this week" : selectedPeriod === "30days" ? "past 30 days" : selectedPeriod === "month" ? "this month" : selectedPeriod === "year" ? "this year" : "all time"})
                         </p>
                     </CardContent>
                 </Card>
@@ -809,7 +998,7 @@ export default function PaymentsPage() {
             {/* Weekly Revenue Chart */}
             <Card className="mb-8">
                 <CardHeader>
-                    <CardTitle>Revenue Paid Per Week (Past 8 Weeks)</CardTitle>
+                    <CardTitle>Revenue Per Week (Past 8 Weeks)</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
@@ -896,7 +1085,7 @@ export default function PaymentsPage() {
                                 <span className={`text-sm font-medium ${filterByPaymentMethod === "Cash" ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground"}`}>
                                     Cash
                                 </span>
-                                <DollarSign className={`h-4 w-4 ${filterByPaymentMethod === "Cash" ? "text-blue-600" : "text-muted-foreground"}`} />
+                                <Banknote className={`h-4 w-4 ${filterByPaymentMethod === "Cash" ? "text-blue-600" : "text-muted-foreground"}`} />
                             </div>
                             <p className={`text-2xl font-bold ${filterByPaymentMethod === "Cash" ? "text-blue-700 dark:text-blue-300" : ""}`}>
                                 {settings?.currency ? getCurrencySymbol(settings.currency) : '€'}
@@ -915,7 +1104,7 @@ export default function PaymentsPage() {
                                 <span className={`text-sm font-medium ${filterByPaymentMethod === "PayPal" ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground"}`}>
                                     PayPal
                                 </span>
-                                <DollarSign className={`h-4 w-4 ${filterByPaymentMethod === "PayPal" ? "text-blue-600" : "text-muted-foreground"}`} />
+                                <CreditCard className={`h-4 w-4 ${filterByPaymentMethod === "PayPal" ? "text-blue-600" : "text-muted-foreground"}`} />
                             </div>
                             <p className={`text-2xl font-bold ${filterByPaymentMethod === "PayPal" ? "text-blue-700 dark:text-blue-300" : ""}`}>
                                 {settings?.currency ? getCurrencySymbol(settings.currency) : '€'}
@@ -934,7 +1123,7 @@ export default function PaymentsPage() {
                                 <span className={`text-sm font-medium ${filterByPaymentMethod === "Bank Deposit" ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground"}`}>
                                     Bank Deposit
                                 </span>
-                                <DollarSign className={`h-4 w-4 ${filterByPaymentMethod === "Bank Deposit" ? "text-blue-600" : "text-muted-foreground"}`} />
+                                <Landmark className={`h-4 w-4 ${filterByPaymentMethod === "Bank Deposit" ? "text-blue-600" : "text-muted-foreground"}`} />
                             </div>
                             <p className={`text-2xl font-bold ${filterByPaymentMethod === "Bank Deposit" ? "text-blue-700 dark:text-blue-300" : ""}`}>
                                 {settings?.currency ? getCurrencySymbol(settings.currency) : '€'}
@@ -955,7 +1144,7 @@ export default function PaymentsPage() {
                                 <span className={`text-sm font-medium ${filterByPaymentMethod === "Multibanco" ? "text-blue-700 dark:text-blue-300" : "text-muted-foreground"}`}>
                                     Multibanco
                                 </span>
-                                <DollarSign className={`h-4 w-4 ${filterByPaymentMethod === "Multibanco" ? "text-blue-600" : "text-muted-foreground"}`} />
+                                <Landmark className={`h-4 w-4 ${filterByPaymentMethod === "Multibanco" ? "text-blue-600" : "text-muted-foreground"}`} />
                             </div>
                             <p className={`text-2xl font-bold ${filterByPaymentMethod === "Multibanco" ? "text-blue-700 dark:text-blue-300" : ""}`}>
                                 {settings?.currency ? getCurrencySymbol(settings.currency) : '€'}
@@ -1164,7 +1353,21 @@ export default function PaymentsPage() {
                             {selectedWeekSessions.length > 0 ? (
                                 <>
                                     Total Revenue: {settings?.currency ? getCurrencySymbol(settings.currency) : '€'}
-                                    {selectedWeekSessions.reduce((sum, apt) => sum + getAppointmentFee(apt), 0).toFixed(2)}
+                                    {selectedWeekSessions.reduce((sum, apt) => {
+                                        const fee = getAppointmentFee(apt);
+                                        const currency = getAppointmentCurrency(apt);
+                                        // Convert to EUR for consistent total
+                                        const currencyUpper = currency.toUpperCase();
+                                        if (currencyUpper === 'EUR') {
+                                            return sum + fee;
+                                        } else {
+                                            const rate = exchangeRates[currency] || exchangeRates[currencyUpper];
+                                            if (rate !== undefined && rate !== null && !isNaN(rate) && rate > 0) {
+                                                return sum + (fee * rate);
+                                            }
+                                            return sum + fee; // Fallback if rate not available
+                                        }
+                                    }, 0).toFixed(2)}
                                     {' '}({selectedWeekSessions.length} session{selectedWeekSessions.length !== 1 ? 's' : ''})
                                 </>
                             ) : (
