@@ -95,7 +95,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         date: new Date().toISOString().split('T')[0],
         time: "09:00",
         duration: 60,
-        type: "Therapy Session" as Appointment['type'],
+        type: "Singles Therapy" as Appointment['type'],
         notes: "",
         fee: 80,
         paymentMethod: "Cash" as "Cash" | "PayPal" | "Multibanco" | "Bank Deposit",
@@ -287,7 +287,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             date: new Date().toISOString().split('T')[0],
             time: "09:00",
             duration: 60,
-            type: "Therapy Session",
+            type: "Singles Therapy",
             notes: "",
             fee: currentDefaultFee,
             paymentMethod: "Cash",
@@ -919,7 +919,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                             ...formData,
                             fee: currentDefaultFee,
                             currency: currentCurrency,
-                            type: "Therapy Session" // Reset to default type
+                            type: "Singles Therapy" // Reset to default type
                         });
                         setIsDialogOpen(true);
                     }}>
@@ -979,7 +979,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                     date: singleDayView || new Date().toISOString().split('T')[0],
                                                     fee: settings.defaultFee || 80,
                                                     currency: settings.currency || "EUR",
-                                                    type: "Therapy Session" // Reset to default type
+                                                    type: "Singles Therapy" // Reset to default type
                                                 });
                                                 setIsDialogOpen(true);
                                                 setSingleDayView(null);
@@ -1226,7 +1226,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 date: selectedDate,
                                                 fee: settings.defaultFee || 80,
                                                 currency: settings.currency || "EUR",
-                                                type: "Therapy Session" // Reset to default type
+                                                type: "Singles Therapy" // Reset to default type
                                             });
                                             setIsDialogOpen(true);
                                         }}
@@ -1283,7 +1283,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 date: selectedDate,
                                                 fee: settings.defaultFee || 80,
                                                 currency: settings.currency || "EUR",
-                                                type: "Therapy Session" // Reset to default type
+                                                type: "Singles Therapy" // Reset to default type
                                             });
                                             setIsDialogOpen(true);
                                         }}
