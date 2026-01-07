@@ -50,6 +50,12 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
     const [unsignedFormClients, setUnsignedFormClients] = useState<any[]>([]);
     const [unpaidSessions, setUnpaidSessions] = useState<any[]>([]);
     const [adminReminders, setAdminReminders] = useState<any[]>([]);
+    const [reminderCounts, setReminderCounts] = useState({
+        clinicalNotes: 0,
+        unsignedForms: 0,
+        unpaidSessions: 0,
+        customReminders: 0
+    });
     const [userFirstName, setUserFirstName] = useState<string>("");
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isRevenueLoading, setIsRevenueLoading] = useState<boolean>(true);
@@ -218,6 +224,14 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                     pastUnpaidSessions.length + 
                     adminRemindersData.length;
                 setRemindersTotalCount(totalRemindersCount);
+                
+                // Store individual reminder counts
+                setReminderCounts({
+                    clinicalNotes: allMissingNotes.length,
+                    unsignedForms: clientsWithoutSignedForms.length,
+                    unpaidSessions: pastUnpaidSessions.length,
+                    customReminders: adminRemindersData.length
+                });
 
                 // Calculate revenue based on period
                 const revenue = calculateRevenue(appointments, revenuePeriod);
@@ -494,7 +508,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             <p className="text-sm text-muted-foreground">Loading...</p>
                         </div>
                     ) : stats.revenue > 0 ? (
-                        <p className="mt-2 text-3xl font-bold">€{stats.revenue.toLocaleString()}</p>
+                        <p className="mt-2 text-3xl font-bold">€{stats.revenue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                     ) : (
                         <p className="mt-2 text-3xl font-bold">&nbsp;</p>
                     )}
@@ -612,7 +626,18 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                                     Action Required: {remindersTotalCount} Reminder{remindersTotalCount !== 1 ? 's' : ''}
                                 </h3>
                                 <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
-                                    You have {remindersTotalCount} outstanding reminder{remindersTotalCount !== 1 ? 's' : ''} including Clinical Notes, Unsigned Forms, Unpaid Sessions, and Custom Reminders.
+                                    You have {remindersTotalCount} outstanding reminder{remindersTotalCount !== 1 ? 's' : ''}: {(() => {
+                                        const parts = [
+                                            reminderCounts.clinicalNotes > 0 && `${reminderCounts.clinicalNotes} Clinical Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`,
+                                            reminderCounts.unsignedForms > 0 && `${reminderCounts.unsignedForms} Unsigned Form${reminderCounts.unsignedForms !== 1 ? 's' : ''}`,
+                                            reminderCounts.unpaidSessions > 0 && `${reminderCounts.unpaidSessions} Unpaid Session${reminderCounts.unpaidSessions !== 1 ? 's' : ''}`,
+                                            reminderCounts.customReminders > 0 && `${reminderCounts.customReminders} Custom Reminder${reminderCounts.customReminders !== 1 ? 's' : ''}`
+                                        ].filter(Boolean);
+                                        if (parts.length === 0) return '';
+                                        if (parts.length === 1) return parts[0];
+                                        if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+                                        return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+                                    })()}.
                                 </p>
                                 <Button
                                     onClick={() => router.push('/reminders')}

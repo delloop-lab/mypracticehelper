@@ -311,7 +311,10 @@ export default function PaymentsPage() {
         const today = startOfDay(now);
         const todayEnd = endOfDay(now);
         totalRevenueSessions = allRelevantSessions.filter(apt => {
-            const appointmentDate = new Date(apt.date);
+            // Normalize appointment date to start of day for comparison
+            const aptDateStr = apt.date.split('T')[0]; // Extract date part (YYYY-MM-DD)
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const appointmentDate = startOfDay(new Date(year, month - 1, day));
             // For paid appointments, include if they're today (past or future)
             // For unpaid, only include if they're in the past
             if (apt.paymentStatus === "paid") {
@@ -323,7 +326,10 @@ export default function PaymentsPage() {
         const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
         const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
         totalRevenueSessions = allRelevantSessions.filter(apt => {
-            const appointmentDate = new Date(apt.date);
+            // Normalize appointment date to start of day for comparison
+            const aptDateStr = apt.date.split('T')[0]; // Extract date part (YYYY-MM-DD)
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const appointmentDate = startOfDay(new Date(year, month - 1, day));
             // For paid appointments, include if they're in this week (past or future)
             // For unpaid, only include if they're in the past
             if (apt.paymentStatus === "paid") {
@@ -332,35 +338,47 @@ export default function PaymentsPage() {
             return appointmentDate >= weekStart && appointmentDate <= weekEnd && appointmentDate <= now;
         });
     } else if (selectedPeriod === "30days") {
-        const thirtyDaysAgo = subDays(now, 30);
+        const thirtyDaysAgo = startOfDay(subDays(now, 30));
+        const thirtyDaysFromNow = endOfDay(subDays(now, -30)); // 30 days in the future
         totalRevenueSessions = allRelevantSessions.filter(apt => {
-            const appointmentDate = new Date(apt.date);
-            // For paid appointments, include if they're in the last 30 days or future
-            // For unpaid, only include if they're in the past
+            // Normalize appointment date to start of day for comparison
+            const aptDateStr = apt.date.split('T')[0]; // Extract date part (YYYY-MM-DD)
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const appointmentDate = startOfDay(new Date(year, month - 1, day));
+            // Include paid appointments from 30 days ago to 30 days in the future (past and future)
+            // Include unpaid appointments from 30 days ago that are in the past
             if (apt.paymentStatus === "paid") {
-                return appointmentDate >= thirtyDaysAgo;
+                return appointmentDate >= thirtyDaysAgo && appointmentDate <= thirtyDaysFromNow;
             }
             return appointmentDate >= thirtyDaysAgo && appointmentDate <= now;
         });
     } else if (selectedPeriod === "month") {
-        const monthStart = startOfMonth(now);
+        const monthStart = startOfDay(startOfMonth(now));
+        const monthEnd = endOfDay(endOfMonth(now));
         totalRevenueSessions = allRelevantSessions.filter(apt => {
-            const appointmentDate = new Date(apt.date);
-            // For paid appointments, include if they're in this month or future
-            // For unpaid, only include if they're in the past
+            // Normalize appointment date to start of day for comparison
+            const aptDateStr = apt.date.split('T')[0]; // Extract date part (YYYY-MM-DD)
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const appointmentDate = startOfDay(new Date(year, month - 1, day));
+            // Include paid appointments from the start to the end of the month (past and future)
+            // Include unpaid appointments from the start of the month that are in the past
             if (apt.paymentStatus === "paid") {
-                return appointmentDate >= monthStart;
+                return appointmentDate >= monthStart && appointmentDate <= monthEnd;
             }
             return appointmentDate >= monthStart && appointmentDate <= now;
         });
     } else if (selectedPeriod === "year") {
-        const yearStart = startOfYear(now);
+        const yearStart = startOfDay(startOfYear(now));
+        const yearEnd = endOfDay(endOfYear(now));
         totalRevenueSessions = allRelevantSessions.filter(apt => {
-            const appointmentDate = new Date(apt.date);
-            // For paid appointments, include if they're in this year or future
-            // For unpaid, only include if they're in the past
+            // Normalize appointment date to start of day for comparison
+            const aptDateStr = apt.date.split('T')[0]; // Extract date part (YYYY-MM-DD)
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const appointmentDate = startOfDay(new Date(year, month - 1, day));
+            // Include paid appointments from the start to the end of the year (past and future)
+            // Include unpaid appointments from the start of the year that are in the past
             if (apt.paymentStatus === "paid") {
-                return appointmentDate >= yearStart;
+                return appointmentDate >= yearStart && appointmentDate <= yearEnd;
             }
             return appointmentDate >= yearStart && appointmentDate <= now;
         });
@@ -500,15 +518,14 @@ export default function PaymentsPage() {
     // Destructure the memoized values
     const { totalRevenueSessions, paidSessionsForPeriod, revenueByCurrency, totalRevenueInEUR, revenueByPaymentMethod } = periodRevenueData;
     
-    // Paid Revenue = based on selected period filter
-    const paidSessions = sessionsWithFees.filter(apt => apt.paymentStatus === "paid");
-    const paidRevenue = paidSessions.reduce((sum, apt) => {
+    // Paid Revenue = based on selected period filter (use paidSessionsForPeriod from memoized data)
+    const paidRevenue = paidSessionsForPeriod.reduce((sum, apt) => {
         return sum + getAppointmentFee(apt);
     }, 0);
     
     // Group by currency for Paid card (based on selected period filter)
     const paidRevenueByCurrency: Record<string, number> = {};
-    paidSessions.forEach(apt => {
+    paidSessionsForPeriod.forEach(apt => {
         const currency = getAppointmentCurrency(apt);
         const fee = getAppointmentFee(apt);
         paidRevenueByCurrency[currency] = (paidRevenueByCurrency[currency] || 0) + fee;
@@ -549,12 +566,18 @@ export default function PaymentsPage() {
     const calculateWeeklyRevenue = () => {
         const now = new Date();
         const eightWeeksAgo = subDays(now, 56); // 8 weeks = 56 days
+        const endOfCurrentWeek = endOfWeek(now, { weekStartsOn: 1 }); // End of current week (Sunday)
         
-        // Get all paid sessions from the past 8 weeks
+        // Get all paid sessions from the past 8 weeks (including future prepaid sessions in current week)
         const paidSessionsLast8Weeks = allRelevantSessions.filter(apt => {
-            const appointmentDate = new Date(apt.date);
+            // Normalize appointment date
+            const aptDateStr = apt.date.split('T')[0];
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const appointmentDate = startOfDay(new Date(year, month - 1, day));
+            
+            // Include paid sessions from 8 weeks ago up to end of current week (for prepaid)
             return appointmentDate >= eightWeeksAgo && 
-                   appointmentDate <= now && 
+                   appointmentDate <= endOfCurrentWeek && 
                    apt.paymentStatus === "paid" &&
                    getAppointmentFee(apt) > 0;
         });
@@ -576,7 +599,10 @@ export default function PaymentsPage() {
         // Calculate revenue for each week and store sessions
         // Convert all currencies to EUR for consistent totals
         paidSessionsLast8Weeks.forEach(apt => {
-            const appointmentDate = new Date(apt.date);
+            // Normalize appointment date
+            const aptDateStr = apt.date.split('T')[0];
+            const [year, month, day] = aptDateStr.split('-').map(Number);
+            const appointmentDate = new Date(year, month - 1, day);
             const weekStart = startOfISOWeek(appointmentDate);
             const weekKey = format(weekStart, 'yyyy-MM-dd');
             const fee = getAppointmentFee(apt);
@@ -965,7 +991,7 @@ export default function PaymentsPage() {
                             )}
                         </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                            {paidSessions.length} session{paidSessions.length !== 1 ? 's' : ''} paid
+                            {paidSessionsForPeriod.length} session{paidSessionsForPeriod.length !== 1 ? 's' : ''} paid
                         </p>
                     </CardContent>
                 </Card>
@@ -1351,12 +1377,19 @@ export default function PaymentsPage() {
                         <DialogTitle>Sessions for Week of {selectedWeekLabel}</DialogTitle>
                         <DialogDescription>
                             {selectedWeekSessions.length > 0 ? (
-                                <>
-                                    Total Revenue: {settings?.currency ? getCurrencySymbol(settings.currency) : '€'}
-                                    {selectedWeekSessions.reduce((sum, apt) => {
+                                (() => {
+                                    // Calculate revenue by currency
+                                    const weekRevenueByCurrency: Record<string, number> = {};
+                                    selectedWeekSessions.forEach(apt => {
                                         const fee = getAppointmentFee(apt);
                                         const currency = getAppointmentCurrency(apt);
-                                        // Convert to EUR for consistent total
+                                        weekRevenueByCurrency[currency] = (weekRevenueByCurrency[currency] || 0) + fee;
+                                    });
+                                    
+                                    // Calculate total in EUR
+                                    const totalEUR = selectedWeekSessions.reduce((sum, apt) => {
+                                        const fee = getAppointmentFee(apt);
+                                        const currency = getAppointmentCurrency(apt);
                                         const currencyUpper = currency.toUpperCase();
                                         if (currencyUpper === 'EUR') {
                                             return sum + fee;
@@ -1365,11 +1398,28 @@ export default function PaymentsPage() {
                                             if (rate !== undefined && rate !== null && !isNaN(rate) && rate > 0) {
                                                 return sum + (fee * rate);
                                             }
-                                            return sum + fee; // Fallback if rate not available
+                                            return sum + fee;
                                         }
-                                    }, 0).toFixed(2)}
-                                    {' '}({selectedWeekSessions.length} session{selectedWeekSessions.length !== 1 ? 's' : ''})
-                                </>
+                                    }, 0);
+                                    
+                                    const hasMultipleCurrencies = Object.keys(weekRevenueByCurrency).length > 1;
+                                    const currencyBreakdown = Object.entries(weekRevenueByCurrency)
+                                        .map(([curr, amt]) => `${getCurrencySymbol(curr)}${amt.toFixed(2)}`)
+                                        .join(' + ');
+                                    
+                                    return (
+                                        <>
+                                            Total Revenue: €{totalEUR.toFixed(2)}
+                                            {hasMultipleCurrencies && (
+                                                <span className="text-blue-600 ml-1">(Exchange Rate Applied)</span>
+                                            )}
+                                            {hasMultipleCurrencies && (
+                                                <span className="block text-xs mt-1">{currencyBreakdown}</span>
+                                            )}
+                                            <span className="block">{selectedWeekSessions.length} session{selectedWeekSessions.length !== 1 ? 's' : ''}</span>
+                                        </>
+                                    );
+                                })()
                             ) : (
                                 'No sessions found for this week'
                             )}
@@ -1387,6 +1437,30 @@ export default function PaymentsPage() {
                                     .map((apt) => {
                                         const fee = getAppointmentFee(apt);
                                         const currency = getAppointmentCurrency(apt);
+                                        // Check if this is a prepaid (future) session
+                                        // Need to check both date AND time to determine if session hasn't happened yet
+                                        const aptDateStr = apt.date.split('T')[0];
+                                        const [year, month, day] = aptDateStr.split('-').map(Number);
+                                        
+                                        // Parse appointment time (handle 12-hour format like "03:00 pm")
+                                        const aptTime = apt.time || '00:00';
+                                        let aptHours = 0, aptMinutes = 0;
+                                        const timeLower = aptTime.toLowerCase().trim();
+                                        const isPM = timeLower.includes('pm');
+                                        const isAM = timeLower.includes('am');
+                                        const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                                        if (timeMatch) {
+                                            aptHours = parseInt(timeMatch[1], 10);
+                                            aptMinutes = parseInt(timeMatch[2], 10);
+                                            if (isPM && aptHours !== 12) aptHours += 12;
+                                            else if (isAM && aptHours === 12) aptHours = 0;
+                                        }
+                                        
+                                        const appointmentDateTime = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
+                                        const now = new Date();
+                                        // Session is prepaid if it hasn't happened yet (appointment datetime > now) and is paid
+                                        const isPrepaid = appointmentDateTime > now && apt.paymentStatus === "paid";
+                                        
                                         return (
                                             <button
                                                 key={apt.id}
@@ -1396,12 +1470,18 @@ export default function PaymentsPage() {
                                                     setIsWeekSessionsDialogOpen(false);
                                                     setIsDialogOpen(true);
                                                 }}
-                                                className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left"
+                                                className={`w-full flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors text-left ${
+                                                    isPrepaid 
+                                                        ? "border-blue-400 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700" 
+                                                        : ""
+                                                }`}
                                             >
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-3">
                                                         <div>
-                                                            <p className="font-semibold">{apt.clientName}</p>
+                                                            <p className="font-semibold">
+                                                                {apt.clientName}
+                                                            </p>
                                                             <p className="text-sm text-muted-foreground">
                                                                 {new Date(apt.date).toLocaleDateString()} at {apt.time}
                                                             </p>
@@ -1412,12 +1492,14 @@ export default function PaymentsPage() {
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="font-bold text-lg">
+                                                    <p className={`font-bold text-lg ${isPrepaid ? "text-blue-600 dark:text-blue-400" : ""}`}>
                                                         {getCurrencySymbol(currency)}{fee.toFixed(2)}
                                                     </p>
                                                     <div className="flex items-center gap-1 justify-end">
-                                                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                                        <p className="text-xs text-green-600">Paid</p>
+                                                        <CheckCircle2 className={`h-4 w-4 ${isPrepaid ? "text-blue-600" : "text-green-600"}`} />
+                                                        <p className={`text-xs ${isPrepaid ? "text-blue-600" : "text-green-600"}`}>
+                                                            {isPrepaid ? "Prepaid" : "Paid"}
+                                                        </p>
                                                     </div>
                                                 </div>
                                             </button>
