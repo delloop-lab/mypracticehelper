@@ -28,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceNotes } from "@/components/voice-notes";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NoteSection {
     title: string;
@@ -69,6 +70,7 @@ function RecordingsContent() {
     const [activeTab, setActiveTab] = useState("history");
 
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
+    const [calculatedDurations, setCalculatedDurations] = useState<Record<string, number>>({});
 
     // Set initial tab based on screen size after hydration - always "new" on mobile
     useEffect(() => {
@@ -172,12 +174,55 @@ function RecordingsContent() {
                 }
                 setRecordings(uniqueRecordings);
                 setRefreshKey(prev => prev + 1);
+                
+                // Calculate durations for recordings with duration 0
+                uniqueRecordings.forEach(recording => {
+                    if (recording.duration === 0 && recording.audioURL && !calculatedDurations[recording.id]) {
+                        calculateDurationFromAudio(recording.id, recording.audioURL);
+                    }
+                });
             } else {
                 const errorText = await response.text();
                 console.error('[Recordings] Failed to load recordings:', response.status, errorText);
             }
         } catch (error) {
             console.error('Error loading recordings:', error);
+        }
+    };
+
+    const calculateDurationFromAudio = async (recordingId: string, audioURL: string) => {
+        try {
+            const audio = new Audio(audioURL);
+            await new Promise<void>((resolve) => {
+                let resolved = false;
+                const finish = () => {
+                    if (!resolved) {
+                        resolved = true;
+                        resolve();
+                    }
+                };
+                audio.onloadedmetadata = () => {
+                    if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+                        const duration = Math.floor(audio.duration);
+                        console.log(`[Recordings] Calculated duration for ${recordingId}:`, duration, 'seconds');
+                        setCalculatedDurations(prev => ({ ...prev, [recordingId]: duration }));
+                    }
+                    finish();
+                };
+                audio.onerror = () => {
+                    console.warn(`[Recordings] Could not load audio metadata for ${recordingId}`);
+                    finish();
+                };
+                audio.load();
+                setTimeout(() => {
+                    if (!calculatedDurations[recordingId]) {
+                        console.warn(`[Recordings] Duration calculation timeout for ${recordingId}`);
+                    }
+                    finish();
+                }, 5000);
+            });
+        } catch (err) {
+            console.warn(`[Recordings] Error calculating duration for ${recordingId}:`, err);
         }
     };
 
@@ -539,14 +584,15 @@ function RecordingsContent() {
     };
 
     return (
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
-            <div className="mb-8">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Recording</h1>
-                <div className="text-sm sm:text-base text-muted-foreground space-y-1">
-                    <p>Record Clinical Notes with AI transcription</p>
-                    <p>Upload Session Recording for AI Clinical Analysis</p>
+        <TooltipProvider>
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
+                <div className="mb-8">
+                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Recording</h1>
+                    <div className="text-sm sm:text-base text-muted-foreground space-y-1">
+                        <p>Record Clinical Notes with AI transcription</p>
+                        <p>Upload Session Recording for AI Clinical Analysis</p>
+                    </div>
                 </div>
-            </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <TabsList className="grid w-full grid-cols-2 max-w-md">
@@ -570,16 +616,30 @@ function RecordingsContent() {
                 <TabsContent value="history" className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight">Recording History</h2>
-                        <Button onClick={loadRecordings} variant="outline" size="sm">
-                            Refresh List
-                        </Button>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button onClick={loadRecordings} variant="outline" size="sm">
+                                    Refresh List
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Refresh Recording List</p>
+                            </TooltipContent>
+                        </Tooltip>
                     </div>
 
                     {/* Filters and Search */}
                     <Card className="mb-6">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Filter className="h-5 w-5 text-purple-500" />
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Filter className="h-5 w-5 text-purple-500" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Filter & Search Options</p>
+                                    </TooltipContent>
+                                </Tooltip>
                                 Filter & Search
                             </CardTitle>
                         </CardHeader>
@@ -692,7 +752,14 @@ function RecordingsContent() {
                                                 <div className="flex items-start justify-between">
                                                     <div className="flex-1">
                                                         <CardTitle className="flex items-center gap-2">
-                                                            <FileAudio className="h-5 w-5 text-primary" />
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <FileAudio className="h-5 w-5 text-primary" />
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Audio Recording</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
                                                             {(recording.clientId || recording.client_id) && recording.clientName ? (
                                                                 <Link
                                                                     href={`/clients?highlight=${recording.clientId || recording.client_id}`}
@@ -703,64 +770,120 @@ function RecordingsContent() {
                                                             ) : (
                                                                 recording.clientName || "Unassigned Session"
                                                             )}
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                                className="h-6 w-6"
-                                                                onClick={() => handleEditClient(recording)}
-                                                            >
-                                                                <Edit className="h-3 w-3 text-blue-500" />
-                                                            </Button>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-6 w-6"
+                                                                        onClick={() => handleEditClient(recording)}
+                                                                    >
+                                                                        <Edit className="h-3 w-3 text-blue-500" />
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Edit Client</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
                                                         </CardTitle>
                                                         <CardDescription className="flex items-center gap-4 mt-2 flex-wrap">
-                                                            <span className="flex items-center gap-1">
-                                                                <Calendar className="h-4 w-4 text-blue-500" />
-                                                                {formatDate(recording.date)}
-                                                            </span>
-                                                            <span className="flex items-center gap-1">
-                                                                <Clock className="h-4 w-4 text-green-500" />
-                                                                {formatDuration(recording.duration)}
-                                                            </span>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Calendar className="h-4 w-4 text-blue-500" />
+                                                                        {formatDate(recording.date)}
+                                                                    </span>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Recording Date & Time</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Clock className="h-4 w-4 text-green-500" />
+                                                                        {formatDuration(calculatedDurations[recording.id] || recording.duration)}
+                                                                    </span>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Duration: {formatDuration(calculatedDurations[recording.id] || recording.duration)}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
                                                             {/* Show recording type badge */}
                                                             {recording.notes && recording.notes.length > 0 && recording.notes.some(note => note.title === "AI-Structured Notes") ? (
-                                                                <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-medium">
-                                                                    <Upload className="h-3 w-3" />
-                                                                    Uploaded
-                                                                </span>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-medium cursor-help">
+                                                                            <Upload className="h-3 w-3" />
+                                                                            Uploaded
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Uploaded Audio File - Contains AI-Structured Notes</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
                                                             ) : (
-                                                                <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
-                                                                    <Mic className="h-3 w-3" />
-                                                                    Live Recording
-                                                                </span>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium cursor-help">
+                                                                            <Mic className="h-3 w-3" />
+                                                                            Live Recording
+                                                                        </span>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Live Recording - Therapist's Voice Notes</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
                                                             )}
                                                         </CardDescription>
                                                     </div>
                                                     <div className="flex gap-2">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => handlePlay(recording.id)}
-                                                        >
-                                                            {playingId === recording.id ? (
-                                                                <Pause className="h-4 w-4 text-green-500" />
-                                                            ) : (
-                                                                <Play className="h-4 w-4 text-green-500" />
-                                                            )}
-                                                        </Button>
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => handleDownload(recording)}
-                                                        >
-                                                            <Download className="h-4 w-4 text-purple-500" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="outline"
-                                                            size="icon"
-                                                            onClick={() => handleDeleteClick(recording)}
-                                                        >
-                                                            <Trash2 className="h-4 w-4 text-red-500" />
-                                                        </Button>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => handlePlay(recording.id)}
+                                                                >
+                                                                    {playingId === recording.id ? (
+                                                                        <Pause className="h-4 w-4 text-green-500" />
+                                                                    ) : (
+                                                                        <Play className="h-4 w-4 text-green-500" />
+                                                                    )}
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>{playingId === recording.id ? 'Pause' : 'Play'} Recording</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => handleDownload(recording)}
+                                                                >
+                                                                    <Download className="h-4 w-4 text-purple-500" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Download Recording</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => handleDeleteClick(recording)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Delete Recording</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
                                                     </div>
                                                 </div>
                                             </CardHeader>
@@ -985,7 +1108,8 @@ function RecordingsContent() {
                     />
                 </TabsContent>
             </Tabs>
-        </div>
+            </div>
+        </TooltipProvider>
     );
 }
 
