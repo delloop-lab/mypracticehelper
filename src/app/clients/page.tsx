@@ -2027,6 +2027,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             <SelectContent>
                                                                 {clients
                                                                     .filter(c => c.id !== editingClient?.id) // Exclude self
+                                                                    .sort((a, b) => (a.firstName || a.name || '').localeCompare(b.firstName || b.name || ''))
                                                                     .map(c => (
                                                                         <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                                                                     ))
