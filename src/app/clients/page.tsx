@@ -2292,7 +2292,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 );
                                             })()}
 
-                                            {sessionNotes.map((note, index) => (
+                                            {sessionNotes.map((note, index) => {
+                                                // Determine if this is an uploaded recording with AI Clinical Assessment
+                                                const hasAIClinicalAssessment = note.content && 
+                                                                                note.content.trim() !== '' && 
+                                                                                note.transcript && 
+                                                                                note.content !== note.transcript;
+                                                
+                                                return (
                                                 <div key={note.id || index} className="border rounded-lg p-4 bg-muted/50 space-y-3">
                                                     <div className="flex items-center justify-between">
                                                         <div className="text-sm text-muted-foreground">
@@ -2308,8 +2315,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </div>
                                                         {note.source === 'recording' && (
                                                             <span className="flex items-center gap-1 text-xs text-purple-600">
-                                                                <Mic className="h-3 w-3" />
-                                                                Voice Note
+                                                                {hasAIClinicalAssessment ? (
+                                                                    <>
+                                                                        <Mic className="h-3 w-3" />
+                                                                        AI Clinical Assessment
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Mic className="h-3 w-3" />
+                                                                        Voice Note
+                                                                    </>
+                                                                )}
                                                             </span>
                                                         )}
                                                     </div>
@@ -2346,7 +2362,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </div>
                                                     )}
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                             <div className="pt-4 border-t">
                                                 <Button 
                                                     variant="outline" 
