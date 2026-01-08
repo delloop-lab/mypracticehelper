@@ -105,6 +105,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [isDocumentsExpanded, setIsDocumentsExpanded] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
+    const [clientDialogTab, setClientDialogTab] = useState<'profile' | 'sessions'>('profile');
     const [formData, setFormData] = useState<Partial<Client>>({
         name: "",
         firstName: "",
@@ -1226,12 +1227,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         setIsAddDialogOpen(false);
     };
 
-    const handleEdit = (client: Client) => {
+    const handleEdit = (client: Client, tab: 'profile' | 'sessions' = 'profile') => {
         // Don't open modal for archived clients when viewing archived tab
         if (activeTab === 'archived') {
             return; // Archived clients are view-only in the archived tab
         }
         setEditingClient(client);
+        setClientDialogTab(tab);
         // Calculate actual values from appointments
         const actualSessions = getClientAppointments(client.name).length;
         const nextApt = getNextAppointment(client.name);
@@ -1667,7 +1669,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             </DialogDescription>
                         </DialogHeader>
 
-                        <Tabs defaultValue="profile" className="w-full">
+                        <Tabs value={clientDialogTab} onValueChange={(value) => setClientDialogTab(value as 'profile' | 'sessions')} className="w-full">
                             <TabsList className="grid w-full grid-cols-2">
                                 <TabsTrigger value="profile">Profile & Info</TabsTrigger>
                                 <TabsTrigger value="sessions" disabled={!editingClient}>Sessions & Notes</TabsTrigger>
@@ -2915,15 +2917,23 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 {(() => {
                                                     const actualSessions = getClientAppointments(client.name).length;
                                                     return actualSessions > 0 ? (
-                                                        <Link
-                                                            href={`/schedule?client=${encodeURIComponent(client.name)}`}
-                                                            className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                                                            title="View Sessions"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            <Calendar className="h-3 w-3 text-green-500" />
-                                                            <span>{actualSessions}</span>
-                                                        </Link>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <button
+                                                                    className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleEdit(client, 'sessions');
+                                                                    }}
+                                                                >
+                                                                    <Calendar className="h-3 w-3 text-green-500" />
+                                                                    <span>{actualSessions}</span>
+                                                                </button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>View Sessions</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
                                                     ) : (
                                                         <div
                                                             className="flex items-center gap-1 text-green-300/80 cursor-default"
