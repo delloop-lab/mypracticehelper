@@ -769,7 +769,7 @@ function RecordingsContent() {
                                                             </AccordionItem>
                                                         )}
 
-                                                        {recording.notes && recording.notes.length > 0 && (
+                                                        {recording.notes && recording.notes.length > 0 && recording.notes.some(note => note.title === "AI-Structured Notes") && (
                                                             <AccordionItem value="ai-notes">
                                                                 <AccordionTrigger>
                                                                     <div className="flex flex-col items-start text-left">
@@ -778,14 +778,16 @@ function RecordingsContent() {
                                                                 </AccordionTrigger>
                                                                 <AccordionContent>
                                                                     <div className="space-y-3">
-                                                                        {recording.notes.map((note, noteIndex) => (
-                                                                            <div key={noteIndex} className="rounded-lg border border-primary/20 bg-card p-4">
-                                                                                <h5 className="text-sm font-semibold mb-2 text-primary">{note.title}</h5>
-                                                                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                                                                    {note.content}
-                                                                                </p>
-                                                                            </div>
-                                                                        ))}
+                                                                        {recording.notes
+                                                                            .filter(note => note.title === "AI-Structured Notes")
+                                                                            .map((note, noteIndex) => (
+                                                                                <div key={noteIndex} className="rounded-lg border border-primary/20 bg-card p-4">
+                                                                                    <h5 className="text-sm font-semibold mb-2 text-primary">{note.title}</h5>
+                                                                                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                                                                        {note.content}
+                                                                                    </p>
+                                                                                </div>
+                                                                            ))}
                                                                     </div>
                                                                 </AccordionContent>
                                                             </AccordionItem>

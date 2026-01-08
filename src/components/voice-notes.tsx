@@ -820,8 +820,9 @@ export function VoiceNotes() {
         }
 
         // Notes saved with the recording
-        // For live recordings, just show "Notes" with plain transcript
-        const notes: NoteSection[] = [{ title: isUploadedFile ? "AI-Structured Notes" : "Notes", content: structuredText }];
+        // Only create notes for uploaded files (AI-Structured Notes)
+        // Live recordings should only have transcript, no notes
+        const notes: NoteSection[] = isUploadedFile ? [{ title: "AI-Structured Notes", content: structuredText }] : [];
         setStructuredNotes(notes);
         setIsProcessing(false);
 
