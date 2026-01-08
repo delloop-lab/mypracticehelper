@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -106,6 +106,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [isDocumentsExpanded, setIsDocumentsExpanded] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [clientDialogTab, setClientDialogTab] = useState<'profile' | 'sessions'>('profile');
+    const [scrollToFormCheckbox, setScrollToFormCheckbox] = useState(false);
+    const formCheckboxRef = useRef<HTMLDivElement>(null);
     const [formData, setFormData] = useState<Partial<Client>>({
         name: "",
         firstName: "",
@@ -363,6 +365,22 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             }
         }
     }, [searchParams, clients, editingClient]);
+
+    // Scroll to form checkbox when dialog opens and scrollToFormCheckbox is true
+    useEffect(() => {
+        if (scrollToFormCheckbox && isAddDialogOpen && formCheckboxRef.current && clientDialogTab === 'profile') {
+            // Small delay to ensure dialog is fully rendered
+            setTimeout(() => {
+                formCheckboxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Focus the checkbox after scrolling
+                const checkbox = formCheckboxRef.current?.querySelector('#newClientFormSigned') as HTMLElement;
+                if (checkbox) {
+                    setTimeout(() => checkbox.focus(), 100);
+                }
+                setScrollToFormCheckbox(false); // Reset after scrolling
+            }, 300);
+        }
+    }, [scrollToFormCheckbox, isAddDialogOpen, clientDialogTab]);
 
     // Listen for updates from the recordings page
     useEffect(() => {
@@ -1227,13 +1245,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         setIsAddDialogOpen(false);
     };
 
-    const handleEdit = (client: Client, tab: 'profile' | 'sessions' = 'profile') => {
+    const handleEdit = (client: Client, tab: 'profile' | 'sessions' = 'profile', scrollToForm: boolean = false) => {
         // Don't open modal for archived clients when viewing archived tab
         if (activeTab === 'archived') {
             return; // Archived clients are view-only in the archived tab
         }
         setEditingClient(client);
         setClientDialogTab(tab);
+        setScrollToFormCheckbox(scrollToForm);
         // Calculate actual values from appointments
         const actualSessions = getClientAppointments(client.name).length;
         const nextApt = getNextAppointment(client.name);
@@ -2006,7 +2025,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     </div>
                                     
                                     {/* New Client Form Signed */}
-                                    <div className="space-y-2 pt-4 border-t">
+                                    <div className="space-y-2 pt-4 border-t" ref={formCheckboxRef}>
                                         <div className="flex items-center gap-2">
                                             <Checkbox
                                                 id="newClientFormSigned"
@@ -2822,14 +2841,20 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         {!client.newClientFormSigned && (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                    <div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleEdit(client, 'profile', true);
+                                                        }}
+                                                        className="cursor-pointer hover:opacity-80 transition-opacity"
+                                                    >
                                                         <AlertTriangle 
-                                                            className="h-4 w-4 text-amber-500 dark:text-amber-400 cursor-help" 
+                                                            className="h-4 w-4 text-amber-500 dark:text-amber-400" 
                                                         />
-                                                    </div>
+                                                    </button>
                                                 </TooltipTrigger>
                                                 <TooltipContent>
-                                                    <p>New Client Form not signed</p>
+                                                    <p>New Client Form not signed - Click to open and sign</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                         )}
