@@ -77,6 +77,7 @@ interface Client {
     createdAt?: string; // Date when client was added
     newClientFormSigned?: boolean; // Whether new client form has been signed
     // Extended personal/medical fields
+    gender?: 'male' | 'female' | 'other' | 'prefer-not-to-say';
     dateOfBirth?: string;
     mailingAddress?: string;
     preferredName?: string;
@@ -121,6 +122,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         currency: 'EUR', // Default to Euros
         documents: [],
         relationships: [],
+        gender: undefined,
         dateOfBirth: "",
         mailingAddress: "",
         preferredName: "",
@@ -1124,6 +1126,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 currency: formData.currency || 'EUR',
                 documents: formData.documents || [],
                 relationships: formData.relationships || [],
+                gender: formData.gender,
                 dateOfBirth: formData.dateOfBirth || "",
                 mailingAddress: formData.mailingAddress || "",
                 preferredName: formData.preferredName || "",
@@ -1238,6 +1241,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             currency: 'EUR', // Default to Euros
             documents: [],
             relationships: [],
+            gender: undefined,
             dateOfBirth: "",
             mailingAddress: "",
             preferredName: "",
@@ -1491,6 +1495,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             currency: 'EUR', // Default to Euros
             documents: [],
             relationships: [],
+            gender: undefined,
             dateOfBirth: "",
             mailingAddress: "",
             preferredName: "",
@@ -1812,18 +1817,40 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                         </div>
 
-                                        {/* Date of Birth */}
-                                        <div className="space-y-2">
-                                            <Label htmlFor="dateOfBirth">
-                                                <Calendar className="inline h-4 w-4 mr-1 text-blue-500" />
-                                                Date of Birth
-                                            </Label>
-                                            <Input
-                                                id="dateOfBirth"
-                                                type="date"
-                                                value={formData.dateOfBirth || ''}
-                                                onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                                            />
+                                        {/* Gender & Date of Birth */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="gender">
+                                                    <User className="inline h-4 w-4 mr-1 text-purple-500" />
+                                                    Gender
+                                                </Label>
+                                                <Select
+                                                    value={formData.gender || ''}
+                                                    onValueChange={(val) => setFormData({ ...formData, gender: val as Client['gender'] })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select gender" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="male">Male</SelectItem>
+                                                        <SelectItem value="female">Female</SelectItem>
+                                                        <SelectItem value="other">Other</SelectItem>
+                                                        <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="dateOfBirth">
+                                                    <Calendar className="inline h-4 w-4 mr-1 text-blue-500" />
+                                                    Date of Birth
+                                                </Label>
+                                                <Input
+                                                    id="dateOfBirth"
+                                                    type="date"
+                                                    value={formData.dateOfBirth || ''}
+                                                    onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                                                />
+                                            </div>
                                         </div>
 
                                         {/* Sessions & Fee */}
@@ -2016,7 +2043,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             variant="ghost"
                                                             size="icon"
                                                             className="h-8 w-8 text-red-500"
-                                                            onClick={() => handleRemoveRelationshipClick(index)}
+                                                            onClick={() => removeRelationship(index)}
                                                         >
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
