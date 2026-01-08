@@ -129,22 +129,22 @@ export async function GET(request: Request) {
                             if (typeof (parsed as any).transcript === 'string') {
                                 rawTranscript = (parsed as any).transcript;
                             }
-                            // Only extract content from notes if they are "AI-Structured Notes" (uploaded recordings)
+                            // Only extract content from notes if they are "AI Clinical Assessment" (uploaded recordings)
                             // Live recordings should only show transcript, not notes content
                             if (Array.isArray((parsed as any).notes) && (parsed as any).notes.length > 0) {
                                 const aiStructuredNotes = (parsed as any).notes.filter((n: any) => 
-                                    typeof n === 'object' && n.title === 'AI-Structured Notes'
+                                    typeof n === 'object' && n.title === 'AI Clinical Assessment'
                                 );
                                 if (aiStructuredNotes.length > 0) {
-                                    // Only use AI-Structured Notes content for uploaded recordings
+                                    // Only use AI Clinical Assessment content for uploaded recordings
                                     transcriptContent = aiStructuredNotes
                                         .map((n: any) => (n.content || n.text || ''))
                                         .join('\n\n');
                                 }
-                                // If no AI-Structured Notes found, don't set transcriptContent from notes
+                                // If no AI Clinical Assessment found, don't set transcriptContent from notes
                                 // This means live recordings will only show transcript
                             }
-                            // Fallback to other content fields if no AI-Structured Notes
+                            // Fallback to other content fields if no AI Clinical Assessment
                             if (!transcriptContent) {
                                 if ((parsed as any).content) {
                                     transcriptContent = (parsed as any).content;
@@ -156,16 +156,16 @@ export async function GET(request: Request) {
                             }
                         } else if (Array.isArray(parsed) && parsed.length > 0) {
                             // Old format: array of note sections
-                            // Only use notes with "AI-Structured Notes" title
+                            // Only use notes with "AI Clinical Assessment" title
                             const aiStructuredNotes = parsed.filter((n: any) => 
-                                typeof n === 'object' && n.title === 'AI-Structured Notes'
+                                typeof n === 'object' && n.title === 'AI Clinical Assessment'
                             );
                             if (aiStructuredNotes.length > 0) {
                                 transcriptContent = aiStructuredNotes.map((n: any) =>
                                     typeof n === 'string' ? n : (n.content || n.text || '')
                                 ).join('\n\n');
                             } else {
-                                // No AI-Structured Notes, use transcript only
+                                // No AI Clinical Assessment, use transcript only
                                 transcriptContent = '';
                             }
                         } else {
@@ -390,22 +390,22 @@ export async function GET(request: Request) {
                         if (typeof (parsed as any).transcript === 'string') {
                             rawTranscript = (parsed as any).transcript;
                         }
-                        // Only extract content from notes if they are "AI-Structured Notes" (uploaded recordings)
+                        // Only extract content from notes if they are "AI Clinical Assessment" (uploaded recordings)
                         // Live recordings should only show transcript, not notes content
                         if (Array.isArray((parsed as any).notes) && (parsed as any).notes.length > 0) {
                             const aiStructuredNotes = (parsed as any).notes.filter((n: any) => 
-                                typeof n === 'object' && n.title === 'AI-Structured Notes'
+                                typeof n === 'object' && n.title === 'AI Clinical Assessment'
                             );
                             if (aiStructuredNotes.length > 0) {
-                                // Only use AI-Structured Notes content for uploaded recordings
+                                // Only use AI Clinical Assessment content for uploaded recordings
                                 transcriptContent = aiStructuredNotes
                                     .map((n: any) => (n.content || n.text || ''))
                                     .join('\n\n');
                             }
-                            // If no AI-Structured Notes found, don't set transcriptContent from notes
+                            // If no AI Clinical Assessment found, don't set transcriptContent from notes
                             // This means live recordings will only show transcript
                         }
-                        // Fallback to other content fields if no AI-Structured Notes
+                        // Fallback to other content fields if no AI Clinical Assessment
                         if (!transcriptContent) {
                             if ((parsed as any).content) {
                                 transcriptContent = (parsed as any).content;
@@ -417,16 +417,16 @@ export async function GET(request: Request) {
                         }
                     } else if (Array.isArray(parsed) && parsed.length > 0) {
                         // Old format: array of note sections
-                        // Only use notes with "AI-Structured Notes" title
+                        // Only use notes with "AI Clinical Assessment" title
                         const aiStructuredNotes = parsed.filter((n: any) => 
-                            typeof n === 'object' && n.title === 'AI-Structured Notes'
+                            typeof n === 'object' && n.title === 'AI Clinical Assessment'
                         );
                         if (aiStructuredNotes.length > 0) {
                             transcriptContent = aiStructuredNotes.map((n: any) =>
                                 typeof n === 'string' ? n : (n.content || n.text || '')
                             ).join('\n\n');
                         } else {
-                            // No AI-Structured Notes, use transcript only
+                            // No AI Clinical Assessment, use transcript only
                             transcriptContent = '';
                         }
                     } else {

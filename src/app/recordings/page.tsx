@@ -795,7 +795,7 @@ function RecordingsContent() {
                                                                 </TooltipContent>
                                                             </Tooltip>
                                                             {/* Show recording type badge */}
-                                                            {recording.notes && recording.notes.length > 0 && recording.notes.some(note => note.title === "AI-Structured Notes") ? (
+                                                            {recording.notes && recording.notes.length > 0 && recording.notes.some(note => note.title === "AI Clinical Assessment") ? (
                                                                 <Tooltip>
                                                                     <TooltipTrigger asChild>
                                                                         <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-medium cursor-help">
@@ -804,7 +804,7 @@ function RecordingsContent() {
                                                                         </span>
                                                                     </TooltipTrigger>
                                                                     <TooltipContent>
-                                                                        <p>Uploaded Audio File - Contains AI-Structured Notes</p>
+                                                                        <p>Uploaded Audio File - Contains AI Clinical Assessment</p>
                                                                     </TooltipContent>
                                                                 </Tooltip>
                                                             ) : (
@@ -913,17 +913,17 @@ function RecordingsContent() {
                                                             </AccordionItem>
                                                         )}
 
-                                                        {recording.notes && recording.notes.length > 0 && recording.notes.some(note => note.title === "AI-Structured Notes") && (
+                                                        {recording.notes && recording.notes.length > 0 && recording.notes.some(note => note.title === "AI Clinical Assessment") && (
                                                             <AccordionItem value="ai-notes">
                                                                 <AccordionTrigger>
                                                                     <div className="flex flex-col items-start text-left">
-                                                                        <span className="text-sm font-semibold">AI-Structured Notes</span>
+                                                                        <span className="text-sm font-semibold">AI Clinical Assessment</span>
                                                                     </div>
                                                                 </AccordionTrigger>
                                                                 <AccordionContent>
                                                                     <div className="space-y-3">
                                                                         {recording.notes
-                                                                            .filter(note => note.title === "AI-Structured Notes")
+                                                                            .filter(note => note.title === "AI Clinical Assessment")
                                                                             .map((note, noteIndex) => (
                                                                                 <div key={noteIndex} className="rounded-lg border border-primary/20 bg-card p-4">
                                                                                     <h5 className="text-sm font-semibold mb-2 text-primary">{note.title}</h5>

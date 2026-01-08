@@ -951,7 +951,7 @@ function SessionNotesContent() {
                                                         <AccordionItem value="ai-notes">
                                                             <AccordionTrigger>
                                                                 <div className="flex flex-col items-start text-left">
-                                                                    <span className="text-sm font-semibold">AI-Structured Notes</span>
+                                                                    <span className="text-sm font-semibold">AI Clinical Assessment</span>
                                                                 </div>
                                                             </AccordionTrigger>
                                                             <AccordionContent>

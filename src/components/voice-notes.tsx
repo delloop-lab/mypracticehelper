@@ -820,14 +820,14 @@ export function VoiceNotes() {
         }
 
         // Notes saved with the recording
-        // Only create notes for uploaded files (AI-Structured Notes)
+        // Only create notes for uploaded files (AI Clinical Assessment)
         // Live recordings should only have transcript, no notes
-        const notes: NoteSection[] = isUploadedFile ? [{ title: "AI-Structured Notes", content: structuredText }] : [];
+        const notes: NoteSection[] = isUploadedFile ? [{ title: "AI Clinical Assessment", content: structuredText }] : [];
         setStructuredNotes(notes);
         setIsProcessing(false);
 
         try {
-            // Save the raw-but-formatted transcript, and keep AI-structured notes separately
+            // Save the raw-but-formatted transcript, and keep AI Clinical Assessment separately
             // Include client information and session ID if available
             const sessionId = selectedSessionId || undefined;
             await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId);
@@ -1263,8 +1263,8 @@ export function VoiceNotes() {
 
             {structuredNotes.length > 0 && (
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                    {/* We intentionally hide AI-structured notes here and only show the raw transcript above.
-                        The structured notes are still saved and can be viewed in Recording History / Session Notes. */}
+                    {/* We intentionally hide AI Clinical Assessment here and only show the raw transcript above.
+                        The assessment is still saved and can be viewed in Recording History / Session Notes. */}
                     <div className="flex flex-col gap-2">
                         {selectedClientId ? (
                             // Client was already selected before recording - already saved

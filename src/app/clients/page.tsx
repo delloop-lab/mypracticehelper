@@ -2314,7 +2314,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         )}
                                                     </div>
                                                     
-                                                    {/* Show AI-Structured Notes content ONLY for uploaded recordings */}
+                                                    {/* Show AI Clinical Assessment content ONLY for uploaded recordings */}
                                                     {/* For live recordings, content will be empty and we'll only show transcript */}
                                                     {note.content && 
                                                      note.content.trim() !== '' && 
