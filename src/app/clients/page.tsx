@@ -156,6 +156,37 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         };
         return reciprocalMap[type] || type;
     };
+
+    // Check if a relationship type is backwards and correct it
+    // This ensures the type is from the current client's perspective
+    const correctRelationshipType = (type: string, relatedClientId: string, currentClientId: string): string => {
+        // Get the related client to check their relationship back
+        const relatedClient = clients.find(c => c.id === relatedClientId);
+        if (!relatedClient) return type;
+
+        // Check if the related client has a relationship back to current client
+        const reverseRel = relatedClient.relationships?.find(r => r.relatedClientId === currentClientId);
+        if (!reverseRel) return type;
+
+        // The relationship types should be reciprocals of each other
+        // If current type's reciprocal matches reverse type, current type is correct
+        const currentTypeReciprocal = getReciprocalRelationshipType(type);
+        if (currentTypeReciprocal === reverseRel.type) {
+            // Current type is correct - it's the reciprocal of the reverse
+            return type;
+        }
+
+        // If reverse type's reciprocal matches current type, current type is also correct
+        const reverseTypeReciprocal = getReciprocalRelationshipType(reverseRel.type);
+        if (reverseTypeReciprocal === type) {
+            // Current type is correct
+            return type;
+        }
+
+        // If types don't match as reciprocals, the current type is likely backwards
+        // Convert it to be the reciprocal of the reverse type
+        return reverseTypeReciprocal;
+    };
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [showSearch, setShowSearch] = useState(false); // Hidden by default
     const [searchQuery, setSearchQuery] = useState("");
@@ -940,8 +971,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         if (!client.relationships || client.relationships.length === 0) return [];
         return client.relationships.map(rel => {
             const relatedClient = clients.find(c => c.id === rel.relatedClientId);
+            // Correct the relationship type if it's backwards
+            const correctedType = correctRelationshipType(rel.type, rel.relatedClientId, client.id);
             return {
                 ...rel,
+                type: correctedType,
                 relatedClientName: relatedClient?.name || "Unknown"
             };
         });
@@ -1091,12 +1125,45 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         let savedClient: Client;
         let updatedClientsList: Client[];
 
+        // Correct relationship types before saving to ensure they're from the current client's perspective
+        const correctedRelationships = (formData.relationships || []).map(rel => {
+            const relatedClient = clients.find(c => c.id === rel.relatedClientId);
+            if (!relatedClient) return rel;
+
+            // Check if the related client has a relationship back
+            const reverseRel = relatedClient.relationships?.find(r => r.relatedClientId === (editingClient?.id || ''));
+            if (reverseRel) {
+                // The relationship types should be reciprocals of each other
+                // If current type's reciprocal matches reverse type, current type is correct
+                const currentTypeReciprocal = getReciprocalRelationshipType(rel.type);
+                if (currentTypeReciprocal === reverseRel.type) {
+                    // Current type is correct
+                    return rel;
+                }
+                
+                // If reverse type's reciprocal matches current type, current type is also correct
+                const reverseTypeReciprocal = getReciprocalRelationshipType(reverseRel.type);
+                if (reverseTypeReciprocal === rel.type) {
+                    // Current type is correct
+                    return rel;
+                }
+                
+                // If types don't match as reciprocals, the current type is likely backwards
+                // Convert it to be the reciprocal of the reverse type
+                return {
+                    ...rel,
+                    type: reverseTypeReciprocal
+                };
+            }
+            return rel;
+        });
+
         if (editingClient) {
             // Update existing client
             const combinedName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
             // Only include sessionFee if it's a valid positive number, otherwise set to undefined
             const sessionFeeToSave = (formData.sessionFee && formData.sessionFee > 0) ? formData.sessionFee : undefined;
-            savedClient = { ...editingClient, ...formData, name: combinedName, sessionFee: sessionFeeToSave } as Client;
+            savedClient = { ...editingClient, ...formData, name: combinedName, sessionFee: sessionFeeToSave, relationships: correctedRelationships } as Client;
             updatedClientsList = clients.map(c =>
                 c.id === editingClient.id ? savedClient : c
             );
@@ -1118,7 +1185,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 sessionFee: sessionFeeToSave,
                 currency: formData.currency || 'EUR',
                 documents: formData.documents || [],
-                relationships: formData.relationships || [],
+                relationships: correctedRelationships,
                 dateOfBirth: formData.dateOfBirth || "",
                 mailingAddress: formData.mailingAddress || "",
                 preferredName: formData.preferredName || "",
@@ -1285,6 +1352,32 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         } catch (error) {
             console.error('Error toggling form status:', error);
             alert('Error updating form status. Please try again.');
+        }
+    };
+
+    const handleFixRelationships = async () => {
+        if (!confirm('This will fix all relationship types in the database to ensure they are from the correct perspective. Continue?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/clients/fix-relationships', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                alert(`Successfully fixed relationships for ${data.fixed || 0} clients.`);
+                await loadClients();
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                alert(`Failed to fix relationships: ${errorData.error}`);
+            }
+        } catch (error) {
+            console.error('Error fixing relationships:', error);
+            alert('Error fixing relationships. Please try again.');
         }
     };
 
@@ -1653,6 +1746,15 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     Mark All Forms Signed ({clients.filter(c => !c.newClientFormSigned && !c.archived).length})
                                 </Button>
                             )}
+                            <Button 
+                                variant="outline"
+                                size="lg"
+                                onClick={handleFixRelationships}
+                                className="border-purple-500 text-purple-600 hover:bg-purple-50"
+                            >
+                                <Users className="mr-2 h-5 w-5" />
+                                Fix Relationship Types
+                            </Button>
                             <Button 
                                 size="lg" 
                                 className="bg-green-500 hover:bg-green-600 text-white"
