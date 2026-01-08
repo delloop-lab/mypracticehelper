@@ -2958,12 +2958,18 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             {getClientRelationships(client).map((rel, idx) => {
                                                                 const initials = rel.relatedClientName.split(" ").map((n: string) => n[0] || "").join("").toUpperCase();
                                                                 return (
-                                                                    <span
-                                                                        key={idx}
-                                                                        className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-[9px] text-blue-700 dark:text-blue-300 whitespace-nowrap"
-                                                                    >
-                                                                        {rel.type}: {initials}
-                                                                    </span>
+                                                                    <Tooltip key={idx}>
+                                                                        <TooltipTrigger asChild>
+                                                                            <span
+                                                                                className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-[9px] text-blue-700 dark:text-blue-300 whitespace-nowrap cursor-help"
+                                                                            >
+                                                                                {rel.type}: {initials}
+                                                                            </span>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>{rel.relatedClientName}</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
                                                                 );
                                                             })}
                                                         </div>
