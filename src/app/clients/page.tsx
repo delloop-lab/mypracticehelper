@@ -2957,11 +2957,18 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         <div className="flex items-center gap-0.5 flex-wrap">
                                                             {getClientRelationships(client).map((rel, idx) => {
                                                                 const initials = rel.relatedClientName.split(" ").map((n: string) => n[0] || "").join("").toUpperCase();
+                                                                const relatedClient = clients.find(c => c.id === rel.relatedClientId);
                                                                 return (
                                                                     <Tooltip key={idx}>
                                                                         <TooltipTrigger asChild>
                                                                             <span
-                                                                                className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-[9px] text-blue-700 dark:text-blue-300 whitespace-nowrap cursor-help"
+                                                                                className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-[9px] text-blue-700 dark:text-blue-300 whitespace-nowrap cursor-pointer hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    if (relatedClient) {
+                                                                                        handleEdit(relatedClient);
+                                                                                    }
+                                                                                }}
                                                                             >
                                                                                 {rel.type}: {initials}
                                                                             </span>
