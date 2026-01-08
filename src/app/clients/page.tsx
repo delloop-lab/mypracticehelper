@@ -709,6 +709,23 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 // This can happen if the same recording exists in both recordings and session_notes tables
                 const seenContentKeys = new Set<string>();
                 const deduplicatedNotes = notesForSession.filter((note: any) => {
+                    // Filter out empty notes (no content, no transcript, and no audioURL)
+                    // These are likely failed recordings or orphaned entries
+                    const hasContent = note.content && note.content.trim() !== '';
+                    const hasTranscript = note.transcript && note.transcript.trim() !== '';
+                    const hasAudio = note.audioURL;
+                    
+                    // If note has no meaningful content, exclude it (unless it's a session placeholder with content)
+                    if (!hasContent && !hasTranscript && !hasAudio) {
+                        // Allow session placeholders that have content (even if it's just session info)
+                        if (note.source === 'session' && note.content && note.content.trim() !== '') {
+                            // Keep session placeholders
+                        } else {
+                            console.log('[Load Session Notes] Filtering out empty note:', note.id, note.source);
+                            return false;
+                        }
+                    }
+                    
                     // Create a key from content + creation timestamp (rounded to the minute to handle slight differences)
                     const content = (note.content || note.transcript || '').trim().substring(0, 200);
                     const timestamp = note.createdDate || note.created_at || '';
