@@ -2035,7 +2035,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             </SelectContent>
                                                         </Select>
                                                         <Input
-                                                            placeholder="Relationship (e.g. Spouse)"
+                                                            placeholder="I am their... (e.g. Dad, Wife)"
                                                             value={rel.type || ''}
                                                             onChange={(e) => updateRelationship(index, 'type', e.target.value)}
                                                         />
