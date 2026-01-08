@@ -770,21 +770,6 @@ function RecordingsContent() {
                                                             ) : (
                                                                 recording.clientName || "Unassigned Session"
                                                             )}
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-6 w-6"
-                                                                        onClick={() => handleEditClient(recording)}
-                                                                    >
-                                                                        <Edit className="h-3 w-3 text-blue-500" />
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p>Assign Session</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
                                                         </CardTitle>
                                                         <CardDescription className="flex items-center gap-4 mt-2 flex-wrap">
                                                             <Tooltip>
@@ -838,6 +823,20 @@ function RecordingsContent() {
                                                         </CardDescription>
                                                     </div>
                                                     <div className="flex gap-2">
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => handleEditClient(recording)}
+                                                                >
+                                                                    <Edit className="h-4 w-4 text-blue-500" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Assign Session</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
                                                         <Tooltip>
                                                             <TooltipTrigger asChild>
                                                                 <Button
