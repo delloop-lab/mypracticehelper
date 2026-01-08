@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -692,7 +693,16 @@ function RecordingsContent() {
                                                     <div className="flex-1">
                                                         <CardTitle className="flex items-center gap-2">
                                                             <FileAudio className="h-5 w-5 text-primary" />
-                                                            {recording.clientName || "Unassigned Session"}
+                                                            {(recording.clientId || recording.client_id) && recording.clientName ? (
+                                                                <Link
+                                                                    href={`/clients?highlight=${recording.clientId || recording.client_id}`}
+                                                                    className="hover:underline text-primary"
+                                                                >
+                                                                    {recording.clientName}
+                                                                </Link>
+                                                            ) : (
+                                                                recording.clientName || "Unassigned Session"
+                                                            )}
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
