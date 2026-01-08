@@ -22,7 +22,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Play, Pause, Download, Trash2, FileAudio, Calendar, Clock, Search, Filter, User, SortAsc, SortDesc, Edit, Mic, List } from "lucide-react";
+import { Play, Pause, Download, Trash2, FileAudio, Calendar, Clock, Search, Filter, User, SortAsc, SortDesc, Edit, Mic, List, Upload } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceNotes } from "@/components/voice-notes";
@@ -712,7 +712,7 @@ function RecordingsContent() {
                                                                 <Edit className="h-3 w-3 text-blue-500" />
                                                             </Button>
                                                         </CardTitle>
-                                                        <CardDescription className="flex items-center gap-4 mt-2">
+                                                        <CardDescription className="flex items-center gap-4 mt-2 flex-wrap">
                                                             <span className="flex items-center gap-1">
                                                                 <Calendar className="h-4 w-4 text-blue-500" />
                                                                 {formatDate(recording.date)}
@@ -721,6 +721,18 @@ function RecordingsContent() {
                                                                 <Clock className="h-4 w-4 text-green-500" />
                                                                 {formatDuration(recording.duration)}
                                                             </span>
+                                                            {/* Show recording type badge */}
+                                                            {recording.notes && recording.notes.length > 0 && recording.notes.some(note => note.title === "AI-Structured Notes") ? (
+                                                                <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-medium">
+                                                                    <Upload className="h-3 w-3" />
+                                                                    Uploaded
+                                                                </span>
+                                                            ) : (
+                                                                <span className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
+                                                                    <Mic className="h-3 w-3" />
+                                                                    Live Recording
+                                                                </span>
+                                                            )}
                                                         </CardDescription>
                                                     </div>
                                                     <div className="flex gap-2">
