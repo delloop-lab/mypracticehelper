@@ -782,7 +782,7 @@ function RecordingsContent() {
                                                                     </Button>
                                                                 </TooltipTrigger>
                                                                 <TooltipContent>
-                                                                    <p>Edit Client</p>
+                                                                    <p>Assign Session</p>
                                                                 </TooltipContent>
                                                             </Tooltip>
                                                         </CardTitle>
