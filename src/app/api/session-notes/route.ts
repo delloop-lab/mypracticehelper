@@ -133,7 +133,7 @@ export async function GET(request: Request) {
                             // Live recordings should only show transcript, not notes content
                             if (Array.isArray((parsed as any).notes) && (parsed as any).notes.length > 0) {
                                 const aiStructuredNotes = (parsed as any).notes.filter((n: any) => 
-                                    typeof n === 'object' && n.title === 'AI Clinical Assessment'
+                                    typeof n === 'object' && (n.title === 'AI Clinical Assessment' || n.title === 'AI-Structured Notes')
                                 );
                                 if (aiStructuredNotes.length > 0) {
                                     // Only use AI Clinical Assessment content for uploaded recordings
@@ -156,9 +156,9 @@ export async function GET(request: Request) {
                             }
                         } else if (Array.isArray(parsed) && parsed.length > 0) {
                             // Old format: array of note sections
-                            // Only use notes with "AI Clinical Assessment" title
+                            // Only use notes with "AI Clinical Assessment" title (or legacy "AI-Structured Notes")
                             const aiStructuredNotes = parsed.filter((n: any) => 
-                                typeof n === 'object' && n.title === 'AI Clinical Assessment'
+                                typeof n === 'object' && (n.title === 'AI Clinical Assessment' || n.title === 'AI-Structured Notes')
                             );
                             if (aiStructuredNotes.length > 0) {
                                 transcriptContent = aiStructuredNotes.map((n: any) =>
@@ -394,7 +394,7 @@ export async function GET(request: Request) {
                         // Live recordings should only show transcript, not notes content
                         if (Array.isArray((parsed as any).notes) && (parsed as any).notes.length > 0) {
                             const aiStructuredNotes = (parsed as any).notes.filter((n: any) => 
-                                typeof n === 'object' && n.title === 'AI Clinical Assessment'
+                                typeof n === 'object' && (n.title === 'AI Clinical Assessment' || n.title === 'AI-Structured Notes')
                             );
                             if (aiStructuredNotes.length > 0) {
                                 // Only use AI Clinical Assessment content for uploaded recordings
@@ -417,9 +417,9 @@ export async function GET(request: Request) {
                         }
                     } else if (Array.isArray(parsed) && parsed.length > 0) {
                         // Old format: array of note sections
-                        // Only use notes with "AI Clinical Assessment" title
+                        // Only use notes with "AI Clinical Assessment" title (or legacy "AI-Structured Notes")
                         const aiStructuredNotes = parsed.filter((n: any) => 
-                            typeof n === 'object' && n.title === 'AI Clinical Assessment'
+                            typeof n === 'object' && (n.title === 'AI Clinical Assessment' || n.title === 'AI-Structured Notes')
                         );
                         if (aiStructuredNotes.length > 0) {
                             transcriptContent = aiStructuredNotes.map((n: any) =>
