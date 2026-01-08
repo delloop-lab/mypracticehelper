@@ -2297,22 +2297,35 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         )}
                                                     </div>
                                                     
-                                                    {/* Show notes content */}
-                                                    <div className="whitespace-pre-wrap text-sm">
-                                                        {note.content || note.notes || 'No content'}
-                                                    </div>
+                                                    {/* Show AI-Structured Notes content ONLY for uploaded recordings */}
+                                                    {/* For live recordings, content will be empty and we'll only show transcript */}
+                                                    {note.content && 
+                                                     note.content.trim() !== '' && 
+                                                     note.transcript && 
+                                                     note.content !== note.transcript && (
+                                                        <div className="whitespace-pre-wrap text-sm mb-3">
+                                                            {note.content}
+                                                        </div>
+                                                    )}
                                                     
-                                                    {/* Show raw transcript ONLY for uploaded recordings (client's words), NOT for live therapist notes */}
-                                                    {/* Live recordings have "Therapist Notes:" in the content, uploaded ones have AI-structured content */}
-                                                    {note.transcript && 
-                                                     note.transcript !== note.content && 
-                                                     note.content && 
-                                                     !note.content.includes('**Therapist Notes:**') && (
-                                                        <div className="border-t pt-3 mt-3">
-                                                            <p className="text-xs font-medium text-muted-foreground mb-2">📝 Original Transcript (Client's Words):</p>
+                                                    {/* Show transcript - for live recordings this is the only content, for uploaded it's the original */}
+                                                    {note.transcript && (
+                                                        <div className={note.content && note.content !== note.transcript ? "border-t pt-3 mt-3" : ""}>
+                                                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                                                                {note.content && note.content !== note.transcript 
+                                                                    ? "📝 Original Transcript (Client's Words):" 
+                                                                    : "📝 Original Transcript (Therapist's Words):"}
+                                                            </p>
                                                             <div className="whitespace-pre-wrap text-sm bg-muted/50 p-3 rounded text-muted-foreground">
                                                                 {note.transcript}
                                                             </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Fallback if no transcript and no content */}
+                                                    {!note.transcript && !note.content && (
+                                                        <div className="whitespace-pre-wrap text-sm text-muted-foreground">
+                                                            No content available
                                                         </div>
                                                     )}
                                                 </div>

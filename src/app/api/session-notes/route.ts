@@ -113,14 +113,78 @@ export async function GET(request: Request) {
                     ? clientsMap[clientId] 
                     : recording.clients?.name || 'Unknown Client';
                 
+                // Extract transcript / notes content for session notes view
+                let transcriptContent = '';
+                let rawTranscript = '';
+                if (recording.transcript) {
+                    try {
+                        // Try to parse as JSON – supports multiple historical formats:
+                        // 1) Array of note sections
+                        // 2) Object with { content }
+                        // 3) New format: { transcript: string, notes: NoteSection[] }
+                        const parsed = JSON.parse(recording.transcript);
+
+                        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                            // New format: { transcript, notes }
+                            if (typeof (parsed as any).transcript === 'string') {
+                                rawTranscript = (parsed as any).transcript;
+                            }
+                            // Only extract content from notes if they are "AI-Structured Notes" (uploaded recordings)
+                            // Live recordings should only show transcript, not notes content
+                            if (Array.isArray((parsed as any).notes) && (parsed as any).notes.length > 0) {
+                                const aiStructuredNotes = (parsed as any).notes.filter((n: any) => 
+                                    typeof n === 'object' && n.title === 'AI-Structured Notes'
+                                );
+                                if (aiStructuredNotes.length > 0) {
+                                    // Only use AI-Structured Notes content for uploaded recordings
+                                    transcriptContent = aiStructuredNotes
+                                        .map((n: any) => (n.content || n.text || ''))
+                                        .join('\n\n');
+                                }
+                                // If no AI-Structured Notes found, don't set transcriptContent from notes
+                                // This means live recordings will only show transcript
+                            }
+                            // Fallback to other content fields if no AI-Structured Notes
+                            if (!transcriptContent) {
+                                if ((parsed as any).content) {
+                                    transcriptContent = (parsed as any).content;
+                                } else if ((parsed as any).transcript) {
+                                    transcriptContent = (parsed as any).transcript;
+                                } else {
+                                    transcriptContent = recording.transcript;
+                                }
+                            }
+                        } else if (Array.isArray(parsed) && parsed.length > 0) {
+                            // Old format: array of note sections
+                            // Only use notes with "AI-Structured Notes" title
+                            const aiStructuredNotes = parsed.filter((n: any) => 
+                                typeof n === 'object' && n.title === 'AI-Structured Notes'
+                            );
+                            if (aiStructuredNotes.length > 0) {
+                                transcriptContent = aiStructuredNotes.map((n: any) =>
+                                    typeof n === 'string' ? n : (n.content || n.text || '')
+                                ).join('\n\n');
+                            } else {
+                                // No AI-Structured Notes, use transcript only
+                                transcriptContent = '';
+                            }
+                        } else {
+                            transcriptContent = recording.transcript;
+                        }
+                    } catch {
+                        // If not JSON, use as plain text
+                        transcriptContent = recording.transcript;
+                    }
+                }
+                
                 return {
                     id: `recording-${recording.id}`,
                     clientName: clientName,
                     clientId: clientId,
                     sessionDate: recording.created_at || recording.date || new Date().toISOString(),
-                    content: recording.transcript || '',
+                    content: transcriptContent,
                     createdDate: recording.created_at || new Date().toISOString(),
-                    transcript: recording.transcript,
+                    transcript: rawTranscript || transcriptContent || recording.transcript || '',
                     attachments: recording.attachments || [],
                     source: 'recording',
                     recordingId: recording.id,
@@ -326,22 +390,45 @@ export async function GET(request: Request) {
                         if (typeof (parsed as any).transcript === 'string') {
                             rawTranscript = (parsed as any).transcript;
                         }
+                        // Only extract content from notes if they are "AI-Structured Notes" (uploaded recordings)
+                        // Live recordings should only show transcript, not notes content
                         if (Array.isArray((parsed as any).notes) && (parsed as any).notes.length > 0) {
-                            transcriptContent = (parsed as any).notes
-                                .map((n: any) => (typeof n === 'string' ? n : (n.content || n.text || '')))
-                                .join('\n\n');
-                        } else if ((parsed as any).content) {
-                            transcriptContent = (parsed as any).content;
-                        } else if ((parsed as any).transcript) {
-                            transcriptContent = (parsed as any).transcript;
-                        } else {
-                            transcriptContent = recording.transcript;
+                            const aiStructuredNotes = (parsed as any).notes.filter((n: any) => 
+                                typeof n === 'object' && n.title === 'AI-Structured Notes'
+                            );
+                            if (aiStructuredNotes.length > 0) {
+                                // Only use AI-Structured Notes content for uploaded recordings
+                                transcriptContent = aiStructuredNotes
+                                    .map((n: any) => (n.content || n.text || ''))
+                                    .join('\n\n');
+                            }
+                            // If no AI-Structured Notes found, don't set transcriptContent from notes
+                            // This means live recordings will only show transcript
+                        }
+                        // Fallback to other content fields if no AI-Structured Notes
+                        if (!transcriptContent) {
+                            if ((parsed as any).content) {
+                                transcriptContent = (parsed as any).content;
+                            } else if ((parsed as any).transcript) {
+                                transcriptContent = (parsed as any).transcript;
+                            } else {
+                                transcriptContent = recording.transcript;
+                            }
                         }
                     } else if (Array.isArray(parsed) && parsed.length > 0) {
                         // Old format: array of note sections
-                        transcriptContent = parsed.map((n: any) =>
-                            typeof n === 'string' ? n : (n.content || n.text || '')
-                        ).join('\n\n');
+                        // Only use notes with "AI-Structured Notes" title
+                        const aiStructuredNotes = parsed.filter((n: any) => 
+                            typeof n === 'object' && n.title === 'AI-Structured Notes'
+                        );
+                        if (aiStructuredNotes.length > 0) {
+                            transcriptContent = aiStructuredNotes.map((n: any) =>
+                                typeof n === 'string' ? n : (n.content || n.text || '')
+                            ).join('\n\n');
+                        } else {
+                            // No AI-Structured Notes, use transcript only
+                            transcriptContent = '';
+                        }
                     } else {
                         transcriptContent = recording.transcript;
                     }
