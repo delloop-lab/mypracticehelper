@@ -549,7 +549,7 @@ export default function PaymentsPage() {
             });
         }
         return isUnpaid;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     const totalUnpaidAmount = allUnpaidSessions.reduce((sum, apt) => sum + getAppointmentFee(apt), 0);
     
