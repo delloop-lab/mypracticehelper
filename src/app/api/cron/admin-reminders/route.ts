@@ -284,6 +284,139 @@ export async function GET(request: Request) {
                                         }
                                     }
                                 }
+                            } else if (template.condition_type === 'clients_not_seen') {
+                                // Check for clients who haven't had a session in X days
+                                const config = template.condition_config || {};
+                                const daysThreshold = config.days || 30;
+                                
+                                // Calculate the cutoff date
+                                const now = new Date();
+                                const cutoffDate = new Date(now.getTime() - daysThreshold * 24 * 60 * 60 * 1000);
+                                
+                                // Get all active clients for this user
+                                const { data: allClients, error: clientsError } = await supabase
+                                    .from('clients')
+                                    .select('id, name')
+                                    .eq('user_id', user.id)
+                                    .is('archived', false);
+                                
+                                if (clientsError) {
+                                    console.error(`[Admin Reminders Cron] Error fetching clients for template ${template.id}:`, clientsError);
+                                    continue;
+                                }
+                                
+                                if (!allClients || allClients.length === 0) {
+                                    continue;
+                                }
+                                
+                                // For each client, find their most recent session
+                                for (const client of allClients) {
+                                    // Get the most recent session for this client
+                                    const { data: recentSessions, error: sessionsError } = await supabase
+                                        .from('sessions')
+                                        .select('date')
+                                        .eq('user_id', user.id)
+                                        .eq('client_id', client.id)
+                                        .order('date', { ascending: false })
+                                        .limit(1);
+                                    
+                                    if (sessionsError) {
+                                        console.error(`[Admin Reminders Cron] Error fetching sessions for client ${client.id}:`, sessionsError);
+                                        continue;
+                                    }
+                                    
+                                    let shouldRemind = false;
+                                    let lastSessionDate: Date | null = null;
+                                    
+                                    if (!recentSessions || recentSessions.length === 0) {
+                                        // Client has never had a session - check if they were created before cutoff
+                                        const { data: clientData } = await supabase
+                                            .from('clients')
+                                            .select('created_at')
+                                            .eq('id', client.id)
+                                            .single();
+                                        
+                                        if (clientData?.created_at) {
+                                            lastSessionDate = new Date(clientData.created_at);
+                                            // If client was created before cutoff date, remind
+                                            if (lastSessionDate < cutoffDate) {
+                                                shouldRemind = true;
+                                            }
+                                        }
+                                    } else {
+                                        // Client has sessions - check if most recent is before cutoff
+                                        lastSessionDate = new Date(recentSessions[0].date);
+                                        if (lastSessionDate < cutoffDate) {
+                                            shouldRemind = true;
+                                        }
+                                    }
+                                    
+                                    if (shouldRemind) {
+                                        const reminderId = `custom_${template.id}_${user.id}_${client.id}`;
+                                        
+                                        // Calculate days since last session
+                                        const daysSince = lastSessionDate 
+                                            ? Math.floor((now.getTime() - lastSessionDate.getTime()) / (24 * 60 * 60 * 1000))
+                                            : daysThreshold;
+                                        
+                                        // Check if reminder already exists
+                                        const { data: existing } = await supabase
+                                            .from('admin_reminders')
+                                            .select('id')
+                                            .eq('id', reminderId)
+                                            .single();
+                                        
+                                        const title = template.title.replace('{{clientName}}', client.name).replace('{{days}}', daysSince.toString());
+                                        // Always include the days count in the description
+                                        const baseDescription = template.description 
+                                            ? template.description.replace('{{clientName}}', client.name).replace('{{days}}', daysSince.toString())
+                                            : '';
+                                        // Ensure description always shows actual days count
+                                        const description = baseDescription.includes(daysSince.toString())
+                                            ? baseDescription
+                                            : `Last session was ${daysSince} days ago`;
+                                        
+                                        if (!existing) {
+                                            // Create new reminder
+                                            const { error: createError } = await supabase
+                                                .from('admin_reminders')
+                                                .insert({
+                                                    id: reminderId,
+                                                    user_id: user.id,
+                                                    type: 'clients_not_seen',
+                                                    client_id: client.id,
+                                                    title: title,
+                                                    description: description,
+                                                    is_active: true,
+                                                });
+                                            
+                                            if (createError) {
+                                                console.error(`[Admin Reminders Cron] Error creating reminder for client ${client.id}:`, createError);
+                                            } else {
+                                                console.log(`[Admin Reminders Cron] Created reminder: ${client.name} not seen in ${daysSince} days`);
+                                            }
+                                        } else {
+                                            // Update reminder to keep it active and update description with current days
+                                            await supabase
+                                                .from('admin_reminders')
+                                                .update({ 
+                                                    title: title,
+                                                    description: description,
+                                                    last_sent_at: new Date().toISOString(),
+                                                    is_active: true,
+                                                    updated_at: new Date().toISOString()
+                                                })
+                                                .eq('id', reminderId);
+                                        }
+                                    } else {
+                                        // Client has been seen recently - deactivate reminder if it exists
+                                        const reminderId = `custom_${template.id}_${user.id}_${client.id}`;
+                                        await supabase
+                                            .from('admin_reminders')
+                                            .update({ is_active: false })
+                                            .eq('id', reminderId);
+                                    }
+                                }
                             }
                         } catch (templateError: any) {
                             const errorMsg = `Error processing template ${template.id}: ${templateError.message}`;

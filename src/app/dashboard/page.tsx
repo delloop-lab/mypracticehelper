@@ -42,7 +42,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
         recordings: 0
     });
     const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
-    const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "year" | "custom">("month");
+    const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "year" | "custom">("week");
     const [customDateFrom, setCustomDateFrom] = useState<string>("");
     const [customDateTo, setCustomDateTo] = useState<string>("");
     const [reminders, setReminders] = useState<any[]>([]);
@@ -217,20 +217,33 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 });
                 setUnpaidSessions(pastUnpaidSessions);
 
+                // Store individual reminder counts
+                // Filter admin reminders to only count "clients_not_seen" types
+                const clientsNotSeenReminders = adminRemindersData.filter((reminder: { type?: string; title?: string; description?: string }) => {
+                    const type = reminder.type || 'custom';
+                    if (type === 'clients_not_seen') return true;
+                    // Also check for legacy custom reminders that might be about clients not seen
+                    if (type === 'custom') {
+                        return reminder.title?.includes('Not Seen') || reminder.title?.includes('not seen') || 
+                            reminder.description?.includes('hasn\'t had a session') || 
+                            reminder.description?.includes('not seen');
+                    }
+                    return false;
+                });
+
                 // Calculate total reminders count (all types)
                 const totalRemindersCount = 
                     allMissingNotes.length + 
                     clientsWithoutSignedForms.length + 
                     pastUnpaidSessions.length + 
-                    adminRemindersData.length;
+                    clientsNotSeenReminders.length;
                 setRemindersTotalCount(totalRemindersCount);
                 
-                // Store individual reminder counts
                 setReminderCounts({
                     clinicalNotes: allMissingNotes.length,
                     unsignedForms: clientsWithoutSignedForms.length,
                     unpaidSessions: pastUnpaidSessions.length,
-                    customReminders: adminRemindersData.length
+                    customReminders: clientsNotSeenReminders.length
                 });
 
                 // Calculate revenue based on period
@@ -616,22 +629,24 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
             </div>
 
             {/* Super Reminder Banner */}
-            {remindersTotalCount > 0 && (
+            {(() => {
+                // Calculate total from the individual counts to ensure consistency
+                const displayTotal = reminderCounts.clinicalNotes + reminderCounts.unsignedForms + reminderCounts.customReminders;
+                return displayTotal > 0 && (
                 <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
                     <CardContent className="p-6">
                         <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
                                 <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2">
                                     <FileText className="h-5 w-5 text-green-500" />
-                                    Action Required: {remindersTotalCount} Reminder{remindersTotalCount !== 1 ? 's' : ''}
+                                    Action Required: {displayTotal} Reminder{displayTotal !== 1 ? 's' : ''}
                                 </h3>
                                 <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
-                                    You have {remindersTotalCount} outstanding reminder{remindersTotalCount !== 1 ? 's' : ''}: {(() => {
+                                    You have {displayTotal} outstanding reminder{displayTotal !== 1 ? 's' : ''}: {(() => {
                                         const parts = [
                                             reminderCounts.clinicalNotes > 0 && `${reminderCounts.clinicalNotes} Clinical Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`,
                                             reminderCounts.unsignedForms > 0 && `${reminderCounts.unsignedForms} Unsigned Form${reminderCounts.unsignedForms !== 1 ? 's' : ''}`,
-                                            reminderCounts.unpaidSessions > 0 && `${reminderCounts.unpaidSessions} Unpaid Session${reminderCounts.unpaidSessions !== 1 ? 's' : ''}`,
-                                            reminderCounts.customReminders > 0 && `${reminderCounts.customReminders} Custom Reminder${reminderCounts.customReminders !== 1 ? 's' : ''}`
+                                            reminderCounts.customReminders > 0 && `${reminderCounts.customReminders} Client${reminderCounts.customReminders !== 1 ? 's' : ''} Not Seen Recently`
                                         ].filter(Boolean);
                                         if (parts.length === 0) return '';
                                         if (parts.length === 1) return parts[0];
@@ -650,7 +665,8 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                         </div>
                     </CardContent>
                 </Card>
-            )}
+            );
+            })()}
 
             <div className="grid gap-6 md:grid-cols-2">
                 <div className="rounded-lg border bg-card p-6">

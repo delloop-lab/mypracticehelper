@@ -458,3 +458,37 @@ export async function sendReminderEmail(
     await transporter.sendMail(mailOptions);
 }
 
+// Send a generic email (for manual emails to clients)
+export async function sendGenericEmail(options: {
+    to: string;
+    subject: string;
+    html: string;
+    text?: string;
+}): Promise<void> {
+    const transporter = createTransporter();
+    const smtpFrom = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const smtpFromName = process.env.SMTP_FROM_NAME || 'Claire Schillaci';
+
+    if (!smtpFrom) {
+        throw new Error('SMTP_FROM not configured');
+    }
+
+    const mailOptions: any = {
+        from: `"${smtpFromName}" <${smtpFrom}>`,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+    };
+
+    // Only add text if provided
+    if (options.text) {
+        mailOptions.text = options.text;
+    }
+
+    console.log('[Email] Sending generic email to:', options.to);
+    console.log('[Email] Subject:', options.subject);
+
+    await transporter.sendMail(mailOptions);
+    
+    console.log('[Email] Generic email sent successfully');
+}

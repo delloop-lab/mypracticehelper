@@ -497,6 +497,36 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         }
     };
 
+    // Convert time string to minutes since midnight for proper sorting
+    // Handles both 24-hour format (HH:MM) and 12-hour format (H:MM AM/PM)
+    const timeToMinutes = (timeStr: string): number => {
+        if (!timeStr) return 0;
+        
+        // Handle 24-hour format (HH:MM or HH:MM:SS)
+        if (timeStr.includes(':') && !timeStr.match(/\s*(AM|PM)/i)) {
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            return (hours || 0) * 60 + (minutes || 0);
+        }
+        
+        // Handle 12-hour format (H:MM AM/PM)
+        const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (match) {
+            let hours = parseInt(match[1], 10);
+            const minutes = parseInt(match[2], 10);
+            const period = match[3].toUpperCase();
+            
+            if (period === 'PM' && hours !== 12) {
+                hours += 12;
+            } else if (period === 'AM' && hours === 12) {
+                hours = 0;
+            }
+            
+            return hours * 60 + minutes;
+        }
+        
+        return 0;
+    };
+
     const getFilteredAppointments = () => {
         const now = new Date();
         // Use local date string to avoid timezone issues with toISOString()
@@ -854,36 +884,6 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             case 'AUD': return 'A$';
             default: return currencyCode; // Return code if unknown
         }
-    };
-
-    // Convert time string to minutes since midnight for proper sorting
-    // Handles both 24-hour format (HH:MM) and 12-hour format (H:MM AM/PM)
-    const timeToMinutes = (timeStr: string): number => {
-        if (!timeStr) return 0;
-        
-        // Handle 24-hour format (HH:MM or HH:MM:SS)
-        if (timeStr.includes(':') && !timeStr.match(/\s*(AM|PM)/i)) {
-            const [hours, minutes] = timeStr.split(':').map(Number);
-            return (hours || 0) * 60 + (minutes || 0);
-        }
-        
-        // Handle 12-hour format (H:MM AM/PM)
-        const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-        if (match) {
-            let hours = parseInt(match[1], 10);
-            const minutes = parseInt(match[2], 10);
-            const period = match[3].toUpperCase();
-            
-            if (period === 'PM' && hours !== 12) {
-                hours += 12;
-            } else if (period === 'AM' && hours === 12) {
-                hours = 0;
-            }
-            
-            return hours * 60 + minutes;
-        }
-        
-        return 0;
     };
 
     const getAppointmentDatesByType = (type: Appointment['type']) => {

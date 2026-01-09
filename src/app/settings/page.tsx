@@ -8,10 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, Plus, Trash2, Edit, FileText, ClipboardCheck, Landmark } from "lucide-react";
+import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, Plus, Trash2, Edit, FileText, ClipboardCheck, Landmark, Loader2 } from "lucide-react";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { EmailTab } from "@/components/email-tab";
 
 interface AppointmentTypeSettings {
     name: string;
@@ -34,10 +35,8 @@ interface SettingsData {
     currency: string;
     timezone?: string; // IANA timezone (e.g., "Europe/Lisbon", "America/New_York")
     blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
-    reminderEmailTemplate?: EmailTemplate;
     companyName?: string;
     companyLogo?: string; // Path or URL to company logo
-    reminderHoursBefore?: number; // Hours before appointment to send reminder (default: 24)
 }
 
 const DEFAULT_APPOINTMENT_TYPES: AppointmentTypeSettings[] = [
@@ -58,7 +57,6 @@ export default function SettingsPage() {
         currency: "EUR",
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", // Auto-detect user's timezone
         blockedDays: [],
-        reminderHoursBefore: 24, // Default: send reminders 24 hours before
     });
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
     const [newTypeName, setNewTypeName] = useState("");
@@ -73,20 +71,21 @@ export default function SettingsPage() {
     const [emailSaveStatus, setEmailSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [firstName, setFirstName] = useState<string>("");
     const [lastName, setLastName] = useState<string>("");
-    const [testEmailAddress, setTestEmailAddress] = useState<string>("");
-    const [isSendingTest, setIsSendingTest] = useState<boolean>(false);
-    const [testEmailMessage, setTestEmailMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
     const [customReminderTemplates, setCustomReminderTemplates] = useState<any[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
     const [deleteAppointmentTypeConfirm, setDeleteAppointmentTypeConfirm] = useState<{ isOpen: boolean; index: number | null; name: string }>({ isOpen: false, index: null, name: "" });
+    const [isTestingReminders, setIsTestingReminders] = useState(false);
+    const [testRemindersMessage, setTestRemindersMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [newTemplateTitle, setNewTemplateTitle] = useState("");
     const [newTemplateDescription, setNewTemplateDescription] = useState("");
+    const [newTemplateDays, setNewTemplateDays] = useState<number>(30);
     const [selectedTemplateType, setSelectedTemplateType] = useState<string>("");
     const [isAddingTemplate, setIsAddingTemplate] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<any>(null);
     const [editTemplateTitle, setEditTemplateTitle] = useState("");
     const [editTemplateDescription, setEditTemplateDescription] = useState("");
+    const [editTemplateDays, setEditTemplateDays] = useState<number>(30);
 
     useEffect(() => {
         loadSettings();
@@ -200,63 +199,6 @@ export default function SettingsPage() {
                 console.log('[Settings] loadSettings received data');
                 console.log('[Settings] loadSettings appointment types count:', data.appointmentTypes?.length || 0);
                 console.log('[Settings] loadSettings appointment types:', data.appointmentTypes);
-                // Ensure reminderEmailTemplate has default values if missing
-                if (!data.reminderEmailTemplate) {
-                    data.reminderEmailTemplate = {
-                        subject: "Reminder: Your appointment tomorrow - {{date}}",
-                        htmlBody: `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <!-- Logo centered at top -->
-    <div style="text-align: center; margin-bottom: 30px;">
-        <img src="{{logoUrl}}" alt="Algarve Therapy Centre" style="max-width: 150px; width: 150px; height: auto; display: block; margin: 0 auto;" />
-    </div>
-    
-    <p>Hi {{clientName}},</p>
-    
-    <p>This is a quick reminder about your {{appointmentType}} scheduled for {{dateTime}}. The session will run for {{duration}}.</p>
-    
-    <p>If you need to reschedule, just let me know.</p>
-    
-    <p>See you then,</p>
-    
-    <p>Claire<br>
-    <strong>Algarve Therapy Centre</strong><br>
-    Tel: 937596665</p>
-    
-    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-    <p style="font-size: 11px; color: #999; margin: 0 0 10px 0;">
-        This is an automated reminder. Please do not reply to this email.
-    </p>
-    <p style="font-size: 11px; color: #999; margin: 0;">
-        <em>Add this email to your whitelist to ensure it arrives in your inbox safely next time.</em>
-    </p>
-</body>
-</html>`,
-                        textBody: `Appointment Reminder
-
-Hi {{clientName}},
-
-This is a quick reminder about your {{appointmentType}} scheduled for {{dateTime}}. The session will run for {{duration}}.
-
-If you need to reschedule, just let me know.
-
-See you then,
-
-Claire
-Algarve Therapy Centre
-Tel: 937596665
-
----
-This is an automated reminder. Please do not reply to this email.
-
-Add this email to your whitelist to ensure it arrives in your inbox safely next time.`,
-                    };
-                }
                 console.log('[Settings] loadSettings setting state with data');
                 console.log('[Settings] loadSettings data.appointmentTypes:', data.appointmentTypes);
                 setSettings(data);
@@ -460,12 +402,13 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
             </div>
 
             <Tabs defaultValue="profile" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-6 max-w-4xl">
+                <TabsList className="grid w-full grid-cols-7 max-w-5xl">
                     <TabsTrigger value="profile">Profile</TabsTrigger>
                     <TabsTrigger value="general">General</TabsTrigger>
                     <TabsTrigger value="appointments">Appointments</TabsTrigger>
                     <TabsTrigger value="defaults">Defaults</TabsTrigger>
                     <TabsTrigger value="reminders">Reminders</TabsTrigger>
+                    <TabsTrigger value="email">Email</TabsTrigger>
                     <TabsTrigger value="backup">Backup & Data</TabsTrigger>
                 </TabsList>
 
@@ -1066,239 +1009,87 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
 
                 {/* Reminders Tab */}
                 <TabsContent value="reminders" className="space-y-4">
+                    {/* Test Reminders Button */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <Mail className="h-5 w-5 text-pink-500" />
-                                Reminder Settings
+                                <AlertCircle className="h-5 w-5 text-blue-500" />
+                                Test Reminders
                             </CardTitle>
                             <CardDescription>
-                                Configure when and how reminder emails are sent to clients
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="space-y-2">
-                                <Label htmlFor="reminderHoursBefore">Send Reminder (Hours Before Appointment)</Label>
-                                <div className="flex items-center gap-2">
-                                    <Clock className="h-5 w-5 text-muted-foreground" />
-                                    <Input
-                                        id="reminderHoursBefore"
-                                        type="number"
-                                        min="1"
-                                        max="168"
-                                        step="1"
-                                        value={settings.reminderHoursBefore || 24}
-                                        onChange={(e) => setSettings({ ...settings, reminderHoursBefore: parseInt(e.target.value) || 24 })}
-                                        className="w-32"
-                                    />
-                                    <span className="text-sm text-muted-foreground">hours</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    How many hours before the appointment should reminder emails be sent? (Default: 24 hours)
-                                </p>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Mail className="h-5 w-5 text-pink-500" />
-                                Email Reminder Template
-                            </CardTitle>
-                            <CardDescription>
-                                Customize the email template sent to clients {settings.reminderHoursBefore || 24} hours before their appointments.
-                                Use placeholders: {"{{clientName}}"}, {"{{dateTime}}"}, {"{{appointmentType}}"}, {"{{duration}}"}
+                                Manually trigger the reminder system to check for clients matching your reminder templates.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="emailSubject">Email Subject</Label>
-                                <Input
-                                    id="emailSubject"
-                                    value={settings.reminderEmailTemplate?.subject || ""}
-                                    onChange={(e) => setSettings({
-                                        ...settings,
-                                        reminderEmailTemplate: {
-                                            ...settings.reminderEmailTemplate,
-                                            subject: e.target.value,
-                                            htmlBody: settings.reminderEmailTemplate?.htmlBody || "",
-                                            textBody: settings.reminderEmailTemplate?.textBody || "",
-                                        }
-                                    })}
-                                    placeholder="Reminder: Your appointment tomorrow - {{date}}"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Available placeholders: {"{{date}}"}, {"{{clientName}}"}, {"{{appointmentType}}"}, {"{{duration}}"}
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="emailHtmlBody">HTML Email Body</Label>
-                                <Textarea
-                                    id="emailHtmlBody"
-                                    className="min-h-[300px] font-mono text-sm"
-                                    value={settings.reminderEmailTemplate?.htmlBody || ""}
-                                    onChange={(e) => setSettings({
-                                        ...settings,
-                                        reminderEmailTemplate: {
-                                            ...settings.reminderEmailTemplate,
-                                            subject: settings.reminderEmailTemplate?.subject || "",
-                                            htmlBody: e.target.value,
-                                            textBody: settings.reminderEmailTemplate?.textBody || "",
-                                        }
-                                    })}
-                                    placeholder="HTML email template..."
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    HTML version of the email. Use placeholders: {"{{clientName}}"}, {"{{dateTime}}"}, {"{{appointmentType}}"}, {"{{duration}}"}, {"{{date}}"}, {"{{logoUrl}}"} (logo will be automatically replaced with your app URL)
-                                </p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="emailTextBody">Plain Text Email Body</Label>
-                                <Textarea
-                                    id="emailTextBody"
-                                    className="min-h-[200px] font-mono text-sm"
-                                    value={settings.reminderEmailTemplate?.textBody || ""}
-                                    onChange={(e) => setSettings({
-                                        ...settings,
-                                        reminderEmailTemplate: {
-                                            ...settings.reminderEmailTemplate,
-                                            subject: settings.reminderEmailTemplate?.subject || "",
-                                            htmlBody: settings.reminderEmailTemplate?.htmlBody || "",
-                                            textBody: e.target.value,
-                                        }
-                                    })}
-                                    placeholder="Plain text email template..."
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Plain text version (for email clients that don't support HTML). Use same placeholders.
-                                </p>
-                            </div>
-
-                            <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-900">
-                                <p className="text-sm font-semibold mb-2">Available Placeholders:</p>
-                                <ul className="text-xs space-y-1 text-muted-foreground">
-                                    <li><code>{"{{clientName}}"}</code> - Client's full name</li>
-                                    <li><code>{"{{dateTime}}"}</code> - Formatted appointment date and time</li>
-                                    <li><code>{"{{date}}"}</code> - Just the date portion</li>
-                                    <li><code>{"{{appointmentType}}"}</code> - Type of appointment (e.g., "Therapy Session")</li>
-                                    <li><code>{"{{duration}}"}</code> - Duration (e.g., "60 minutes")</li>
-                                    <li><code>{"{{logoUrl}}"}</code> - Logo image URL (automatically replaced with your app's logo)</li>
-                                </ul>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Test Email */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Mail className="h-5 w-5 text-pink-500" />
-                                Send Test Email
-                            </CardTitle>
-                            <CardDescription>
-                                Send a test email to verify your template looks correct before it's used for reminders.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {testEmailMessage && (
+                            {testRemindersMessage && (
                                 <motion.div
                                     initial={{ opacity: 0, y: -10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     className={`p-4 rounded-lg flex items-center gap-2 ${
-                                        testEmailMessage.type === 'success'
+                                        testRemindersMessage.type === 'success'
                                             ? 'bg-green-50 dark:bg-green-950/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-900'
                                             : 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900'
                                     }`}
                                 >
-                                    {testEmailMessage.type === 'success' ? (
+                                    {testRemindersMessage.type === 'success' ? (
                                         <CheckCircle2 className="h-5 w-5 text-green-500" />
                                     ) : (
-                                        <AlertCircle className="h-5 w-5 text-pink-500" />
+                                        <AlertCircle className="h-5 w-5 text-red-500" />
                                     )}
-                                    <span>{testEmailMessage.text}</span>
+                                    <span>{testRemindersMessage.text}</span>
                                 </motion.div>
                             )}
-
-                            <div className="space-y-2">
-                                <Label htmlFor="testEmail">Test Email Address</Label>
-                                <Input
-                                    id="testEmail"
-                                    type="email"
-                                    placeholder="your-email@example.com"
-                                    value={testEmailAddress}
-                                    onChange={(e) => setTestEmailAddress(e.target.value)}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Enter the email address where you want to receive the test email
-                                </p>
-                            </div>
-
                             <Button
                                 onClick={async () => {
-                                    if (!testEmailAddress) {
-                                        setTestEmailMessage({
-                                            type: 'error',
-                                            text: 'Please enter an email address',
-                                        });
-                                        return;
-                                    }
-
-                                    setIsSendingTest(true);
-                                    setTestEmailMessage(null);
+                                    setIsTestingReminders(true);
+                                    setTestRemindersMessage(null);
 
                                     try {
-                                        const response = await fetch('/api/reminders/test-email', {
-                                            method: 'POST',
-                                            headers: {
-                                                'Content-Type': 'application/json',
-                                            },
-                                            body: JSON.stringify({
-                                                email: testEmailAddress,
-                                                template: settings.reminderEmailTemplate,
-                                            }),
+                                        const response = await fetch('/api/cron/admin-reminders', {
+                                            method: 'GET',
+                                            credentials: 'include',
                                         });
 
                                         const data = await response.json();
 
                                         if (response.ok) {
-                                            setTestEmailMessage({
+                                            setTestRemindersMessage({
                                                 type: 'success',
-                                                text: `Test email sent successfully to ${testEmailAddress}! Check your inbox.`,
+                                                text: `Reminders processed successfully! Check the Reminders page to see results. Processed ${data.usersProcessed || 0} users.`,
                                             });
-                                            setTestEmailAddress('');
                                         } else {
-                                            setTestEmailMessage({
+                                            setTestRemindersMessage({
                                                 type: 'error',
-                                                text: data.error || 'Failed to send test email',
+                                                text: data.error || 'Failed to test reminders',
                                             });
                                         }
                                     } catch (error: any) {
-                                        setTestEmailMessage({
+                                        setTestRemindersMessage({
                                             type: 'error',
-                                            text: `Error: ${error.message || 'Failed to send test email'}`,
+                                            text: `Error: ${error.message || 'Failed to test reminders. Make sure your dev server is running.'}`,
                                         });
                                     } finally {
-                                        setIsSendingTest(false);
+                                        setIsTestingReminders(false);
                                     }
                                 }}
-                                disabled={isSendingTest || !testEmailAddress}
+                                disabled={isTestingReminders}
                                 className="w-full"
                             >
-                                {isSendingTest ? (
+                                {isTestingReminders ? (
                                     <>
-                                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                                        Sending Test Email...
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Testing Reminders...
                                     </>
                                 ) : (
                                     <>
-                                        <Mail className="h-4 w-4 mr-2 text-pink-500" />
-                                        Send Test Email
+                                        <AlertCircle className="h-4 w-4 mr-2" />
+                                        Test Reminders Now
                                     </>
                                 )}
                             </Button>
+                            <p className="text-xs text-muted-foreground">
+                                This will check all your active reminder templates and create reminders for matching clients. Go to the Reminders page to see the results.
+                            </p>
                         </CardContent>
                     </Card>
 
@@ -1377,6 +1168,37 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                             </div>
                                         </CardContent>
                                     </Card>
+
+                                    {/* Clients Not Seen Template */}
+                                    <Card 
+                                        className={`cursor-pointer hover:border-primary transition-colors ${
+                                            selectedTemplateType === 'clients_not_seen' ? 'border-primary bg-primary/5' : ''
+                                        }`}
+                                        onClick={() => {
+                                            if (selectedTemplateType === 'clients_not_seen') {
+                                                setSelectedTemplateType("");
+                                                setIsAddingTemplate(false);
+                                            } else {
+                                                setSelectedTemplateType('clients_not_seen');
+                                                setIsAddingTemplate(true);
+                                                setNewTemplateTitle("Client Not Seen Recently");
+                                                setNewTemplateDescription("Remind you about clients who haven't had a session in the specified number of days");
+                                                setNewTemplateDays(30);
+                                            }
+                                        }}
+                                    >
+                                        <CardContent className="p-4">
+                                            <div className="flex items-start gap-3">
+                                                <Calendar className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" />
+                                                <div className="flex-1">
+                                                    <h5 className="font-semibold text-sm">Clients Not Seen in X Days</h5>
+                                                    <p className="text-xs text-muted-foreground mt-1">
+                                                        Reminds you about clients who haven't had a session recently
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
                                 </div>
                             </div>
 
@@ -1410,6 +1232,11 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                             {template.description}
                                                         </p>
                                                     )}
+                                                    {template.condition_config?.days && (
+                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                            Days: {template.condition_config.days}
+                                                        </p>
+                                                    )}
                                                     <p className="text-xs text-muted-foreground mt-1">
                                                         Frequency: {template.frequency || 'daily'}
                                                     </p>
@@ -1422,6 +1249,7 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                         setEditingTemplate(template);
                                                         setEditTemplateTitle(template.title);
                                                         setEditTemplateDescription(template.description || "");
+                                                        setEditTemplateDays(template.condition_config?.days || 30);
                                                         setIsAddingTemplate(false);
                                                         setSelectedTemplateType("");
                                                     }}
@@ -1493,6 +1321,7 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                 setEditingTemplate(null);
                                                 setEditTemplateTitle("");
                                                 setEditTemplateDescription("");
+                                                setEditTemplateDays(30);
                                             }}
                                         >
                                             Cancel
@@ -1518,6 +1347,23 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                 rows={3}
                                             />
                                         </div>
+                                        {editingTemplate?.condition_type === 'clients_not_seen' && (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="editTemplateDays">Days Since Last Session</Label>
+                                                <Input
+                                                    id="editTemplateDays"
+                                                    type="number"
+                                                    min="1"
+                                                    max="365"
+                                                    value={editTemplateDays}
+                                                    onChange={(e) => setEditTemplateDays(parseInt(e.target.value) || 30)}
+                                                    placeholder="30"
+                                                />
+                                                <p className="text-xs text-muted-foreground">
+                                                    Remind about clients who haven't had a session in this many days
+                                                </p>
+                                            </div>
+                                        )}
                                         <Button
                                             onClick={async () => {
                                                 if (!editTemplateTitle.trim()) {
@@ -1525,13 +1371,19 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                     return;
                                                 }
                                                 try {
+                                                    let conditionConfig = editingTemplate.condition_config || {};
+                                                    if (editingTemplate.condition_type === 'clients_not_seen') {
+                                                        conditionConfig = { ...conditionConfig, days: editTemplateDays };
+                                                    }
+                                                    
                                                     const response = await fetch('/api/custom-reminder-templates', {
                                                         method: 'PUT',
                                                         headers: { 'Content-Type': 'application/json' },
                                                         body: JSON.stringify({
                                                             id: editingTemplate.id,
                                                             title: editTemplateTitle,
-                                                            description: editTemplateDescription
+                                                            description: editTemplateDescription,
+                                                            conditionConfig: conditionConfig
                                                         })
                                                     });
                                                     if (response.ok) {
@@ -1574,6 +1426,7 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                 setSelectedTemplateType("");
                                                 setNewTemplateTitle("");
                                                 setNewTemplateDescription("");
+                                                setNewTemplateDays(30);
                                             }}
                                         >
                                             Cancel
@@ -1599,6 +1452,23 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                 rows={3}
                                             />
                                         </div>
+                                        {selectedTemplateType === 'clients_not_seen' && (
+                                            <div className="space-y-2">
+                                                <Label htmlFor="newTemplateDays">Days Since Last Session</Label>
+                                                <Input
+                                                    id="newTemplateDays"
+                                                    type="number"
+                                                    min="1"
+                                                    max="365"
+                                                    value={newTemplateDays}
+                                                    onChange={(e) => setNewTemplateDays(parseInt(e.target.value) || 30)}
+                                                    placeholder="30"
+                                                />
+                                                <p className="text-xs text-muted-foreground">
+                                                    Remind about clients who haven't had a session in this many days
+                                                </p>
+                                            </div>
+                                        )}
                                         <Button
                                             onClick={async () => {
                                                 if (!newTemplateTitle.trim()) {
@@ -1612,6 +1482,9 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                                     if (selectedTemplateType === 'session_notes') {
                                                         conditionType = 'session_notes';
                                                         conditionConfig = { checkPastSessions: true, requireNotes: true };
+                                                    } else if (selectedTemplateType === 'clients_not_seen') {
+                                                        conditionType = 'clients_not_seen';
+                                                        conditionConfig = { days: newTemplateDays };
                                                     }
                                                     
                                                     const response = await fetch('/api/custom-reminder-templates', {
@@ -1663,6 +1536,7 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                                             setSelectedTemplateType('custom');
                                             setNewTemplateTitle("");
                                             setNewTemplateDescription("");
+                                            setNewTemplateDays(30);
                                         }}
                                     >
                                         <Plus className="h-4 w-4 mr-2" />
@@ -1672,6 +1546,11 @@ Add this email to your whitelist to ensure it arrives in your inbox safely next 
                             )}
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                {/* Email Tab */}
+                <TabsContent value="email" className="space-y-4">
+                    <EmailTab />
                 </TabsContent>
 
                 {/* Backup & Data Tab */}

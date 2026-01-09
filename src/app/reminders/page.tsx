@@ -72,7 +72,77 @@ export default function RemindersPage() {
     const [adminReminders, setAdminReminders] = useState<AdminReminder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showFormsSection, setShowFormsSection] = useState(true);
+    const [dismissingReminderId, setDismissingReminderId] = useState<string | null>(null);
     const formsSectionRef = useRef<HTMLDivElement>(null);
+
+    const handleDismissReminder = async (reminderId: string, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card click
+        setDismissingReminderId(reminderId);
+        try {
+            const response = await fetch('/api/admin-reminders', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: reminderId, is_active: false }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to dismiss reminder');
+            }
+
+            // Remove from local state
+            setAdminReminders(prev => prev.filter(r => r.id !== reminderId));
+        } catch (error) {
+            console.error('Error dismissing reminder:', error);
+            alert('Failed to dismiss reminder. Please try again.');
+        } finally {
+            setDismissingReminderId(null);
+        }
+    };
+
+    // Calculate days since last session for a client - by name
+    const getDaysSinceLastSeen = (clientId: string | undefined, clientName?: string): number | null => {
+        // Get the name to search for
+        let nameToSearch = clientName?.trim().toLowerCase();
+        if (!nameToSearch && clientId) {
+            const client = clients.find(c => c.id === clientId);
+            nameToSearch = client?.name?.trim().toLowerCase();
+        }
+        
+        if (!nameToSearch) return null;
+        
+        // Find all past appointments for this client
+        const now = new Date();
+        const clientAppointments = appointments.filter((apt: Appointment) => {
+            // Match by client name (case-insensitive, trimmed)
+            const aptClientName = apt.clientName?.trim().toLowerCase();
+            if (!aptClientName || aptClientName !== nameToSearch) return false;
+            
+            // Check if it's a past session
+            const dateStr = apt.date.split('T')[0];
+            const [year, month, day] = dateStr.split('-').map(Number);
+            const aptDate = new Date(year, month - 1, day, 23, 59, 59); // End of day
+            return aptDate < now;
+        });
+
+        if (clientAppointments.length === 0) return null;
+
+        // Get the most recent past session
+        const sortedAppointments = [...clientAppointments].sort((a, b) => {
+            const dateA = new Date(a.date.split('T')[0]);
+            const dateB = new Date(b.date.split('T')[0]);
+            return dateB.getTime() - dateA.getTime();
+        });
+
+        const lastSession = sortedAppointments[0];
+        const dateStr = lastSession.date.split('T')[0];
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const lastSessionDate = new Date(year, month - 1, day);
+        
+        const diffTime = now.getTime() - lastSessionDate.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        
+        return diffDays >= 0 ? diffDays : null;
+    };
 
     useEffect(() => {
         loadData();
@@ -304,16 +374,16 @@ export default function RemindersPage() {
 
             <div className="space-y-6">
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Card className={reminders.length === 0 
                         ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
-                        : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
+                        : "border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-900"
                     }>
                         <CardHeader>
                             <CardTitle className={`flex items-center gap-2 ${
                                 reminders.length === 0
                                     ? "text-green-800 dark:text-green-200"
-                                    : "text-red-800 dark:text-red-200"
+                                    : "text-blue-800 dark:text-blue-200"
                             }`}>
                                 <AlertCircle className="h-5 w-5" />
                                 {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Clinical Notes
@@ -321,7 +391,7 @@ export default function RemindersPage() {
                             <CardDescription className={
                                 reminders.length === 0
                                     ? "text-green-700 dark:text-green-300"
-                                    : "text-red-700 dark:text-red-300"
+                                    : "text-blue-700 dark:text-blue-300"
                             }>
                                 {reminders.length === 0
                                     ? "Great! All your past sessions have therapist notes."
@@ -411,6 +481,47 @@ export default function RemindersPage() {
                             </CardDescription>
                         </CardHeader>
                     </Card>
+
+                    {(() => {
+                        // Count clients not seen recently reminders
+                        const clientsNotSeenReminders = adminReminders.filter(reminder => {
+                            const type = reminder.type || 'custom';
+                            if (type === 'custom') {
+                                return reminder.title?.includes('Not Seen') || reminder.title?.includes('not seen') || 
+                                    reminder.description?.includes('hasn\'t had a session') || 
+                                    reminder.description?.includes('not seen');
+                            }
+                            return type === 'clients_not_seen';
+                        });
+                        const count = clientsNotSeenReminders.length;
+
+                        return (
+                            <Card className={count === 0 
+                                ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
+                                : "border-purple-200 bg-purple-50 dark:bg-purple-950/20 dark:border-purple-900"
+                            }>
+                                <CardHeader>
+                                    <CardTitle className={`flex items-center gap-2 ${
+                                        count === 0
+                                            ? "text-green-800 dark:text-green-200"
+                                            : "text-purple-800 dark:text-purple-200"
+                                    }`}>
+                                        <Calendar className="h-5 w-5" />
+                                        {count} Client{count !== 1 ? 's' : ''} Not Seen Recently
+                                    </CardTitle>
+                                    <CardDescription className={
+                                        count === 0
+                                            ? "text-green-700 dark:text-green-300"
+                                            : "text-purple-700 dark:text-purple-300"
+                                    }>
+                                        {count === 0
+                                            ? "Great! All clients have been seen recently."
+                                            : "These clients haven't had a session in the specified number of days."}
+                                    </CardDescription>
+                                </CardHeader>
+                            </Card>
+                        );
+                    })()}
                 </div>
 
 
@@ -607,47 +718,140 @@ export default function RemindersPage() {
                 )}
 
                 {/* Custom Admin Reminders Section */}
-                {adminReminders.length > 0 && (
-                    <div className="space-y-4">
-                        <h2 className="text-2xl font-semibold flex items-center gap-2">
-                            <AlertCircle className="h-6 w-6 text-orange-600" />
-                            Custom Reminders ({adminReminders.length})
-                        </h2>
-                        <div className="space-y-3">
-                            {adminReminders.map((reminder) => (
-                                <Card key={reminder.id} className="border-orange-200 dark:border-orange-900">
-                                    <CardContent className="p-4">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <h3 className="font-semibold">{reminder.title}</h3>
-                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200">
-                                                        {reminder.type}
-                                                    </span>
-                                                </div>
-                                                {reminder.description && (
-                                                    <p className="text-sm text-muted-foreground mb-2">
-                                                        {reminder.description}
-                                                    </p>
-                                                )}
-                                                {reminder.clients && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Client: {reminder.clients.name}
-                                                    </p>
-                                                )}
-                                                {reminder.sessions && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Session: {new Date(reminder.sessions.date).toLocaleDateString()} - {reminder.sessions.type}
-                                                    </p>
-                                                )}
-                                            </div>
+                {(() => {
+                    // Filter out reminders that are already shown in other sections
+                    // (new_client_form and unpaid_session are already shown above)
+                    const filteredReminders = adminReminders.filter(reminder => 
+                        reminder.type !== 'new_client_form' && reminder.type !== 'unpaid_session'
+                    );
+
+                    if (filteredReminders.length === 0) return null;
+
+                    // Group reminders by type
+                    const grouped = filteredReminders.reduce((acc, reminder) => {
+                        // For 'custom' type, try to detect the actual type from title/description
+                        let type = reminder.type || 'custom';
+                        if (type === 'custom') {
+                            if (reminder.title?.includes('Not Seen') || reminder.title?.includes('not seen') || 
+                                reminder.description?.includes('hasn\'t had a session') || 
+                                reminder.description?.includes('Last session was') ||
+                                reminder.description?.includes('not seen')) {
+                                type = 'clients_not_seen';
+                            }
+                        }
+                        if (!acc[type]) acc[type] = [];
+                        acc[type].push(reminder);
+                        return acc;
+                    }, {} as Record<string, typeof filteredReminders>);
+
+                    return Object.entries(grouped)
+                        .filter(([type]) => type === 'clients_not_seen') // Only show known types that aren't already displayed
+                        .map(([type, reminders]) => {
+                            // Only handle clients_not_seen type
+                            if (type === 'clients_not_seen') {
+                                const config = {
+                                    title: 'Clients Not Seen Recently',
+                                    icon: Calendar,
+                                    iconColor: 'text-purple-600',
+                                    borderColor: 'border-purple-200 dark:border-purple-900',
+                                    tagColor: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200',
+                                    tagText: 'Not Seen',
+                                    cardIcon: Calendar,
+                                };
+
+                                const Icon = config.icon;
+                                const CardIcon = config.cardIcon;
+
+                                return (
+                                    <div key={type} className="space-y-4">
+                                        <h2 className="text-2xl font-semibold flex items-center gap-2">
+                                            <Icon className={`h-6 w-6 ${config.iconColor}`} />
+                                            {config.title}
+                                        </h2>
+                                        <div className="space-y-3">
+                                            {reminders.map((reminder) => {
+                                                const clientName = reminder.clients?.name || 'Unknown Client';
+                                                const clientId = reminder.client_id;
+                                                
+                                                // Calculate days since last seen from appointments
+                                                let daysSince = getDaysSinceLastSeen(clientId, clientName);
+                                                
+                                                // Fallback: extract from description if calculation returned null
+                                                if (daysSince === null && reminder.description) {
+                                                    const match = reminder.description.match(/(\d+)\s*days?\s*ago/i) ||
+                                                                  reminder.description.match(/in\s*(\d+)\s*days?/i);
+                                                    if (match && match[1]) {
+                                                        daysSince = parseInt(match[1], 10);
+                                                    }
+                                                }
+                                                
+                                                return (
+                                                    <Card 
+                                                        key={reminder.id} 
+                                                        className={`hover:shadow-md transition-shadow ${config.borderColor} cursor-pointer`}
+                                                        onClick={() => {
+                                                            if (reminder.client_id) {
+                                                                router.push(`/clients?client=${reminder.client_id}`);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <CardContent className="p-6">
+                                                            <div className="flex items-start justify-between gap-4">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2 mb-2">
+                                                                        <h3 className="text-lg font-semibold text-primary">
+                                                                            {clientName}
+                                                                        </h3>
+                                                                        {daysSince !== null && daysSince !== undefined ? (
+                                                                            <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                                                                {daysSince} {daysSince === 1 ? 'day' : 'days'} since last seen
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className={`text-xs px-2 py-1 rounded-full ${config.tagColor}`}>
+                                                                                {config.tagText}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="text-sm text-muted-foreground">
+                                                                        {daysSince !== null && daysSince !== undefined 
+                                                                            ? `Last session was ${daysSince} ${daysSince === 1 ? 'day' : 'days'} ago`
+                                                                            : 'No recent sessions found'}
+                                                                    </p>
+                                                                    {reminder.sessions && (
+                                                                        <p className="text-xs text-muted-foreground mt-1">
+                                                                            Session: {new Date(reminder.sessions.date).toLocaleDateString()} - {reminder.sessions.type}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0 hover:bg-red-100 dark:hover:bg-red-900/20"
+                                                                        onClick={(e) => handleDismissReminder(reminder.id, e)}
+                                                                        disabled={dismissingReminderId === reminder.id}
+                                                                        title="Dismiss reminder"
+                                                                    >
+                                                                        {dismissingReminderId === reminder.id ? (
+                                                                            <Clock className="h-4 w-4 animate-spin" />
+                                                                        ) : (
+                                                                            <X className="h-4 w-4 text-muted-foreground hover:text-red-600" />
+                                                                        )}
+                                                                    </Button>
+                                                                    <CardIcon className="h-5 w-5 text-muted-foreground" />
+                                                                </div>
+                                                            </div>
+                                                        </CardContent>
+                                                    </Card>
+                                                );
+                                            })}
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                                    </div>
+                                );
+                            }
+                            return null;
+                        });
+                })()}
             </div>
         </div>
     );
