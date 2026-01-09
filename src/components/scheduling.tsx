@@ -107,7 +107,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [isEditingAppointment, setIsEditingAppointment] = useState(false);
-    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
+    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; duration?: number; notes?: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
     
     // New client creation state
     const [isAddingNewClient, setIsAddingNewClient] = useState(false);
@@ -715,6 +715,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             date: dateStr,
             time: selectedAppointment.time,
             type: selectedAppointment.type,
+            duration: selectedAppointment.duration,
+            notes: selectedAppointment.notes || "",
             fee: selectedAppointment.fee,
             paymentMethod: selectedAppointment.paymentMethod || "Cash"
         });
@@ -775,7 +777,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         }
 
         // Check for time conflicts (excluding the current appointment)
-        const conflictCheck = checkTimeConflict(editedAppointment.date, editedAppointment.time, selectedAppointment.duration);
+        const durationToCheck = editedAppointment.duration !== undefined ? editedAppointment.duration : selectedAppointment.duration;
+        const conflictCheck = checkTimeConflict(editedAppointment.date, editedAppointment.time, durationToCheck);
         if (conflictCheck.hasConflict && conflictCheck.conflictingAppointment) {
             // Allow if it's the same appointment (editing the same slot)
             if (conflictCheck.conflictingAppointment.id !== selectedAppointment.id) {
@@ -798,6 +801,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                     date: dateWithTime, // Full ISO timestamp
                     time: timeFromDate, // HH:MM format for display
                     type: editedAppointment.type,
+                    duration: editedAppointment.duration !== undefined ? editedAppointment.duration : apt.duration,
+                    notes: editedAppointment.notes !== undefined ? editedAppointment.notes : apt.notes,
                     fee: editedAppointment.fee !== undefined ? editedAppointment.fee : apt.fee,
                     paymentMethod: editedAppointment.paymentMethod || apt.paymentMethod || "Cash"
                 };
@@ -1872,30 +1877,54 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 <div className="space-y-1">
                                     <Label className="text-xs text-muted-foreground uppercase">Time</Label>
                                     {isEditingAppointment && editedAppointment ? (
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                type="time"
-                                                value={editedAppointment.time}
-                                                onChange={(e) => {
-                                                    setEditedAppointment({
-                                                        ...editedAppointment,
-                                                        time: e.target.value
-                                                    });
-                                                    setBookingError(null);
-                                                }}
-                                                className="w-full"
-                                            />
-                                            <span className="text-sm text-muted-foreground">({selectedAppointment.duration}m)</span>
-                                        </div>
+                                        <Input
+                                            type="time"
+                                            value={editedAppointment.time}
+                                            onChange={(e) => {
+                                                setEditedAppointment({
+                                                    ...editedAppointment,
+                                                    time: e.target.value
+                                                });
+                                                setBookingError(null);
+                                            }}
+                                            className="w-full"
+                                        />
                                     ) : (
                                         <div className="flex items-center gap-2">
                                             <Clock className="h-4 w-4 text-muted-foreground" />
                                             <span className="font-medium">
-                                                {selectedAppointment.time} ({selectedAppointment.duration}m)
+                                                {selectedAppointment.time}
                                             </span>
                                         </div>
                                     )}
                                 </div>
+                                {isEditingAppointment && editedAppointment ? (
+                                    <div className="space-y-1 col-span-2">
+                                        <Label className="text-xs text-muted-foreground uppercase">Duration (minutes)</Label>
+                                        <Input
+                                            type="number"
+                                            min="15"
+                                            step="15"
+                                            value={editedAppointment.duration !== undefined ? editedAppointment.duration : selectedAppointment.duration}
+                                            onChange={(e) => {
+                                                setEditedAppointment({
+                                                    ...editedAppointment,
+                                                    duration: parseInt(e.target.value) || 60
+                                                });
+                                                setBookingError(null);
+                                            }}
+                                            className="w-full"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-1 col-span-2">
+                                        <Label className="text-xs text-muted-foreground uppercase">Duration</Label>
+                                        <div className="flex items-center gap-2">
+                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                            <span className="font-medium">{selectedAppointment.duration} minutes</span>
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="space-y-1 col-span-2">
                                     <Label className="text-xs text-muted-foreground uppercase">Session Type</Label>
                                     {isEditingAppointment && editedAppointment ? (
@@ -2039,14 +2068,27 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 </div>
                             )}
 
-                            {selectedAppointment.notes && (
-                                <div className="space-y-2">
-                                    <Label className="text-xs text-muted-foreground uppercase">Notes</Label>
-                                    <div className="p-3 bg-muted/50 rounded-md text-sm">
-                                        {selectedAppointment.notes}
+                            <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground uppercase">Notes</Label>
+                                {isEditingAppointment && editedAppointment ? (
+                                    <Textarea
+                                        value={editedAppointment.notes || ""}
+                                        onChange={(e) => {
+                                            setEditedAppointment({
+                                                ...editedAppointment,
+                                                notes: e.target.value
+                                            });
+                                        }}
+                                        placeholder="Add notes about this appointment..."
+                                        rows={3}
+                                        className="w-full"
+                                    />
+                                ) : (
+                                    <div className="p-3 bg-muted/50 rounded-md text-sm min-h-[3rem]">
+                                        {selectedAppointment.notes || <span className="text-muted-foreground italic">No notes</span>}
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
 
                             <div className="flex justify-between items-center pt-4 border-t">
                                 {isEditingAppointment ? (
