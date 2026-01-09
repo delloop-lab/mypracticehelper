@@ -2390,8 +2390,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                      note.content.trim() !== '' && 
                                                      note.transcript && 
                                                      note.content !== note.transcript && (
-                                                        <div className="whitespace-pre-wrap text-sm mb-3">
-                                                            {note.content}
+                                                        <div className="mb-3">
+                                                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                                                                🤖 AI Clinical Assessment:
+                                                            </p>
+                                                            <div className="whitespace-pre-wrap text-sm">
+                                                                {note.content}
+                                                            </div>
                                                         </div>
                                                     )}
                                                     
@@ -2405,6 +2410,18 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             </p>
                                                             <div className="whitespace-pre-wrap text-sm bg-muted/50 p-3 rounded text-muted-foreground">
                                                                 {note.transcript}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Show content with AI heading when there's content but no transcript */}
+                                                    {note.content && note.content.trim() !== '' && !note.transcript && (
+                                                        <div>
+                                                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                                                                🤖 AI Clinical Assessment:
+                                                            </p>
+                                                            <div className="whitespace-pre-wrap text-sm">
+                                                                {note.content}
                                                             </div>
                                                         </div>
                                                     )}
