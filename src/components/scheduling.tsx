@@ -1515,10 +1515,11 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleSubmit}>
-                        <div className="space-y-4 py-4">
-                            <div className="space-y-2">
+                        <div className="space-y-3 py-3">
+                            {/* Client Selection */}
+                            <div className="space-y-1">
                                 <div className="flex items-center justify-between">
-                                    <Label htmlFor="client">Client</Label>
+                                    <Label htmlFor="client" className="text-sm">Client</Label>
                                     {!isAddingNewClient ? (
                                         <button
                                             type="button"
@@ -1549,7 +1550,6 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                         value={formData.clientName}
                                         onValueChange={(value) => {
                                             const client = clients.find(c => c.name === value);
-                                            // Only use client.sessionFee if it's a valid positive number, otherwise use default fee
                                             const clientFee = (client?.sessionFee && client.sessionFee > 0) ? client.sessionFee : undefined;
                                             setFormData({
                                                 ...formData,
@@ -1575,24 +1575,20 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 ) : (
                                     <div className="space-y-2">
                                         <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <Input
-                                                    id="firstName"
-                                                    placeholder="First name"
-                                                    value={newClientData.firstName}
-                                                    onChange={(e) => setNewClientData({ ...newClientData, firstName: e.target.value })}
-                                                    required={isAddingNewClient}
-                                                />
-                                            </div>
-                                            <div>
-                                                <Input
-                                                    id="lastName"
-                                                    placeholder="Last name"
-                                                    value={newClientData.lastName}
-                                                    onChange={(e) => setNewClientData({ ...newClientData, lastName: e.target.value })}
-                                                    required={isAddingNewClient}
-                                                />
-                                            </div>
+                                            <Input
+                                                id="firstName"
+                                                placeholder="First name"
+                                                value={newClientData.firstName}
+                                                onChange={(e) => setNewClientData({ ...newClientData, firstName: e.target.value })}
+                                                required={isAddingNewClient}
+                                            />
+                                            <Input
+                                                id="lastName"
+                                                placeholder="Last name"
+                                                value={newClientData.lastName}
+                                                onChange={(e) => setNewClientData({ ...newClientData, lastName: e.target.value })}
+                                                required={isAddingNewClient}
+                                            />
                                         </div>
                                         <Input
                                             id="newClientEmail"
@@ -1605,147 +1601,125 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 )}
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="date">Date</Label>
-                                <DatePicker
-                                    value={formData.date ? new Date(formData.date) : undefined}
-                                    onChange={(date) => {
-                                        if (date) {
-                                            const dayOfWeek = date.getDay();
-                                            const isBlocked: boolean = !!(settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek));
-                                            
-                                            setFormData({
-                                                ...formData,
-                                                date: date.toISOString().split("T")[0],
-                                            });
+                            {/* Date & Time Row */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label htmlFor="date" className="text-sm">Date</Label>
+                                    <DatePicker
+                                        value={formData.date ? new Date(formData.date) : undefined}
+                                        onChange={(date) => {
+                                            if (date) {
+                                                const dayOfWeek = date.getDay();
+                                                const isBlocked: boolean = !!(settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek));
+                                                setFormData({
+                                                    ...formData,
+                                                    date: date.toISOString().split("T")[0],
+                                                });
+                                                setBookingError(null);
+                                                setPastDateWarningShown(false);
+                                                setBlockedDayWarningShown(isBlocked);
+                                            }
+                                        }}
+                                        blockedDays={settings.blockedDays}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="time" className="text-sm">Time</Label>
+                                    <Input
+                                        id="time"
+                                        type="time"
+                                        value={formData.time}
+                                        onChange={(e) => {
+                                            setFormData({ ...formData, time: e.target.value });
                                             setBookingError(null);
                                             setPastDateWarningShown(false);
-                                            setBlockedDayWarningShown(isBlocked);
-                                        }
-                                    }}
-                                    blockedDays={settings.blockedDays}
-                                />
-                                {blockedDayWarningShown && formData.date && (
-                                    <p className="text-xs text-amber-600 dark:text-amber-400">
-                                        ⚠️ This date falls on a non-working day. You can still create the appointment, but please note this is outside your usual working schedule.
-                                    </p>
-                                )}
+                                        }}
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            {blockedDayWarningShown && formData.date && (
+                                <p className="text-xs text-amber-600 dark:text-amber-400">
+                                    ⚠️ This date falls on a non-working day.
+                                </p>
+                            )}
+
+                            {/* Appointment Type & Venue Row */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label htmlFor="type" className="text-sm">Type</Label>
+                                    <Select
+                                        value={formData.type}
+                                        onValueChange={(value: string) => {
+                                            const selectedType = appointmentTypes.find(t => t.name === value);
+                                            const duration = selectedType?.duration || 60;
+                                            const selectedClient = formData.clientName ? clients.find(c => c.name === formData.clientName) : null;
+                                            const clientFee = (selectedClient?.sessionFee && selectedClient.sessionFee > 0) ? selectedClient.sessionFee : undefined;
+                                            const clientCurrency = selectedClient?.currency;
+                                            const fee = clientFee ?? (selectedType?.fee || settings.defaultFee || 80);
+                                            const currency = clientCurrency ?? (settings.currency || formData.currency || "EUR");
+                                            setFormData({ ...formData, type: value, duration, fee, currency });
+                                        }}
+                                    >
+                                        <SelectTrigger id="type">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {appointmentTypes
+                                                .filter(t => t.enabled && t.name)
+                                                .sort((a, b) => {
+                                                    if (a.name === "Discovery Session") return -1;
+                                                    if (b.name === "Discovery Session") return 1;
+                                                    return a.name.localeCompare(b.name);
+                                                })
+                                                .map(type => (
+                                                    <SelectItem key={type.name} value={type.name}>
+                                                        {type.name}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="venue" className="text-sm">Venue</Label>
+                                    <Select
+                                        value={formData.venue}
+                                        onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video") => {
+                                            setFormData({ ...formData, venue: value });
+                                        }}
+                                    >
+                                        <SelectTrigger id="venue">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="The Practice">The Practice</SelectItem>
+                                            <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                                            <SelectItem value="Phone">Phone</SelectItem>
+                                            <SelectItem value="Video">Video</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="time">Time</Label>
-                                <Input
-                                    id="time"
-                                    type="time"
-                                    value={formData.time}
-                                    onChange={(e) => {
-                                        setFormData({ ...formData, time: e.target.value });
-                                        setBookingError(null);
-                                        setPastDateWarningShown(false);
-                                    }}
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="type">Appointment Type</Label>
-                                <Select
-                                    value={formData.type}
-                                    onValueChange={(value: string) => {
-                                        // Find the selected appointment type to get its default duration and fee
-                                        const selectedType = appointmentTypes.find(t => t.name === value);
-                                        const duration = selectedType?.duration || 60;
-                                        
-                                        // Check if a client is selected and has custom fee/currency
-                                        const selectedClient = formData.clientName ? clients.find(c => c.name === formData.clientName) : null;
-                                        const clientFee = (selectedClient?.sessionFee && selectedClient.sessionFee > 0) ? selectedClient.sessionFee : undefined;
-                                        const clientCurrency = selectedClient?.currency;
-                                        
-                                        // Use client's custom fee/currency if available, otherwise use appointment type defaults
-                                        const fee = clientFee ?? (selectedType?.fee || settings.defaultFee || 80);
-                                        const currency = clientCurrency ?? (settings.currency || formData.currency || "EUR");
-
-                                        setFormData({
-                                            ...formData,
-                                            type: value,
-                                            duration,
-                                            fee,
-                                            currency
-                                        });
-                                    }}
-                                >
-                                    <SelectTrigger id="type">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {appointmentTypes
-                                            .filter(t => t.enabled && t.name) // Only show enabled types with valid names
-                                            .sort((a, b) => {
-                                                // Move Discovery Session to the top
-                                                if (a.name === "Discovery Session") return -1;
-                                                if (b.name === "Discovery Session") return 1;
-                                                // Sort alphabetically for the rest
-                                                return a.name.localeCompare(b.name);
-                                            })
-                                            .map(type => (
-                                                <SelectItem key={type.name} value={type.name}>
-                                                    {type.name}
-                                                </SelectItem>
-                                            ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="venue">Venue</Label>
-                                <Select
-                                    value={formData.venue}
-                                    onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video") => {
-                                        setFormData({ ...formData, venue: value });
-                                    }}
-                                >
-                                    <SelectTrigger id="venue">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="The Practice">The Practice</SelectItem>
-                                        <SelectItem value="WhatsApp">WhatsApp</SelectItem>
-                                        <SelectItem value="Phone">Phone</SelectItem>
-                                        <SelectItem value="Video">Video</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="duration">Duration (minutes)</Label>
-                                <Input
-                                    id="duration"
-                                    type="number"
-                                    min="15"
-                                    step="1"
-                                    value={formData.duration}
-                                    onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
-                                    required
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="notes">Notes (Optional)</Label>
-                                <Textarea
-                                    id="notes"
-                                    placeholder="Add any notes about this appointment..."
-                                    rows={3}
-                                    value={formData.notes}
-                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                                />
-                            </div>
-
-                            {formData.type !== "Discovery Session" && (
-                                <>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="fee">Session Fee</Label>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-lg font-bold">{(() => {
+                            {/* Duration & Fee Row */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label htmlFor="duration" className="text-sm">Duration (min)</Label>
+                                    <Input
+                                        id="duration"
+                                        type="number"
+                                        min="15"
+                                        step="1"
+                                        value={formData.duration}
+                                        onChange={(e) => setFormData({ ...formData, duration: parseInt(e.target.value) || 0 })}
+                                        required
+                                    />
+                                </div>
+                                {formData.type !== "Discovery Session" && (
+                                    <div className="space-y-1">
+                                        <Label htmlFor="fee" className="text-sm">Fee</Label>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-sm font-medium">{(() => {
                                                 switch (formData.currency) {
                                                     case 'USD': return '$';
                                                     case 'EUR': return '€';
@@ -1760,13 +1734,17 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 value={formData.fee}
                                                 onChange={(e) => setFormData({ ...formData, fee: parseInt(e.target.value) || 0 })}
                                                 required
-                                                className="w-24"
                                             />
                                         </div>
                                     </div>
+                                )}
+                            </div>
 
-                                    <div className="space-y-2">
-                                        <Label htmlFor="paymentMethod">Payment Method</Label>
+                            {/* Payment Method & Status Row */}
+                            {formData.type !== "Discovery Session" && (
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <Label htmlFor="paymentMethod" className="text-sm">Payment Method</Label>
                                         <Select
                                             value={formData.paymentMethod}
                                             onValueChange={(value: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit") => setFormData({ ...formData, paymentMethod: value })}
@@ -1782,9 +1760,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                             </SelectContent>
                                         </Select>
                                     </div>
-
-                                    <div className="space-y-2">
-                                        <Label htmlFor="paymentStatus">Payment Status</Label>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="paymentStatus" className="text-sm">Payment Status</Label>
                                         <Select
                                             value={formData.paymentStatus}
                                             onValueChange={(value: "paid" | "pending" | "unpaid") => setFormData({ ...formData, paymentStatus: value })}
@@ -1799,8 +1776,20 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                </>
+                                </div>
                             )}
+
+                            {/* Notes */}
+                            <div className="space-y-1">
+                                <Label htmlFor="notes" className="text-sm">Notes (Optional)</Label>
+                                <Textarea
+                                    id="notes"
+                                    placeholder="Add any notes..."
+                                    rows={2}
+                                    value={formData.notes}
+                                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                                />
+                            </div>
                         </div>
                         
                         {bookingError && (
