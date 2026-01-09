@@ -96,7 +96,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         date: new Date().toISOString().split('T')[0],
         time: "10:00",
         duration: 60,
-        type: "Singles Therapy Session" as Appointment['type'],
+        type: "Therapy Session" as Appointment['type'],
         notes: "",
         fee: 80,
         paymentMethod: "Cash" as "Cash" | "PayPal" | "Multibanco" | "Bank Deposit",
@@ -245,8 +245,8 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                 if (enabledTypes.length > 0) {
                     const currentTypeExists = enabledTypes.some((t: any) => t.name === formData.type);
                     if (!currentTypeExists) {
-                        // Reset to first enabled type (Singles Therapy Session if available, otherwise first)
-                        const defaultType = enabledTypes.find((t: any) => t.name === "Singles Therapy Session") || enabledTypes[0];
+                        // Reset to first enabled type (Therapy Session if available, otherwise first)
+                        const defaultType = enabledTypes.find((t: any) => t.name === "Therapy Session") || enabledTypes[0];
                         setFormData(prev => ({
                             ...prev,
                             type: defaultType.name,
@@ -288,7 +288,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             date: new Date().toISOString().split('T')[0],
             time: "10:00",
             duration: 60,
-            type: "Singles Therapy Session",
+            type: "Therapy Session",
             notes: "",
             fee: currentDefaultFee,
             paymentMethod: "Cash",
@@ -931,7 +931,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                             ...formData,
                             fee: currentDefaultFee,
                             currency: currentCurrency,
-                            type: "Singles Therapy Session" // Reset to default type
+                            type: "Therapy Session" // Reset to default type
                         });
                         setIsDialogOpen(true);
                     }}>
@@ -991,7 +991,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                     date: singleDayView || new Date().toISOString().split('T')[0],
                                                     fee: settings.defaultFee || 80,
                                                     currency: settings.currency || "EUR",
-                                                    type: "Singles Therapy Session" // Reset to default type
+                                                    type: "Therapy Session" // Reset to default type
                                                 });
                                                 setIsDialogOpen(true);
                                                 setSingleDayView(null);
@@ -1238,7 +1238,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 date: selectedDate,
                                                 fee: settings.defaultFee || 80,
                                                 currency: settings.currency || "EUR",
-                                                type: "Singles Therapy Session" // Reset to default type
+                                                type: "Therapy Session" // Reset to default type
                                             });
                                             setIsDialogOpen(true);
                                         }}
@@ -1295,7 +1295,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                 date: selectedDate,
                                                 fee: settings.defaultFee || 80,
                                                 currency: settings.currency || "EUR",
-                                                type: "Singles Therapy Session" // Reset to default type
+                                                type: "Therapy Session" // Reset to default type
                                             });
                                             setIsDialogOpen(true);
                                         }}
