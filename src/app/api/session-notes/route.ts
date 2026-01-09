@@ -225,7 +225,7 @@ export async function GET(request: Request) {
                     clientId: clientId,
                     sessionDate: session.date || session.created_at || new Date().toISOString(),
                     venue: venue,
-                    content: session.notes || '',
+                    content: session.notes ? `Note: ${session.notes}` : '',
                     createdDate: session.created_at || session.date || new Date().toISOString(),
                     source: 'session',
                     hasNotes: false
@@ -528,17 +528,18 @@ export async function GET(request: Request) {
                 
                 // Build content from session notes or session info
                 let content = '';
+                const sessionNotes = session.notes ? `Note: ${session.notes}` : '';
                 if (hasNotes) {
                     // If session has notes, the notes will be shown separately
                     // But we still show the session as a placeholder
-                    content = `Session scheduled: ${session.type || 'Therapy Session'}\n${session.notes || ''}`;
+                    content = `Session scheduled: ${session.type || 'Therapy Session'}${sessionNotes ? '\n' + sessionNotes : ''}`;
                 } else {
                     // Show session details for appointments without notes
                     const source = (metadata as any).source || 'manual';
                     const isCalendly = source === 'calendly';
                     content = isCalendly 
-                        ? `📅 Booked via Calendly\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes\n${session.notes || ''}`
-                        : `📅 Scheduled Session\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes\n${session.notes || ''}`;
+                        ? `📅 Booked via Calendly\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes${sessionNotes ? '\n' + sessionNotes : ''}`
+                        : `📅 Scheduled Session\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes${sessionNotes ? '\n' + sessionNotes : ''}`;
                 }
                 
                 return {
