@@ -22,7 +22,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File, Mic, Play } from "lucide-react";
+import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File, Mic, Play, MapPin } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
@@ -33,6 +33,7 @@ interface SessionNote {
     clientName: string;
     clientId?: string;
     sessionDate: string;
+    venue?: string; // Session venue (The Practice, WhatsApp, Phone, Video, Call Out)
     content: string; // Session notes content
     createdDate: string;
     transcript?: string; // Raw/natural transcript (for recordings or manual entry)
@@ -858,10 +859,14 @@ function SessionNotesContent() {
                                                         )}
                                                     </CardTitle>
                                                     <CardDescription>
-                                                        <div className="flex items-center gap-4 mt-1">
+                                                        <div className="flex items-center gap-4 mt-1 flex-wrap">
                                                             <span className="flex items-center gap-1">
                                                                 <Calendar className="h-3 w-3" />
                                                                 Session: {formatDate(note.sessionDate)}
+                                                            </span>
+                                                            <span className="flex items-center gap-1 text-xs">
+                                                                <MapPin className="h-3 w-3" />
+                                                                {note.venue || "The Practice"}
                                                             </span>
                                                             <span className="text-xs">
                                                                 Created: {formatDate(note.createdDate)}

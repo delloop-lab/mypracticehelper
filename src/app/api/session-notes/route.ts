@@ -65,11 +65,19 @@ export async function GET(request: Request) {
                 }
             }
             
-            // Map sessions to date strings
-            const sessionsMap: Record<string, string> = {};
+            // Map sessions to date and venue
+            const sessionsMap: Record<string, { date: string; venue: string }> = {};
             sessionsData.forEach((session: any) => {
                 if (session.id && session.date) {
-                    sessionsMap[session.id] = session.date;
+                    let venue = 'The Practice';
+                    try {
+                        if (session.metadata && typeof session.metadata === 'object') {
+                            venue = (session.metadata as any).venue || 'The Practice';
+                        }
+                    } catch (e) {
+                        venue = 'The Practice';
+                    }
+                    sessionsMap[session.id] = { date: session.date, venue };
                 }
             });
             
@@ -82,15 +90,18 @@ export async function GET(request: Request) {
                     ? clientsMap[clientId] 
                     : 'Unknown Client';
                 
-                const sessionDate = sessionId && sessionsMap[sessionId]
-                    ? sessionsMap[sessionId]
+                const sessionInfo = sessionId && sessionsMap[sessionId];
+                const sessionDate = sessionInfo
+                    ? sessionInfo.date
                     : note.created_at || new Date().toISOString();
+                const venue = sessionInfo ? sessionInfo.venue : 'The Practice';
                 
                 return {
                     id: note.id,
                     clientName: clientName,
                     clientId: clientId,
                     sessionDate: sessionDate,
+                    venue: venue,
                     content: note.content || '',
                     createdDate: note.created_at || new Date().toISOString(),
                     attachments: note.attachments || [],
@@ -199,11 +210,21 @@ export async function GET(request: Request) {
                     ? clientsMap[clientId] 
                     : 'Unassigned';
                 
+                let venue = 'The Practice';
+                try {
+                    if (session.metadata && typeof session.metadata === 'object') {
+                        venue = (session.metadata as any).venue || 'The Practice';
+                    }
+                } catch (e) {
+                    venue = 'The Practice';
+                }
+                
                 return {
                     id: `session-${session.id}`,
                     clientName: clientName,
                     clientId: clientId,
                     sessionDate: session.date || session.created_at || new Date().toISOString(),
+                    venue: venue,
                     content: session.notes || '',
                     createdDate: session.created_at || session.date || new Date().toISOString(),
                     source: 'session',
@@ -307,12 +328,20 @@ export async function GET(request: Request) {
             }
         }
 
-        // Build sessions map for session notes that reference sessions
-        let sessionsMap: Record<string, string> = {};
+        // Build sessions map for session notes that reference sessions (includes date and venue)
+        let sessionsMap: Record<string, { date: string; venue: string }> = {};
         if (sessionIds.length > 0) {
             const sessionIdsFromNotes = sessionsData.filter((s: any) => sessionIds.includes(s.id));
             sessionIdsFromNotes.forEach((session: any) => {
-                sessionsMap[session.id] = session.date;
+                let venue = 'The Practice';
+                try {
+                    if (session.metadata && typeof session.metadata === 'object') {
+                        venue = (session.metadata as any).venue || 'The Practice';
+                    }
+                } catch (e) {
+                    venue = 'The Practice';
+                }
+                sessionsMap[session.id] = { date: session.date, venue };
             });
         }
 
@@ -325,15 +354,18 @@ export async function GET(request: Request) {
                 ? clientsMap[clientId] 
                 : 'Unknown Client';
             
-            const sessionDate = sessionId && sessionsMap[sessionId]
-                ? sessionsMap[sessionId]
+            const sessionInfo = sessionId && sessionsMap[sessionId];
+            const sessionDate = sessionInfo
+                ? sessionInfo.date
                 : note.created_at || new Date().toISOString();
+            const venue = sessionInfo ? sessionInfo.venue : 'The Practice';
             
             return {
                 id: note.id,
                 clientName: clientName,
                 clientId: clientId,
                 sessionDate: sessionDate,
+                venue: venue,
                 content: note.content || '',
                 transcript: note.transcript || undefined,
                 audioURL: note.audio_url || undefined,
@@ -354,11 +386,19 @@ export async function GET(request: Request) {
         });
         const uniqueRecordings = Array.from(uniqueRecordingsMap.values());
 
-        // Build sessions map for recordings that are linked to sessions
-        const sessionsMapForRecordings: Record<string, string> = {};
+        // Build sessions map for recordings that are linked to sessions (includes date and venue)
+        const sessionsMapForRecordings: Record<string, { date: string; venue: string }> = {};
         sessionsData.forEach((session: any) => {
             if (session.id) {
-                sessionsMapForRecordings[session.id] = session.date;
+                let venue = 'The Practice';
+                try {
+                    if (session.metadata && typeof session.metadata === 'object') {
+                        venue = (session.metadata as any).venue || 'The Practice';
+                    }
+                } catch (e) {
+                    venue = 'The Practice';
+                }
+                sessionsMapForRecordings[session.id] = { date: session.date, venue };
             }
         });
 
@@ -368,10 +408,12 @@ export async function GET(request: Request) {
             const clientName = recording.clients?.name || (clientId && clientsMap[clientId]) || 'Unknown Client';
             const sessionId = recording.session_id;
             
-            // If recording is linked to a session, use the session date instead of recording created_at
+            // If recording is linked to a session, use the session date and venue
             let sessionDate = recording.created_at || new Date().toISOString();
+            let venue = 'The Practice';
             if (sessionId && sessionsMapForRecordings[sessionId]) {
-                sessionDate = sessionsMapForRecordings[sessionId];
+                sessionDate = sessionsMapForRecordings[sessionId].date;
+                venue = sessionsMapForRecordings[sessionId].venue;
             }
             
             // Extract transcript / notes content for session notes view
@@ -444,6 +486,7 @@ export async function GET(request: Request) {
                 clientName: clientName,
                 clientId: clientId,
                 sessionDate: sessionDate, // Use session date if linked, otherwise recording date
+                venue: venue,
                 content: transcriptContent,
                 transcript: rawTranscript || transcriptContent,
                 createdDate: recording.created_at || new Date().toISOString(),
@@ -503,6 +546,7 @@ export async function GET(request: Request) {
                     clientName: clientName,
                     clientId: clientId,
                     sessionDate: session.date || session.created_at || new Date().toISOString(),
+                    venue: (metadata as any).venue || 'The Practice',
                     content: content,
                     createdDate: session.created_at || session.date || new Date().toISOString(),
                     attachments: [],
