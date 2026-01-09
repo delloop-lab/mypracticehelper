@@ -867,7 +867,7 @@ function SessionNotesContent() {
                                                             <div className="flex items-center gap-4 flex-wrap">
                                                                 <span className="flex items-center gap-1 text-xs">
                                                                     <MapPin className="h-3 w-3" />
-                                                                    {note.venue || "The Practice"}
+                                                                    Venue: {note.venue || "The Practice"}
                                                                 </span>
                                                                 {note.source !== 'session' && (
                                                                     <span className="text-xs">
