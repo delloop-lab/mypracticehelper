@@ -859,24 +859,28 @@ function SessionNotesContent() {
                                                         )}
                                                     </CardTitle>
                                                     <CardDescription>
-                                                        <div className="flex items-center gap-4 mt-1 flex-wrap">
-                                                            <span className="flex items-center gap-1">
+                                                        <div className="flex flex-col gap-1 mt-1">
+                                                            <div className="flex items-center gap-1">
                                                                 <Calendar className="h-3 w-3" />
                                                                 Session: {formatDate(note.sessionDate)}
-                                                            </span>
-                                                            <span className="flex items-center gap-1 text-xs">
-                                                                <MapPin className="h-3 w-3" />
-                                                                {note.venue || "The Practice"}
-                                                            </span>
-                                                            <span className="text-xs">
-                                                                Created: {formatDate(note.createdDate)}
-                                                            </span>
-                                                            {note.source === 'recording' && (
-                                                                <span className="flex items-center gap-1 text-xs text-purple-600">
-                                                                    <Mic className="h-3 w-3" />
-                                                                    Voice Note
+                                                            </div>
+                                                            <div className="flex items-center gap-4 flex-wrap">
+                                                                <span className="flex items-center gap-1 text-xs">
+                                                                    <MapPin className="h-3 w-3" />
+                                                                    {note.venue || "The Practice"}
                                                                 </span>
-                                                            )}
+                                                                {note.source !== 'session' && (
+                                                                    <span className="text-xs">
+                                                                        Created: {formatDate(note.createdDate)}
+                                                                    </span>
+                                                                )}
+                                                                {note.source === 'recording' && (
+                                                                    <span className="flex items-center gap-1 text-xs text-purple-600">
+                                                                        <Mic className="h-3 w-3" />
+                                                                        Voice Note
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </CardDescription>
                                                 </div>
