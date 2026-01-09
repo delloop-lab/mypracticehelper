@@ -1,11 +1,11 @@
 "use client";
 
-import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
+import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered, Link as LinkIcon, Undo, Redo, Code } from 'lucide-react';
+import { Bold, Italic, Underline as UnderlineIcon, Strikethrough, List, ListOrdered, Link as LinkIcon, Undo, Redo } from 'lucide-react';
 import { Button } from './button';
 import { cn } from '@/lib/utils';
 import { useEffect } from 'react';
@@ -203,52 +203,6 @@ export function RichTextEditor({
             >
                 <EditorContent editor={editor} />
             </div>
-
-            {/* Bubble Menu for selected text */}
-            {editor && (
-                <BubbleMenu 
-                    editor={editor} 
-                    tippyOptions={{ duration: 100 }}
-                    className="flex gap-1 bg-popover border rounded-lg shadow-lg p-1"
-                >
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn("h-7 w-7", editor.isActive('bold') && "bg-muted")}
-                        onClick={() => editor.chain().focus().toggleBold().run()}
-                    >
-                        <Bold className="h-3 w-3" />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn("h-7 w-7", editor.isActive('italic') && "bg-muted")}
-                        onClick={() => editor.chain().focus().toggleItalic().run()}
-                    >
-                        <Italic className="h-3 w-3" />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn("h-7 w-7", editor.isActive('underline') && "bg-muted")}
-                        onClick={() => editor.chain().focus().toggleUnderline().run()}
-                    >
-                        <UnderlineIcon className="h-3 w-3" />
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn("h-7 w-7", editor.isActive('link') && "bg-muted")}
-                        onClick={addLink}
-                    >
-                        <LinkIcon className="h-3 w-3" />
-                    </Button>
-                </BubbleMenu>
-            )}
         </div>
     );
 }
