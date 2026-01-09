@@ -1085,7 +1085,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     </div>
                                 ))}
                             </div>
-                            <div className="flex-1 overflow-y-auto">
+                            <div className="flex-1 overflow-hidden">
                             {(() => {
                                 const daysInView = eachDayOfInterval({
                                     start: startOfWeek(startOfMonth(currentMonth)),
@@ -1093,7 +1093,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                 });
                                 const numberOfWeeks = Math.ceil(daysInView.length / 7);
                                 return (
-                                    <div className="grid grid-cols-7" style={{ gridTemplateRows: `repeat(${numberOfWeeks}, minmax(120px, auto))` }}>
+                                    <div className="grid grid-cols-7 h-full" style={{ gridTemplateRows: `repeat(${numberOfWeeks}, 1fr)` }}>
                                         {daysInView.map((day, dayIdx) => {
                                     const dayStr = format(day, 'yyyy-MM-dd');
                                     const dayAppointments = appointments.filter(apt => {
