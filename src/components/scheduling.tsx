@@ -291,6 +291,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             time: "10:00",
             duration: 60,
             type: "Therapy Session",
+            venue: "The Practice",
             notes: "",
             fee: currentDefaultFee,
             paymentMethod: "Cash",
