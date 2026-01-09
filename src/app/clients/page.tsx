@@ -2414,8 +2414,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </div>
                                                     )}
                                                     
-                                                    {/* Show content with AI heading when there's content but no transcript */}
-                                                    {note.content && note.content.trim() !== '' && !note.transcript && (
+                                                    {/* Show content with AI heading ONLY for recordings without transcript */}
+                                                    {note.content && note.content.trim() !== '' && !note.transcript && note.source === 'recording' && (
                                                         <div>
                                                             <p className="text-sm font-semibold text-muted-foreground mb-2">
                                                                 🤖 AI Clinical Assessment:
@@ -2423,6 +2423,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             <div className="whitespace-pre-wrap text-sm">
                                                                 {note.content}
                                                             </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Show regular content (session info) without AI heading */}
+                                                    {note.content && note.content.trim() !== '' && !note.transcript && note.source !== 'recording' && (
+                                                        <div className="whitespace-pre-wrap text-sm">
+                                                            {note.content}
                                                         </div>
                                                     )}
                                                     
