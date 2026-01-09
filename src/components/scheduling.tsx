@@ -1287,6 +1287,10 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                             {appointment.time}
                                                         </span>
                                                         <span>{appointment.duration}m</span>
+                                                        <span className="flex items-center gap-1">
+                                                            <MapPin className="h-3 w-3" />
+                                                            {appointment.venue || "The Practice"}
+                                                        </span>
                                                     </div>
                                                     {appointment.fee && (
                                                         <div className="text-[10px] text-muted-foreground leading-tight">
@@ -1461,7 +1465,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                                         </span>
                                                                     )}
                                                                 </div>
-                                                                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                                                                <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
                                                                     <span className="flex items-center gap-1">
                                                                         <Clock className={`h-3 w-3 ${pastDue ? 'text-red-500' : ''}`} />
                                                                         {appointment.time}
@@ -1473,6 +1477,10 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                                                         getAppointmentTypeColor(appointment.type).text
                                                                     )}>
                                                                         {appointment.type}
+                                                                    </span>
+                                                                    <span className="flex items-center gap-1 text-xs">
+                                                                        <MapPin className="h-3 w-3" />
+                                                                        {appointment.venue || "The Practice"}
                                                                     </span>
                                                                 </div>
                                                                 {appointment.fee && (
