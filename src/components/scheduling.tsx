@@ -40,6 +40,7 @@ interface Appointment {
     time: string;
     duration: number;
     type: string;
+    venue?: "The Practice" | "WhatsApp" | "Phone" | "Video";
     status: "confirmed" | "pending" | "cancelled";
     notes: string;
     fee?: number;
@@ -97,6 +98,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         time: "10:00",
         duration: 60,
         type: "Therapy Session" as Appointment['type'],
+        venue: "The Practice" as "The Practice" | "WhatsApp" | "Phone" | "Video",
         notes: "",
         fee: 80,
         paymentMethod: "Cash" as "Cash" | "PayPal" | "Multibanco" | "Bank Deposit",
@@ -107,7 +109,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [isEditingAppointment, setIsEditingAppointment] = useState(false);
-    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; duration?: number; notes?: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
+    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; venue?: "The Practice" | "WhatsApp" | "Phone" | "Video"; duration?: number; notes?: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
     
     // New client creation state
     const [isAddingNewClient, setIsAddingNewClient] = useState(false);
@@ -457,6 +459,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             time: formData.time, // Keep time for display
             duration: formData.duration,
             type: formData.type,
+            venue: formData.venue,
             status: "confirmed",
             notes: formData.notes,
             fee: formData.fee,
@@ -715,6 +718,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             date: dateStr,
             time: selectedAppointment.time,
             type: selectedAppointment.type,
+            venue: selectedAppointment.venue || "The Practice",
             duration: selectedAppointment.duration,
             notes: selectedAppointment.notes || "",
             fee: selectedAppointment.fee,
@@ -801,6 +805,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                     date: dateWithTime, // Full ISO timestamp
                     time: timeFromDate, // HH:MM format for display
                     type: editedAppointment.type,
+                    venue: editedAppointment.venue || apt.venue || "The Practice",
                     duration: editedAppointment.duration !== undefined ? editedAppointment.duration : apt.duration,
                     notes: editedAppointment.notes !== undefined ? editedAppointment.notes : apt.notes,
                     fee: editedAppointment.fee !== undefined ? editedAppointment.fee : apt.fee,
@@ -1692,6 +1697,26 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                             </div>
 
                             <div className="space-y-2">
+                                <Label htmlFor="venue">Venue</Label>
+                                <Select
+                                    value={formData.venue}
+                                    onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video") => {
+                                        setFormData({ ...formData, venue: value });
+                                    }}
+                                >
+                                    <SelectTrigger id="venue">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="The Practice">The Practice</SelectItem>
+                                        <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                                        <SelectItem value="Phone">Phone</SelectItem>
+                                        <SelectItem value="Video">Video</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
                                 <Label htmlFor="duration">Duration (minutes)</Label>
                                 <Input
                                     id="duration"
@@ -1925,7 +1950,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                         </div>
                                     </div>
                                 )}
-                                <div className="space-y-1 col-span-2">
+                                <div className="space-y-1">
                                     <Label className="text-xs text-muted-foreground uppercase">Session Type</Label>
                                     {isEditingAppointment && editedAppointment ? (
                                         <Select
@@ -1960,6 +1985,35 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     ) : (
                                         <div className="flex items-center gap-2">
                                             <span className="font-medium">{selectedAppointment.type}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-xs text-muted-foreground uppercase">Venue</Label>
+                                    {isEditingAppointment && editedAppointment ? (
+                                        <Select
+                                            value={editedAppointment.venue || "The Practice"}
+                                            onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video") => {
+                                                setEditedAppointment({
+                                                    ...editedAppointment,
+                                                    venue: value
+                                                });
+                                            }}
+                                        >
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="The Practice">The Practice</SelectItem>
+                                                <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                                                <SelectItem value="Phone">Phone</SelectItem>
+                                                <SelectItem value="Video">Video</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    ) : (
+                                        <div className="flex items-center gap-2">
+                                            <MapPin className="h-4 w-4 text-muted-foreground" />
+                                            <span className="font-medium">{selectedAppointment.venue || "The Practice"}</span>
                                         </div>
                                     )}
                                 </div>

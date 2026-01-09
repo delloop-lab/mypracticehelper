@@ -64,6 +64,7 @@ export async function GET(request: Request) {
                     time: new Date(session.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     duration: session.duration,
                     type: session.type,
+                    venue: (metadata as any).venue || 'The Practice',
                     status: (metadata as any).status || 'confirmed',
                     notes: session.notes,
                     clinicalNotes: '',
@@ -191,6 +192,7 @@ export async function GET(request: Request) {
                 time: new Date(session.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 duration: session.duration,
                 type: session.type,
+                venue: (metadata as any).venue || 'The Practice',
                 status: (metadata as any).status || 'confirmed',
                 notes: session.notes,
                 clinicalNotes: '', // Legacy field - session notes are now stored in session_notes table
@@ -274,7 +276,7 @@ export async function POST(request: Request) {
             }
             console.log(`[Appointments API POST] Appointment ${index + 1} - Final dateValue:`, dateValue);
             
-            // Store fee, currency, paymentStatus, and paymentMethod in metadata JSONB
+            // Store fee, currency, paymentStatus, paymentMethod, and venue in metadata JSONB
             const metadata: any = {};
             if (apt.fee !== undefined) metadata.fee = apt.fee;
             if (apt.currency) metadata.currency = apt.currency;
@@ -283,6 +285,7 @@ export async function POST(request: Request) {
                 metadata.paymentMethod = apt.paymentMethod;
                 console.log(`[Appointments API POST] Appointment ${index + 1} - Including paymentMethod:`, apt.paymentMethod);
             }
+            if (apt.venue) metadata.venue = apt.venue;
             if (apt.status) metadata.status = apt.status;
             
             console.log(`[Appointments API POST] Appointment ${index + 1} - Final metadata:`, metadata);
