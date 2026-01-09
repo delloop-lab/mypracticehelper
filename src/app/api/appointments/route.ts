@@ -354,7 +354,7 @@ export async function PUT(request: Request) {
         }
 
         const body = await request.json();
-        const { id, paymentStatus, fee, currency, paymentMethod } = body;
+        const { id, paymentStatus, fee, currency, paymentMethod, venue } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Appointment ID is required' }, { status: 400 });
@@ -388,7 +388,7 @@ export async function PUT(request: Request) {
             metadata = {};
         }
 
-        // Update fields - always save paymentStatus, fee, currency, and paymentMethod if provided
+        // Update fields - always save paymentStatus, fee, currency, paymentMethod, and venue if provided
         if (paymentStatus !== undefined) metadata.paymentStatus = paymentStatus;
         // Only update fee if it's provided and > 0 (don't overwrite with 0)
         if (fee !== undefined && fee !== null && fee > 0) {
@@ -396,6 +396,7 @@ export async function PUT(request: Request) {
         }
         if (currency !== undefined && currency !== null) metadata.currency = currency;
         if (paymentMethod !== undefined && paymentMethod !== null) metadata.paymentMethod = paymentMethod;
+        if (venue !== undefined && venue !== null) metadata.venue = venue;
 
 
         // Prepare update object

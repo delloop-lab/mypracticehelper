@@ -841,6 +841,9 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                     date: dateWithTime, 
                     time: editedAppointment.time, 
                     type: editedAppointment.type,
+                    venue: editedAppointment.venue || selectedAppointment.venue || "The Practice",
+                    duration: editedAppointment.duration !== undefined ? editedAppointment.duration : selectedAppointment.duration,
+                    notes: editedAppointment.notes !== undefined ? editedAppointment.notes : selectedAppointment.notes,
                     fee: editedAppointment.fee !== undefined ? editedAppointment.fee : selectedAppointment.fee,
                     paymentMethod: editedAppointment.paymentMethod || selectedAppointment.paymentMethod || "Cash"
                 });
