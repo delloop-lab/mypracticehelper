@@ -2,10 +2,6 @@
   "installCommand": "npm install --legacy-peer-deps",
   "crons": [
     {
-      "path": "/api/cron/send-reminders",
-      "schedule": "1 0 * * *"
-    },
-    {
       "path": "/api/cron/admin-reminders",
       "schedule": "0 2 * * *"
     }
