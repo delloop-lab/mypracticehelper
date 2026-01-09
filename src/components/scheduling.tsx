@@ -40,7 +40,7 @@ interface Appointment {
     time: string;
     duration: number;
     type: string;
-    venue?: "The Practice" | "WhatsApp" | "Phone" | "Video";
+    venue?: "The Practice" | "WhatsApp" | "Phone" | "Video" | "Call Out";
     status: "confirmed" | "pending" | "cancelled";
     notes: string;
     fee?: number;
@@ -98,7 +98,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
         time: "10:00",
         duration: 60,
         type: "Therapy Session" as Appointment['type'],
-        venue: "The Practice" as "The Practice" | "WhatsApp" | "Phone" | "Video",
+        venue: "The Practice" as "The Practice" | "WhatsApp" | "Phone" | "Video" | "Call Out",
         notes: "",
         fee: 80,
         paymentMethod: "Cash" as "Cash" | "PayPal" | "Multibanco" | "Bank Deposit",
@@ -109,7 +109,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [isEditingAppointment, setIsEditingAppointment] = useState(false);
-    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; venue?: "The Practice" | "WhatsApp" | "Phone" | "Video"; duration?: number; notes?: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
+    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; venue?: "The Practice" | "WhatsApp" | "Phone" | "Video" | "Call Out"; duration?: number; notes?: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
     
     // New client creation state
     const [isAddingNewClient, setIsAddingNewClient] = useState(false);
@@ -1695,20 +1695,21 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     <Label htmlFor="venue" className="text-sm">Venue</Label>
                                     <Select
                                         value={formData.venue}
-                                        onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video") => {
-                                            setFormData({ ...formData, venue: value });
-                                        }}
-                                    >
-                                        <SelectTrigger id="venue">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="The Practice">The Practice</SelectItem>
-                                            <SelectItem value="WhatsApp">WhatsApp</SelectItem>
-                                            <SelectItem value="Phone">Phone</SelectItem>
-                                            <SelectItem value="Video">Video</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video" | "Call Out") => {
+                                        setFormData({ ...formData, venue: value });
+                                    }}
+                                >
+                                    <SelectTrigger id="venue">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="The Practice">The Practice</SelectItem>
+                                        <SelectItem value="Call Out">Call Out</SelectItem>
+                                        <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                                        <SelectItem value="Phone">Phone</SelectItem>
+                                        <SelectItem value="Video">Video</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 </div>
                             </div>
 
@@ -1993,7 +1994,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                     {isEditingAppointment && editedAppointment ? (
                                         <Select
                                             value={editedAppointment.venue || "The Practice"}
-                                            onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video") => {
+                                            onValueChange={(value: "The Practice" | "WhatsApp" | "Phone" | "Video" | "Call Out") => {
                                                 setEditedAppointment({
                                                     ...editedAppointment,
                                                     venue: value
@@ -2005,6 +2006,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="The Practice">The Practice</SelectItem>
+                                                <SelectItem value="Call Out">Call Out</SelectItem>
                                                 <SelectItem value="WhatsApp">WhatsApp</SelectItem>
                                                 <SelectItem value="Phone">Phone</SelectItem>
                                                 <SelectItem value="Video">Video</SelectItem>
