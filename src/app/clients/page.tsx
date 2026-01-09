@@ -2391,7 +2391,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                      note.transcript && 
                                                      note.content !== note.transcript && (
                                                         <div className="mb-3">
-                                                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                                                            <p className="text-sm font-semibold text-muted-foreground mb-2">
                                                                 🤖 AI Clinical Assessment:
                                                             </p>
                                                             <div className="whitespace-pre-wrap text-sm">
@@ -2403,7 +2403,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     {/* Show transcript - for live recordings this is the only content, for uploaded it's the original */}
                                                     {note.transcript && (
                                                         <div className={note.content && note.content !== note.transcript ? "border-t pt-3 mt-3" : ""}>
-                                                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                                                            <p className="text-sm font-semibold text-muted-foreground mb-2">
                                                                 {note.content && note.content !== note.transcript 
                                                                     ? "📝 Original Transcript (Client's Words):" 
                                                                     : "📝 Original Transcript (Therapist's Words):"}
@@ -2417,7 +2417,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     {/* Show content with AI heading when there's content but no transcript */}
                                                     {note.content && note.content.trim() !== '' && !note.transcript && (
                                                         <div>
-                                                            <p className="text-xs font-medium text-muted-foreground mb-2">
+                                                            <p className="text-sm font-semibold text-muted-foreground mb-2">
                                                                 🤖 AI Clinical Assessment:
                                                             </p>
                                                             <div className="whitespace-pre-wrap text-sm">
