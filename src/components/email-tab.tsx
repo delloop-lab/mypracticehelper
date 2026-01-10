@@ -388,6 +388,8 @@ export function EmailTab() {
     const [clients, setClients] = useState<Client[]>([]);
     const [allClients, setAllClients] = useState<Client[]>([]);
     const [showClientsWithoutEmails, setShowClientsWithoutEmails] = useState(false);
+    const [clientEmailEdits, setClientEmailEdits] = useState<Record<string, string>>({});
+    const [savingClientId, setSavingClientId] = useState<string | null>(null);
     const [templates, setTemplates] = useState<EmailTemplate[]>([]);
     const [emailHistory, setEmailHistory] = useState<EmailHistoryEntry[]>([]);
     const [selectedClientId, setSelectedClientId] = useState<string>('');
@@ -450,6 +452,63 @@ export function EmailTab() {
             }
         } catch (error) {
             console.error('Error loading clients:', error);
+        }
+    };
+
+    const handleSaveClientEmail = async (clientId: string, email: string) => {
+        if (!email.trim()) {
+            alert('Please enter a valid email address');
+            return;
+        }
+
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            alert('Please enter a valid email address');
+            return;
+        }
+
+        setSavingClientId(clientId);
+        try {
+            const client = allClients.find(c => c.id === clientId);
+            if (!client) {
+                throw new Error('Client not found');
+            }
+
+            // Update the client with the new email
+            const updatedClient = { ...client, email: email.trim() };
+            const updatedClientsList = allClients.map(c =>
+                c.id === clientId ? updatedClient : c
+            );
+
+            // Save via API
+            const response = await fetch('/api/clients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(updatedClientsList),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to save client email');
+            }
+
+            // Update local state
+            setAllClients(updatedClientsList);
+            setClients(updatedClientsList.filter((c: Client) => c.email && c.email.trim() !== ''));
+
+            // Clear the edit state for this client
+            setClientEmailEdits(prev => {
+                const next = { ...prev };
+                delete next[clientId];
+                return next;
+            });
+        } catch (error: any) {
+            console.error('Error saving client email:', error);
+            alert(error.message || 'Failed to save email address. Please try again.');
+        } finally {
+            setSavingClientId(null);
         }
     };
 
@@ -1006,7 +1065,13 @@ export function EmailTab() {
             </Card>
 
             {/* Dialog for clients without emails */}
-            <Dialog open={showClientsWithoutEmails} onOpenChange={setShowClientsWithoutEmails}>
+            <Dialog open={showClientsWithoutEmails} onOpenChange={(open) => {
+                setShowClientsWithoutEmails(open);
+                if (!open) {
+                    // Clear email edits when dialog closes
+                    setClientEmailEdits({});
+                }
+            }}>
                 <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Clients Without Email Addresses</DialogTitle>
@@ -1020,11 +1085,11 @@ export function EmailTab() {
                             .map((client) => (
                                 <div
                                     key={client.id}
-                                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
+                                    className="flex items-center justify-between gap-4 p-3 border rounded-lg hover:bg-muted/50"
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <User className="h-5 w-5 text-muted-foreground" />
-                                        <div>
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                        <User className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                                        <div className="min-w-0 flex-1">
                                             <div className="font-medium">{client.name || 'Unnamed Client'}</div>
                                             {client.firstName && client.lastName && (
                                                 <div className="text-sm text-muted-foreground">
@@ -1033,8 +1098,32 @@ export function EmailTab() {
                                             )}
                                         </div>
                                     </div>
-                                    <div className="text-sm text-muted-foreground">
-                                        No email
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                        <Input
+                                            type="email"
+                                            placeholder="Enter email address"
+                                            value={clientEmailEdits[client.id] || ''}
+                                            onChange={(e) => setClientEmailEdits(prev => ({
+                                                ...prev,
+                                                [client.id]: e.target.value
+                                            }))}
+                                            className="w-64"
+                                            disabled={savingClientId === client.id}
+                                        />
+                                        <Button
+                                            onClick={() => handleSaveClientEmail(client.id, clientEmailEdits[client.id] || '')}
+                                            disabled={savingClientId === client.id || !clientEmailEdits[client.id]?.trim()}
+                                            size="sm"
+                                        >
+                                            {savingClientId === client.id ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                                    Saving...
+                                                </>
+                                            ) : (
+                                                'Save'
+                                            )}
+                                        </Button>
                                     </div>
                                 </div>
                             ))}
