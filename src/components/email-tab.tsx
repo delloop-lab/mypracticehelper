@@ -386,6 +386,8 @@ export function EmailTab() {
     
     // Compose state
     const [clients, setClients] = useState<Client[]>([]);
+    const [allClients, setAllClients] = useState<Client[]>([]);
+    const [showClientsWithoutEmails, setShowClientsWithoutEmails] = useState(false);
     const [templates, setTemplates] = useState<EmailTemplate[]>([]);
     const [emailHistory, setEmailHistory] = useState<EmailHistoryEntry[]>([]);
     const [selectedClientId, setSelectedClientId] = useState<string>('');
@@ -442,6 +444,7 @@ export function EmailTab() {
             const response = await fetch('/api/clients', { credentials: 'include' });
             if (response.ok) {
                 const data = await response.json();
+                setAllClients(data);
                 // Filter to only clients with email addresses
                 setClients(data.filter((c: Client) => c.email && c.email.trim() !== ''));
             }
@@ -978,12 +981,69 @@ export function EmailTab() {
                             <Download className="h-4 w-4" />
                             Download XLSX
                         </Button>
-                        <div className="flex items-center text-sm text-muted-foreground">
-                            ({clients.filter(c => c.email && c.email.trim() !== '').length} clients with emails)
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>({clients.filter(c => c.email && c.email.trim() !== '').length} clients with emails)</span>
+                            {(() => {
+                                const clientsWithoutEmails = allClients.filter(c => !c.email || c.email.trim() === '');
+                                if (clientsWithoutEmails.length > 0) {
+                                    return (
+                                        <span>
+                                            •{' '}
+                                            <button
+                                                onClick={() => setShowClientsWithoutEmails(true)}
+                                                className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                            >
+                                                {clientsWithoutEmails.length} without email
+                                            </button>
+                                        </span>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </div>
                     </div>
                 </CardContent>
             </Card>
+
+            {/* Dialog for clients without emails */}
+            <Dialog open={showClientsWithoutEmails} onOpenChange={setShowClientsWithoutEmails}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Clients Without Email Addresses</DialogTitle>
+                        <DialogDescription>
+                            The following {allClients.filter(c => !c.email || c.email.trim() === '').length} clients do not have email addresses configured.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 mt-4">
+                        {allClients
+                            .filter(c => !c.email || c.email.trim() === '')
+                            .map((client) => (
+                                <div
+                                    key={client.id}
+                                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <User className="h-5 w-5 text-muted-foreground" />
+                                        <div>
+                                            <div className="font-medium">{client.name || 'Unnamed Client'}</div>
+                                            {client.firstName && client.lastName && (
+                                                <div className="text-sm text-muted-foreground">
+                                                    {client.firstName} {client.lastName}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="text-sm text-muted-foreground">
+                                        No email
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setShowClientsWithoutEmails(false)}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Card>
                 <CardHeader>
