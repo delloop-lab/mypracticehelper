@@ -87,7 +87,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
     const [viewRange, setViewRange] = useState<'today' | '7days' | '30days' | 'all'>('all'); // Default to 'all' to show all appointments
-    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [singleDayView, setSingleDayView] = useState<string | null>(null);
 
