@@ -877,8 +877,10 @@ export function EmailTab() {
                 textBody: htmlToPlainText(newTemplateBody),
                 category: newTemplateCategory
             };
-            
+
             console.log('[EmailTab] Saving template:', method, payload);
+            console.log('[EmailTab] Template body contains userIcon:', newTemplateBody.includes('{{userIcon}}'));
+            console.log('[EmailTab] Template body HTML:', newTemplateBody);
             
             const response = await fetch('/api/email-templates', {
                 method,
@@ -939,7 +941,11 @@ export function EmailTab() {
         setEditingTemplate(template);
         setNewTemplateName(template.name);
         setNewTemplateSubject(template.subject);
-        setNewTemplateBody(template.html_body || template.text_body || '');
+        const templateBody = template.html_body || template.text_body || '';
+        console.log('[EmailTab] Loading template:', template.name);
+        console.log('[EmailTab] Template body from DB:', templateBody);
+        console.log('[EmailTab] Template body contains userIcon:', templateBody.includes('{{userIcon}}'));
+        setNewTemplateBody(templateBody);
         setNewTemplateCategory(template.category || 'general');
         setIsCreatingTemplate(true);
     };
@@ -990,8 +996,16 @@ export function EmailTab() {
         if (templateEditorRef.current) {
             const editor = templateEditorRef.current;
             // Insert the shortcode as plain text
-            // TipTap's insertContent handles plain text strings correctly
+            // TipTap's insertContent should preserve plain text shortcodes
+            // If the shortcode contains special characters, TipTap will HTML-encode them automatically
+            console.log('[EmailTab] Inserting variable:', variable);
             editor.chain().focus().insertContent(variable).run();
+            // Log what was actually inserted
+            setTimeout(() => {
+                const html = editor.getHTML();
+                console.log('[EmailTab] Editor HTML after insert:', html);
+                console.log('[EmailTab] HTML contains variable:', html.includes(variable));
+            }, 100);
         } else {
             // Fallback: append to state
             setNewTemplateBody(prev => prev + variable);
