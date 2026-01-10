@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
-import { Mail, Send, History, FileText, Plus, Trash2, Edit, Loader2, CheckCircle2, AlertCircle, Eye, User } from "lucide-react";
+import { Mail, Send, History, FileText, Plus, Trash2, Edit, Loader2, CheckCircle2, AlertCircle, Eye, User, Download } from "lucide-react";
+import * as XLSX from 'xlsx';
 import { motion } from "framer-motion";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
 import { useEditor } from '@tiptap/react';
@@ -866,6 +867,73 @@ export function EmailTab() {
         }
     };
 
+    const downloadClientEmailsCSV = () => {
+        // Filter clients with emails and parse names
+        const clientsWithEmails = clients
+            .filter(c => c.email && c.email.trim() !== '')
+            .map(c => {
+                // Parse name into firstName and lastName
+                const nameParts = (c.name || '').trim().split(' ');
+                const firstName = c.firstName || nameParts[0] || '';
+                const lastName = c.lastName || nameParts.slice(1).join(' ') || '';
+                
+                return {
+                    FirstName: firstName,
+                    LastName: lastName,
+                    Email: c.email
+                };
+            });
+
+        // Create CSV content
+        const headers = ['FirstName', 'LastName', 'Email'];
+        const csvRows = [
+            headers.join(','),
+            ...clientsWithEmails.map(row => 
+                [row.FirstName, row.LastName, row.Email].map(field => 
+                    `"${String(field).replace(/"/g, '""')}"`
+                ).join(',')
+            )
+        ];
+        const csvContent = csvRows.join('\n');
+
+        // Create blob and download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `client-emails-${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const downloadClientEmailsXLSX = () => {
+        // Filter clients with emails and parse names
+        const clientsWithEmails = clients
+            .filter(c => c.email && c.email.trim() !== '')
+            .map(c => {
+                // Parse name into firstName and lastName
+                const nameParts = (c.name || '').trim().split(' ');
+                const firstName = c.firstName || nameParts[0] || '';
+                const lastName = c.lastName || nameParts.slice(1).join(' ') || '';
+                
+                return {
+                    FirstName: firstName,
+                    LastName: lastName,
+                    Email: c.email
+                };
+            });
+
+        // Create workbook and worksheet
+        const worksheet = XLSX.utils.json_to_sheet(clientsWithEmails);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Client Emails');
+
+        // Generate file and download
+        XLSX.writeFile(workbook, `client-emails-${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     if (isLoading) {
         return (
             <Card>
@@ -879,6 +947,44 @@ export function EmailTab() {
 
     return (
         <div className="space-y-4">
+            {/* Email Marketing Export */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Download className="h-5 w-5" />
+                        Email Marketing Export
+                    </CardTitle>
+                    <CardDescription>
+                        Download client email list for use in email marketing platforms (CSV and XLSX formats)
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex gap-3">
+                        <Button
+                            onClick={downloadClientEmailsCSV}
+                            variant="outline"
+                            className="flex items-center gap-2"
+                            disabled={clients.filter(c => c.email && c.email.trim() !== '').length === 0}
+                        >
+                            <Download className="h-4 w-4" />
+                            Download CSV
+                        </Button>
+                        <Button
+                            onClick={downloadClientEmailsXLSX}
+                            variant="outline"
+                            className="flex items-center gap-2"
+                            disabled={clients.filter(c => c.email && c.email.trim() !== '').length === 0}
+                        >
+                            <Download className="h-4 w-4" />
+                            Download XLSX
+                        </Button>
+                        <div className="flex items-center text-sm text-muted-foreground">
+                            ({clients.filter(c => c.email && c.email.trim() !== '').length} clients with emails)
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
