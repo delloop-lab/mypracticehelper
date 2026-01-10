@@ -1155,6 +1155,72 @@ export function EmailTab() {
                 </DialogContent>
             </Dialog>
 
+            {/* Outgoing Emails Log */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <History className="h-5 w-5" />
+                        Outgoing Emails Log
+                    </CardTitle>
+                    <CardDescription>
+                        Recent outgoing emails sent to clients
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {isLoadingHistory ? (
+                        <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            <span className="ml-2 text-muted-foreground">Loading emails...</span>
+                        </div>
+                    ) : emailHistory.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                            <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p>No emails sent yet</p>
+                            <p className="text-sm">Sent emails will appear here</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                            {emailHistory.slice(0, 20).map(entry => (
+                                <div
+                                    key={entry.id}
+                                    className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                                >
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                            <span className="font-medium truncate">{entry.client_name || 'Unknown'}</span>
+                                            <span className="text-xs text-muted-foreground truncate">
+                                                ({entry.client_email})
+                                            </span>
+                                        </div>
+                                        <p className="text-sm font-medium truncate">{entry.subject}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {new Date(entry.sent_at).toLocaleString()}
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-1 ml-2 flex-shrink-0">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setViewingEmail(entry)}
+                                            className="h-8 w-8"
+                                            title="View email"
+                                        >
+                                            <Eye className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                            {emailHistory.length > 20 && (
+                                <div className="text-center pt-2 text-sm text-muted-foreground">
+                                    Showing 20 of {emailHistory.length} emails. View all in History tab.
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2">
