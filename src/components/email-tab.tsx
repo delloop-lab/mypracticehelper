@@ -814,11 +814,41 @@ export function EmailTab() {
             return;
         }
 
-        setIsSending(true);
-        setSendStatus(null);
-
         // Get selected appointment if any
         const selectedAppointment = clientAppointments.find(apt => apt.id === selectedAppointmentId);
+
+        // Check for unfilled shortcodes and warn user
+        const emailContent = emailSubject + ' ' + emailBody;
+        const missingFields: string[] = [];
+
+        // Check for appointment-related shortcodes without an appointment selected
+        if (!selectedAppointment) {
+            if (/\{\{appointmentDate\}\}/i.test(emailContent)) {
+                missingFields.push('Appointment Date (no appointment selected)');
+            }
+            if (/\{\{appointmentType\}\}/i.test(emailContent)) {
+                missingFields.push('Appointment Type (no appointment selected)');
+            }
+            if (/\{\{duration\}\}/i.test(emailContent)) {
+                missingFields.push('Duration (no appointment selected)');
+            }
+        }
+
+        // Check for practice logo without logo configured
+        if (/\{\{practiceLogo\}\}/i.test(emailContent) && !companyLogo) {
+            missingFields.push('Practice Logo (no logo uploaded in Settings)');
+        }
+
+        // If there are missing fields, ask for confirmation
+        if (missingFields.length > 0) {
+            const confirmMessage = `The following fields will show placeholder text:\n\n• ${missingFields.join('\n• ')}\n\nDo you want to send the email anyway?`;
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+        }
+
+        setIsSending(true);
+        setSendStatus(null);
 
         // Replace template variables with actual values
         const processedSubject = replaceTemplateVariables(emailSubject, client, selectedAppointment);
