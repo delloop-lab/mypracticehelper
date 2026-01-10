@@ -86,6 +86,7 @@ export default function SettingsPage() {
     const [editTemplateTitle, setEditTemplateTitle] = useState("");
     const [editTemplateDescription, setEditTemplateDescription] = useState("");
     const [editTemplateDays, setEditTemplateDays] = useState<number>(30);
+    const [editingFrequencyTemplateId, setEditingFrequencyTemplateId] = useState<string | null>(null);
 
     useEffect(() => {
         loadSettings();
@@ -1142,38 +1143,60 @@ export default function SettingsPage() {
                                                     )}
                                                     <div className="flex items-center gap-2 mt-1">
                                                         <span className="text-xs text-muted-foreground">Frequency:</span>
-                                                        <Select
-                                                            value={template.frequency || 'daily'}
-                                                            onValueChange={async (value: 'daily' | 'weekly' | 'monthly') => {
-                                                                try {
-                                                                    const response = await fetch('/api/custom-reminder-templates', {
-                                                                        method: 'PUT',
-                                                                        headers: { 'Content-Type': 'application/json' },
-                                                                        body: JSON.stringify({
-                                                                            id: template.id,
-                                                                            frequency: value
-                                                                        })
-                                                                    });
-                                                                    if (response.ok) {
-                                                                        const updatedTemplate = await response.json();
-                                                                        setCustomReminderTemplates(customReminderTemplates.map(t =>
-                                                                            t.id === template.id ? updatedTemplate : t
-                                                                        ));
+                                                        {editingFrequencyTemplateId === template.id ? (
+                                                            <Select
+                                                                value={template.frequency || 'daily'}
+                                                                onValueChange={async (value: 'daily' | 'weekly' | 'monthly') => {
+                                                                    try {
+                                                                        const response = await fetch('/api/custom-reminder-templates', {
+                                                                            method: 'PUT',
+                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                            body: JSON.stringify({
+                                                                                id: template.id,
+                                                                                frequency: value
+                                                                            })
+                                                                        });
+                                                                        if (response.ok) {
+                                                                            const updatedTemplate = await response.json();
+                                                                            setCustomReminderTemplates(customReminderTemplates.map(t =>
+                                                                                t.id === template.id ? updatedTemplate : t
+                                                                            ));
+                                                                            setEditingFrequencyTemplateId(null);
+                                                                        }
+                                                                    } catch (error) {
+                                                                        console.error('Error updating frequency:', error);
                                                                     }
-                                                                } catch (error) {
-                                                                    console.error('Error updating frequency:', error);
-                                                                }
-                                                            }}
-                                                        >
-                                                            <SelectTrigger className="h-7 w-24 text-xs">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="daily">Daily</SelectItem>
-                                                                <SelectItem value="weekly">Weekly</SelectItem>
-                                                                <SelectItem value="monthly">Monthly</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
+                                                                }}
+                                                                onOpenChange={(open) => {
+                                                                    if (!open) {
+                                                                        setEditingFrequencyTemplateId(null);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <SelectTrigger className="h-7 w-24 text-xs">
+                                                                    <SelectValue />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="daily">Daily</SelectItem>
+                                                                    <SelectItem value="weekly">Weekly</SelectItem>
+                                                                    <SelectItem value="monthly">Monthly</SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        ) : (
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-xs text-muted-foreground capitalize">
+                                                                    {template.frequency || 'daily'}
+                                                                </span>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="h-5 w-5 p-0"
+                                                                    onClick={() => setEditingFrequencyTemplateId(template.id)}
+                                                                >
+                                                                    <Edit className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             <div className="flex gap-2">
