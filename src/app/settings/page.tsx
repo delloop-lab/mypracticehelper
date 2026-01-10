@@ -1110,22 +1110,7 @@ export default function SettingsPage() {
                                 <h4 className="font-medium text-sm">Quick Start - Choose a Template</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     {/* Session Awaiting Notes Template */}
-                                    <Card 
-                                        className={`cursor-pointer hover:border-primary transition-colors ${
-                                            selectedTemplateType === 'session_notes' ? 'border-primary bg-primary/5' : ''
-                                        }`}
-                                        onClick={() => {
-                                            if (selectedTemplateType === 'session_notes') {
-                                                setSelectedTemplateType("");
-                                                setIsAddingTemplate(false);
-                                            } else {
-                                                setSelectedTemplateType('session_notes');
-                                                setIsAddingTemplate(true);
-                                                setNewTemplateTitle("Session Awaiting Notes");
-                                                setNewTemplateDescription("Remind user about past sessions that need clinical documentation");
-                                            }
-                                        }}
-                                    >
+                                    <Card>
                                         <CardContent className="p-4">
                                             <div className="flex items-start gap-3">
                                                 <FileText className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
@@ -1140,22 +1125,7 @@ export default function SettingsPage() {
                                     </Card>
 
                                     {/* New Client Form Template */}
-                                    <Card 
-                                        className={`cursor-pointer hover:border-primary transition-colors ${
-                                            selectedTemplateType === 'new_client_form' ? 'border-primary bg-primary/5' : ''
-                                        }`}
-                                        onClick={() => {
-                                            if (selectedTemplateType === 'new_client_form') {
-                                                setSelectedTemplateType("");
-                                                setIsAddingTemplate(false);
-                                            } else {
-                                                setSelectedTemplateType('new_client_form');
-                                                setIsAddingTemplate(true);
-                                                setNewTemplateTitle("New Client Form Required");
-                                                setNewTemplateDescription("Remind user to have New Client Forms ready for new clients to sign");
-                                            }
-                                        }}
-                                    >
+                                    <Card>
                                         <CardContent className="p-4">
                                             <div className="flex items-start gap-3">
                                                 <ClipboardCheck className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
@@ -1170,23 +1140,7 @@ export default function SettingsPage() {
                                     </Card>
 
                                     {/* Clients Not Seen Template */}
-                                    <Card 
-                                        className={`cursor-pointer hover:border-primary transition-colors ${
-                                            selectedTemplateType === 'clients_not_seen' ? 'border-primary bg-primary/5' : ''
-                                        }`}
-                                        onClick={() => {
-                                            if (selectedTemplateType === 'clients_not_seen') {
-                                                setSelectedTemplateType("");
-                                                setIsAddingTemplate(false);
-                                            } else {
-                                                setSelectedTemplateType('clients_not_seen');
-                                                setIsAddingTemplate(true);
-                                                setNewTemplateTitle("Client Not Seen Recently");
-                                                setNewTemplateDescription("Remind you about clients who haven't had a session in the specified number of days");
-                                                setNewTemplateDays(30);
-                                            }
-                                        }}
-                                    >
+                                    <Card>
                                         <CardContent className="p-4">
                                             <div className="flex items-start gap-3">
                                                 <Calendar className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" />
@@ -1413,137 +1367,6 @@ export default function SettingsPage() {
                                 </div>
                             )}
 
-                            {/* Add New Template Form */}
-                            {isAddingTemplate && !editingTemplate && (
-                                <div className="pt-4 border-t space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <h4 className="font-medium">Create Reminder from Template</h4>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => {
-                                                setIsAddingTemplate(false);
-                                                setSelectedTemplateType("");
-                                                setNewTemplateTitle("");
-                                                setNewTemplateDescription("");
-                                                setNewTemplateDays(30);
-                                            }}
-                                        >
-                                            Cancel
-                                        </Button>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <div className="space-y-2">
-                                            <Label htmlFor="newTemplateTitle">Reminder Title</Label>
-                                            <Input
-                                                id="newTemplateTitle"
-                                                value={newTemplateTitle}
-                                                onChange={(e) => setNewTemplateTitle(e.target.value)}
-                                                placeholder="Enter reminder title"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label htmlFor="newTemplateDescription">Description</Label>
-                                            <Textarea
-                                                id="newTemplateDescription"
-                                                value={newTemplateDescription}
-                                                onChange={(e) => setNewTemplateDescription(e.target.value)}
-                                                placeholder="Describe what this reminder will do"
-                                                rows={3}
-                                            />
-                                        </div>
-                                        {selectedTemplateType === 'clients_not_seen' && (
-                                            <div className="space-y-2">
-                                                <Label htmlFor="newTemplateDays">Days Since Last Session</Label>
-                                                <Input
-                                                    id="newTemplateDays"
-                                                    type="number"
-                                                    min="1"
-                                                    max="365"
-                                                    value={newTemplateDays}
-                                                    onChange={(e) => setNewTemplateDays(parseInt(e.target.value) || 30)}
-                                                    placeholder="30"
-                                                />
-                                                <p className="text-xs text-muted-foreground">
-                                                    Remind about clients who haven't had a session in this many days
-                                                </p>
-                                            </div>
-                                        )}
-                                        <Button
-                                            onClick={async () => {
-                                                if (!newTemplateTitle.trim()) {
-                                                    alert('Please enter a title');
-                                                    return;
-                                                }
-                                                try {
-                                                    let conditionType = 'new_client_form';
-                                                    let conditionConfig: any = { field: 'new_client_form_signed', value: false };
-                                                    
-                                                    if (selectedTemplateType === 'session_notes') {
-                                                        conditionType = 'session_notes';
-                                                        conditionConfig = { checkPastSessions: true, requireNotes: true };
-                                                    } else if (selectedTemplateType === 'clients_not_seen') {
-                                                        conditionType = 'clients_not_seen';
-                                                        conditionConfig = { days: newTemplateDays };
-                                                    }
-                                                    
-                                                    const response = await fetch('/api/custom-reminder-templates', {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({
-                                                            title: newTemplateTitle,
-                                                            description: newTemplateDescription,
-                                                            conditionType: conditionType,
-                                                            conditionConfig: conditionConfig,
-                                                            frequency: 'daily',
-                                                            isEnabled: true
-                                                        })
-                                                    });
-                                                    if (response.ok) {
-                                                        const newTemplate = await response.json();
-                                                        setCustomReminderTemplates([...customReminderTemplates, newTemplate]);
-                                                        setNewTemplateTitle("");
-                                                        setNewTemplateDescription("");
-                                                        setIsAddingTemplate(false);
-                                                        setSelectedTemplateType("");
-                                                    } else {
-                                                        const errorData = await response.json().catch(() => ({}));
-                                                        alert(errorData.error || 'Failed to create template');
-                                                    }
-                                                } catch (error) {
-                                                    console.error('Error creating template:', error);
-                                                    alert('Error creating template');
-                                                }
-                                            }}
-                                            disabled={!newTemplateTitle.trim()}
-                                            className="w-full"
-                                        >
-                                            <Plus className="h-4 w-4 mr-2" />
-                                            Create Reminder
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Custom Template (Advanced) */}
-                            {!isAddingTemplate && (
-                                <div className="pt-4 border-t">
-                                    <Button
-                                        variant="outline"
-                                        className="w-full"
-                                        onClick={() => {
-                                            setIsAddingTemplate(true);
-                                            setSelectedTemplateType('custom');
-                                            setNewTemplateTitle("");
-                                            setNewTemplateDescription("");
-                                            setNewTemplateDays(30);
-                                        }}
-                                    >
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        Create Custom Reminder (Advanced)
-                                    </Button>
-                                </div>
-                            )}
                         </CardContent>
                     </Card>
                 </TabsContent>
