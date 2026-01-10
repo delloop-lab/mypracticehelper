@@ -1100,10 +1100,10 @@ export default function SettingsPage() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <AlertCircle className="h-5 w-5 text-orange-500" />
-                                Custom Reminder Templates
+                                System Reminders
                             </CardTitle>
                             <CardDescription>
-                                Create custom reminders that check conditions daily and remind you until completed.
+                                Reminders that check conditions daily and remind you until completed.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
