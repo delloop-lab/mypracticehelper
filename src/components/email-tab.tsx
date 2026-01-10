@@ -985,9 +985,8 @@ export function EmailTab() {
 
     const insertComposeVariable = (variable: string) => {
         if (composeEditorRef.current) {
-            // Wrap shortcode in span to preserve it
-            const wrappedVariable = `<span class="shortcode">${variable}</span>`;
-            composeEditorRef.current.chain().focus().insertContent(wrappedVariable, { parseOptions: { preserveWhitespace: true } }).run();
+            // Insert the shortcode as plain text
+            composeEditorRef.current.chain().focus().insertContent(variable).run();
         } else {
             // Fallback: append to state
             setEmailBody(prev => prev + variable);
@@ -997,17 +996,20 @@ export function EmailTab() {
     const insertTemplateVariable = (variable: string) => {
         if (templateEditorRef.current) {
             const editor = templateEditorRef.current;
-            // Insert the shortcode wrapped in a span to preserve it in TipTap
-            // TipTap sometimes strips plain text with special characters like {{ }}
-            // Using a span ensures the text is preserved as HTML content
-            const wrappedVariable = `<span class="shortcode">${variable}</span>`;
-            console.log('[EmailTab] Inserting variable:', variable);
-            editor.chain().focus().insertContent(wrappedVariable, { parseOptions: { preserveWhitespace: true } }).run();
+            console.log('[EmailTab] ===== INSERTING VARIABLE =====');
+            console.log('[EmailTab] Variable to insert:', variable);
+            console.log('[EmailTab] Variable length:', variable.length);
+            console.log('[EmailTab] Variable char codes:', Array.from(variable).map(c => c.charCodeAt(0)));
+            
+            // Insert the shortcode as plain text
+            editor.chain().focus().insertContent(variable).run();
+            
             // Log what was actually inserted
             setTimeout(() => {
                 const html = editor.getHTML();
                 console.log('[EmailTab] Editor HTML after insert:', html);
                 console.log('[EmailTab] HTML contains variable:', html.includes(variable));
+                console.log('[EmailTab] ===== END INSERT =====');
             }, 100);
         } else {
             // Fallback: append to state
