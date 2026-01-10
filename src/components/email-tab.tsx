@@ -71,7 +71,7 @@ const TEMPLATE_VARIABLES = [
     { key: '{{appointmentDate}}', description: 'Appointment date/time' },
     { key: '{{appointmentType}}', description: 'Type of appointment' },
     { key: '{{duration}}', description: 'Session duration' },
-    { key: '{{userIcon}}', description: 'User/company icon (displays at bottom of email)' },
+    { key: '{{practiceLogo}}', description: 'Practice logo (displays in email)' },
 ];
 
 // Convert HTML to plain text while preserving line breaks
@@ -755,11 +755,13 @@ export function EmailTab() {
         result = result.replace(/\{\{firstName\}\}/gi, firstName);
         result = result.replace(/\{\{lastName\}\}/gi, lastName);
         
-        // Replace user icon - use company logo if available, otherwise use a default SVG user icon
-        const userIconHtml = companyLogo 
-            ? `<img src="${companyLogo}" alt="User Icon" style="max-width: 100px; height: auto; margin-top: 20px;" />`
-            : `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="margin-top: 20px;"><path d="M12 12C14.7614 12 17 9.76142 17 7C17 4.23858 14.7614 2 12 2C9.23858 2 7 4.23858 7 7C7 9.76142 9.23858 12 12 12Z" fill="#666666"/><path d="M12.0002 14.5C6.99016 14.5 2.91016 17.86 2.91016 22C2.91016 22.28 3.13016 22.5 3.41016 22.5H20.5902C20.8702 22.5 21.0902 22.28 21.0902 22C21.0902 17.86 17.0102 14.5 12.0002 14.5Z" fill="#666666"/></svg>`;
-        result = result.replace(/\{\{userIcon\}\}/gi, userIconHtml);
+        // Replace practice logo - use company logo if available, otherwise use a placeholder
+        const practiceLogoHtml = companyLogo 
+            ? `<img src="${companyLogo}" alt="Practice Logo" style="max-width: 150px; height: auto; margin-top: 20px;" />`
+            : `<div style="margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: center; color: #666;">[Practice Logo]</div>`;
+        result = result.replace(/\{\{practiceLogo\}\}/gi, practiceLogoHtml);
+        // Also support legacy {{userIcon}} for backwards compatibility
+        result = result.replace(/\{\{userIcon\}\}/gi, practiceLogoHtml);
         
         // Replace appointment variables
         if (appointment) {
