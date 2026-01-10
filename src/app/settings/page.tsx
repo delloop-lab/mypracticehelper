@@ -86,6 +86,7 @@ export default function SettingsPage() {
     const [editTemplateTitle, setEditTemplateTitle] = useState("");
     const [editTemplateDescription, setEditTemplateDescription] = useState("");
     const [editTemplateDays, setEditTemplateDays] = useState<number>(30);
+    const [editTemplateFrequency, setEditTemplateFrequency] = useState<'daily' | 'weekly' | 'monthly'>('daily');
     const [editingFrequencyTemplateId, setEditingFrequencyTemplateId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -1201,6 +1202,7 @@ export default function SettingsPage() {
                                                         setEditTemplateTitle(template.title);
                                                         setEditTemplateDescription(template.description || "");
                                                         setEditTemplateDays(template.condition_config?.days || 30);
+                                                        setEditTemplateFrequency((template.frequency || 'daily') as 'daily' | 'weekly' | 'monthly');
                                                         setIsAddingTemplate(false);
                                                         setSelectedTemplateType("");
                                                     }}
@@ -1273,6 +1275,7 @@ export default function SettingsPage() {
                                                 setEditTemplateTitle("");
                                                 setEditTemplateDescription("");
                                                 setEditTemplateDays(30);
+                                                setEditTemplateFrequency('daily');
                                             }}
                                         >
                                             Cancel
@@ -1297,6 +1300,22 @@ export default function SettingsPage() {
                                                 placeholder="Describe what this reminder will do"
                                                 rows={3}
                                             />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="editTemplateFrequency">Frequency</Label>
+                                            <Select
+                                                value={editTemplateFrequency}
+                                                onValueChange={(value: 'daily' | 'weekly' | 'monthly') => setEditTemplateFrequency(value)}
+                                            >
+                                                <SelectTrigger id="editTemplateFrequency">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="daily">Daily</SelectItem>
+                                                    <SelectItem value="weekly">Weekly</SelectItem>
+                                                    <SelectItem value="monthly">Monthly</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                         {editingTemplate?.condition_type === 'clients_not_seen' && (
                                             <div className="space-y-2">
@@ -1334,6 +1353,7 @@ export default function SettingsPage() {
                                                             id: editingTemplate.id,
                                                             title: editTemplateTitle,
                                                             description: editTemplateDescription,
+                                                            frequency: editTemplateFrequency,
                                                             conditionConfig: conditionConfig
                                                         })
                                                     });
@@ -1345,6 +1365,7 @@ export default function SettingsPage() {
                                                         setEditingTemplate(null);
                                                         setEditTemplateTitle("");
                                                         setEditTemplateDescription("");
+                                                        setEditTemplateFrequency('daily');
                                                     } else {
                                                         const errorData = await response.json().catch(() => ({}));
                                                         alert(errorData.error || 'Failed to update template');
