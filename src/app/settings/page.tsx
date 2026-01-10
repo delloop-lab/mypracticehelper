@@ -1105,57 +1105,6 @@ export default function SettingsPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            {/* Predefined Template Choices */}
-                            <div className="space-y-3">
-                                <h4 className="font-medium text-sm">Quick Start - Choose a Template</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {/* Session Awaiting Notes Template */}
-                                    <Card>
-                                        <CardContent className="p-4">
-                                            <div className="flex items-start gap-3">
-                                                <FileText className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
-                                                <div className="flex-1">
-                                                    <h5 className="font-semibold text-sm">Session Awaiting Notes</h5>
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        Reminds you about past sessions that need clinical documentation
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* New Client Form Template */}
-                                    <Card>
-                                        <CardContent className="p-4">
-                                            <div className="flex items-start gap-3">
-                                                <ClipboardCheck className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
-                                                <div className="flex-1">
-                                                    <h5 className="font-semibold text-sm">New Client Form Required</h5>
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        Reminds you about clients who haven't signed their New Client Forms
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-
-                                    {/* Clients Not Seen Template */}
-                                    <Card>
-                                        <CardContent className="p-4">
-                                            <div className="flex items-start gap-3">
-                                                <Calendar className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" />
-                                                <div className="flex-1">
-                                                    <h5 className="font-semibold text-sm">Clients Not Seen in X Days</h5>
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        Reminds you about clients who haven't had a session recently
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                </div>
-                            </div>
-
                             {/* Existing Templates */}
                             {isLoadingTemplates ? (
                                 <p className="text-sm text-muted-foreground">Loading templates...</p>
@@ -1191,9 +1140,41 @@ export default function SettingsPage() {
                                                             Days: {template.condition_config.days}
                                                         </p>
                                                     )}
-                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                        Frequency: {template.frequency || 'daily'}
-                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-xs text-muted-foreground">Frequency:</span>
+                                                        <Select
+                                                            value={template.frequency || 'daily'}
+                                                            onValueChange={async (value: 'daily' | 'weekly' | 'monthly') => {
+                                                                try {
+                                                                    const response = await fetch('/api/custom-reminder-templates', {
+                                                                        method: 'PUT',
+                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                        body: JSON.stringify({
+                                                                            id: template.id,
+                                                                            frequency: value
+                                                                        })
+                                                                    });
+                                                                    if (response.ok) {
+                                                                        const updatedTemplate = await response.json();
+                                                                        setCustomReminderTemplates(customReminderTemplates.map(t =>
+                                                                            t.id === template.id ? updatedTemplate : t
+                                                                        ));
+                                                                    }
+                                                                } catch (error) {
+                                                                    console.error('Error updating frequency:', error);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <SelectTrigger className="h-7 w-24 text-xs">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="daily">Daily</SelectItem>
+                                                                <SelectItem value="weekly">Weekly</SelectItem>
+                                                                <SelectItem value="monthly">Monthly</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
                                                 </div>
                                             <div className="flex gap-2">
                                                 <Button
