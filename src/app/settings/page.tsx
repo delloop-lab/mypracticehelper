@@ -1011,90 +1011,6 @@ export default function SettingsPage() {
 
                 {/* Reminders Tab */}
                 <TabsContent value="reminders" className="space-y-4">
-                    {/* Test Reminders Button */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <AlertCircle className="h-5 w-5 text-blue-500" />
-                                Test Reminders
-                            </CardTitle>
-                            <CardDescription>
-                                Manually trigger the reminder system to check for clients matching your reminder templates.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {testRemindersMessage && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className={`p-4 rounded-lg flex items-center gap-2 ${
-                                        testRemindersMessage.type === 'success'
-                                            ? 'bg-green-50 dark:bg-green-950/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-900'
-                                            : 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900'
-                                    }`}
-                                >
-                                    {testRemindersMessage.type === 'success' ? (
-                                        <CheckCircle2 className="h-5 w-5 text-green-500" />
-                                    ) : (
-                                        <AlertCircle className="h-5 w-5 text-red-500" />
-                                    )}
-                                    <span>{testRemindersMessage.text}</span>
-                                </motion.div>
-                            )}
-                            <Button
-                                onClick={async () => {
-                                    setIsTestingReminders(true);
-                                    setTestRemindersMessage(null);
-
-                                    try {
-                                        const response = await fetch('/api/cron/admin-reminders', {
-                                            method: 'GET',
-                                            credentials: 'include',
-                                        });
-
-                                        const data = await response.json();
-
-                                        if (response.ok) {
-                                            setTestRemindersMessage({
-                                                type: 'success',
-                                                text: `Reminders processed successfully! Check the Reminders page to see results. Processed ${data.usersProcessed || 0} users.`,
-                                            });
-                                        } else {
-                                            setTestRemindersMessage({
-                                                type: 'error',
-                                                text: data.error || 'Failed to test reminders',
-                                            });
-                                        }
-                                    } catch (error: any) {
-                                        setTestRemindersMessage({
-                                            type: 'error',
-                                            text: `Error: ${error.message || 'Failed to test reminders. Make sure your dev server is running.'}`,
-                                        });
-                                    } finally {
-                                        setIsTestingReminders(false);
-                                    }
-                                }}
-                                disabled={isTestingReminders}
-                                className="w-full"
-                            >
-                                {isTestingReminders ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Testing Reminders...
-                                    </>
-                                ) : (
-                                    <>
-                                        <AlertCircle className="h-4 w-4 mr-2" />
-                                        Test Reminders Now
-                                    </>
-                                )}
-                            </Button>
-                            <p className="text-xs text-muted-foreground">
-                                This will check all your active reminder templates and create reminders for matching clients. Go to the Reminders page to see the results.
-                            </p>
-                        </CardContent>
-                    </Card>
-
                     {/* Custom Reminder Templates */}
                     <Card>
                         <CardHeader>
@@ -1385,6 +1301,90 @@ export default function SettingsPage() {
                                 </div>
                             )}
 
+                        </CardContent>
+                    </Card>
+
+                    {/* Test Reminders Button */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <AlertCircle className="h-5 w-5 text-blue-500" />
+                                Test Reminders
+                            </CardTitle>
+                            <CardDescription>
+                                Manually trigger the reminder system to check for clients matching your reminder templates.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {testRemindersMessage && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className={`p-4 rounded-lg flex items-center gap-2 ${
+                                        testRemindersMessage.type === 'success'
+                                            ? 'bg-green-50 dark:bg-green-950/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-900'
+                                            : 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900'
+                                    }`}
+                                >
+                                    {testRemindersMessage.type === 'success' ? (
+                                        <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                    ) : (
+                                        <AlertCircle className="h-5 w-5 text-red-500" />
+                                    )}
+                                    <span>{testRemindersMessage.text}</span>
+                                </motion.div>
+                            )}
+                            <Button
+                                onClick={async () => {
+                                    setIsTestingReminders(true);
+                                    setTestRemindersMessage(null);
+
+                                    try {
+                                        const response = await fetch('/api/cron/admin-reminders', {
+                                            method: 'GET',
+                                            credentials: 'include',
+                                        });
+
+                                        const data = await response.json();
+
+                                        if (response.ok) {
+                                            setTestRemindersMessage({
+                                                type: 'success',
+                                                text: `Reminders processed successfully! Check the Reminders page to see results. Processed ${data.usersProcessed || 0} users.`,
+                                            });
+                                        } else {
+                                            setTestRemindersMessage({
+                                                type: 'error',
+                                                text: data.error || 'Failed to test reminders',
+                                            });
+                                        }
+                                    } catch (error: any) {
+                                        setTestRemindersMessage({
+                                            type: 'error',
+                                            text: `Error: ${error.message || 'Failed to test reminders. Make sure your dev server is running.'}`,
+                                        });
+                                    } finally {
+                                        setIsTestingReminders(false);
+                                    }
+                                }}
+                                disabled={isTestingReminders}
+                                className="w-full"
+                            >
+                                {isTestingReminders ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Testing Reminders...
+                                    </>
+                                ) : (
+                                    <>
+                                        <AlertCircle className="h-4 w-4 mr-2" />
+                                        Test Reminders Now
+                                    </>
+                                )}
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                                This will check all your active reminder templates and create reminders for matching clients. Go to the Reminders page to see the results.
+                            </p>
                         </CardContent>
                     </Card>
                 </TabsContent>
