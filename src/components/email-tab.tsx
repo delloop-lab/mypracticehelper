@@ -988,7 +988,10 @@ export function EmailTab() {
 
     const insertTemplateVariable = (variable: string) => {
         if (templateEditorRef.current) {
-            templateEditorRef.current.chain().focus().insertContent(variable).run();
+            const editor = templateEditorRef.current;
+            // Insert the shortcode as plain text
+            // TipTap's insertContent handles plain text strings correctly
+            editor.chain().focus().insertContent(variable).run();
         } else {
             // Fallback: append to state
             setNewTemplateBody(prev => prev + variable);
