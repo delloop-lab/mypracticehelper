@@ -1183,19 +1183,12 @@ export default function SettingsPage() {
                                                                 </SelectContent>
                                                             </Select>
                                                         ) : (
-                                                            <div className="flex items-center gap-1">
-                                                                <span className="text-xs text-muted-foreground capitalize">
-                                                                    {template.frequency || 'daily'}
-                                                                </span>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="h-5 w-5 p-0"
-                                                                    onClick={() => setEditingFrequencyTemplateId(template.id)}
-                                                                >
-                                                                    <Edit className="h-3 w-3" />
-                                                                </Button>
-                                                            </div>
+                                                            <span 
+                                                                className="text-xs text-muted-foreground capitalize cursor-pointer hover:text-foreground"
+                                                                onClick={() => setEditingFrequencyTemplateId(template.id)}
+                                                            >
+                                                                {template.frequency || 'daily'}
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </div>
