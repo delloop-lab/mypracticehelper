@@ -743,7 +743,10 @@ export default function SettingsPage() {
                 <TabsContent value="appointments" className="space-y-4">
                     <Card>
                         <CardHeader>
-                            <CardTitle>Appointment Types</CardTitle>
+                            <CardTitle className="flex items-center gap-2">
+                                <Calendar className="h-5 w-5 text-blue-500" />
+                                Appointment Types
+                            </CardTitle>
                             <CardDescription>
                                 Configure duration and fees for each appointment type
                             </CardDescription>
