@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
-import { Mail, Send, History, FileText, Plus, Trash2, Edit, Loader2, CheckCircle2, AlertCircle, Eye, User, Download } from "lucide-react";
+import { Mail, Send, History, FileText, Plus, Trash2, Edit, Loader2, CheckCircle2, AlertCircle, Eye, User, Download, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { motion } from "framer-motion";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
@@ -423,6 +423,15 @@ export function EmailTab() {
     // Loading states
     const [isLoading, setIsLoading] = useState(true);
     const [companyLogo, setCompanyLogo] = useState<string | undefined>(undefined);
+    
+    // Outgoing emails log state
+    const [showOutgoingEmailsLog, setShowOutgoingEmailsLog] = useState(false);
+    const [emailLogFilters, setEmailLogFilters] = useState({
+        firstName: '',
+        lastName: '',
+        email: '',
+        templateId: ''
+    });
 
     useEffect(() => {
         loadData();
@@ -552,6 +561,42 @@ export function EmailTab() {
         } finally {
             setIsLoadingHistory(false);
         }
+    };
+
+    // Filter email history based on filters
+    const getFilteredEmailHistory = () => {
+        if (!emailLogFilters.firstName && !emailLogFilters.lastName && !emailLogFilters.email && !emailLogFilters.templateId) {
+            return emailHistory;
+        }
+
+        return emailHistory.filter(entry => {
+            // Parse client name to get first and last name
+            const nameParts = (entry.client_name || '').trim().split(' ');
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+
+            // Filter by first name
+            if (emailLogFilters.firstName && !firstName.toLowerCase().includes(emailLogFilters.firstName.toLowerCase())) {
+                return false;
+            }
+
+            // Filter by last name
+            if (emailLogFilters.lastName && !lastName.toLowerCase().includes(emailLogFilters.lastName.toLowerCase())) {
+                return false;
+            }
+
+            // Filter by email
+            if (emailLogFilters.email && !entry.client_email.toLowerCase().includes(emailLogFilters.email.toLowerCase())) {
+                return false;
+            }
+
+            // Filter by template ID
+            if (emailLogFilters.templateId && entry.template_id !== emailLogFilters.templateId) {
+                return false;
+            }
+
+            return true;
+        });
     };
 
     const handleTemplateSelect = (templateId: string) => {
@@ -1030,61 +1075,6 @@ export function EmailTab() {
 
     return (
         <div className="space-y-4">
-            {/* Email Marketing Export */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Download className="h-5 w-5" />
-                        Email Marketing Export
-                    </CardTitle>
-                    <CardDescription>
-                        Download client email list for use in email marketing platforms (CSV and XLSX formats)
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex gap-3">
-                        <Button
-                            onClick={downloadClientEmailsCSV}
-                            variant="outline"
-                            className="flex items-center gap-2"
-                            disabled={clients.filter(c => c.email && c.email.trim() !== '').length === 0}
-                        >
-                            <Download className="h-4 w-4" />
-                            Download CSV
-                        </Button>
-                        <Button
-                            onClick={downloadClientEmailsXLSX}
-                            variant="outline"
-                            className="flex items-center gap-2"
-                            disabled={clients.filter(c => c.email && c.email.trim() !== '').length === 0}
-                        >
-                            <Download className="h-4 w-4" />
-                            Download XLSX
-                        </Button>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span>({clients.filter(c => c.email && c.email.trim() !== '').length} clients with emails)</span>
-                            {(() => {
-                                const clientsWithoutEmails = allClients.filter(c => !c.email || c.email.trim() === '');
-                                if (clientsWithoutEmails.length > 0) {
-                                    return (
-                                        <span>
-                                            •{' '}
-                                            <button
-                                                onClick={() => setShowClientsWithoutEmails(true)}
-                                                className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                                            >
-                                                {clientsWithoutEmails.length} without email
-                                            </button>
-                                        </span>
-                                    );
-                                }
-                                return null;
-                            })()}
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
             {/* Dialog for clients without emails */}
             <Dialog open={showClientsWithoutEmails} onOpenChange={(open) => {
                 setShowClientsWithoutEmails(open);
@@ -1154,72 +1144,6 @@ export function EmailTab() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            {/* Outgoing Emails Log */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <History className="h-5 w-5" />
-                        Outgoing Emails Log
-                    </CardTitle>
-                    <CardDescription>
-                        Recent outgoing emails sent to clients
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {isLoadingHistory ? (
-                        <div className="flex items-center justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                            <span className="ml-2 text-muted-foreground">Loading emails...</span>
-                        </div>
-                    ) : emailHistory.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No emails sent yet</p>
-                            <p className="text-sm">Sent emails will appear here</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                            {emailHistory.slice(0, 20).map(entry => (
-                                <div
-                                    key={entry.id}
-                                    className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                                >
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                            <span className="font-medium truncate">{entry.client_name || 'Unknown'}</span>
-                                            <span className="text-xs text-muted-foreground truncate">
-                                                ({entry.client_email})
-                                            </span>
-                                        </div>
-                                        <p className="text-sm font-medium truncate">{entry.subject}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            {new Date(entry.sent_at).toLocaleString()}
-                                        </p>
-                                    </div>
-                                    <div className="flex gap-1 ml-2 flex-shrink-0">
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setViewingEmail(entry)}
-                                            className="h-8 w-8"
-                                            title="View email"
-                                        >
-                                            <Eye className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            ))}
-                            {emailHistory.length > 20 && (
-                                <div className="text-center pt-2 text-sm text-muted-foreground">
-                                    Showing 20 of {emailHistory.length} emails. View all in History tab.
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
 
             <Card>
                 <CardHeader>
@@ -1619,6 +1543,236 @@ export function EmailTab() {
                         </TabsContent>
                     </Tabs>
                 </CardContent>
+            </Card>
+
+            {/* Email Marketing Export */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Download className="h-5 w-5" />
+                        Email Marketing Export
+                    </CardTitle>
+                    <CardDescription>
+                        Download client email list for use in email marketing platforms (CSV and XLSX formats)
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex gap-3">
+                        <Button
+                            onClick={downloadClientEmailsCSV}
+                            variant="outline"
+                            className="flex items-center gap-2"
+                            disabled={clients.filter(c => c.email && c.email.trim() !== '').length === 0}
+                        >
+                            <Download className="h-4 w-4" />
+                            Download CSV
+                        </Button>
+                        <Button
+                            onClick={downloadClientEmailsXLSX}
+                            variant="outline"
+                            className="flex items-center gap-2"
+                            disabled={clients.filter(c => c.email && c.email.trim() !== '').length === 0}
+                        >
+                            <Download className="h-4 w-4" />
+                            Download XLSX
+                        </Button>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>({clients.filter(c => c.email && c.email.trim() !== '').length} clients with emails)</span>
+                            {(() => {
+                                const clientsWithoutEmails = allClients.filter(c => !c.email || c.email.trim() === '');
+                                if (clientsWithoutEmails.length > 0) {
+                                    return (
+                                        <span>
+                                            •{' '}
+                                            <button
+                                                onClick={() => setShowClientsWithoutEmails(true)}
+                                                className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                            >
+                                                {clientsWithoutEmails.length} without email
+                                            </button>
+                                        </span>
+                                    );
+                                }
+                                return null;
+                            })()}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Outgoing Emails Log */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle className="flex items-center gap-2">
+                                <History className="h-5 w-5" />
+                                Outgoing Emails Log
+                            </CardTitle>
+                            <CardDescription>
+                                Recent outgoing emails sent to clients ({getFilteredEmailHistory().length} {getFilteredEmailHistory().length === 1 ? 'email' : 'emails'})
+                            </CardDescription>
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowOutgoingEmailsLog(!showOutgoingEmailsLog)}
+                            className="flex items-center gap-2"
+                        >
+                            {showOutgoingEmailsLog ? (
+                                <>
+                                    <ChevronUp className="h-4 w-4" />
+                                    Hide
+                                </>
+                            ) : (
+                                <>
+                                    <ChevronDown className="h-4 w-4" />
+                                    Show
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </CardHeader>
+                {showOutgoingEmailsLog && (
+                    <CardContent>
+                        {/* Filters */}
+                        <div className="mb-4 p-4 border rounded-lg bg-muted/30">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Filter className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm font-medium">Filters</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label htmlFor="filter-firstname" className="text-xs">First Name</Label>
+                                    <Input
+                                        id="filter-firstname"
+                                        placeholder="Filter by first name..."
+                                        value={emailLogFilters.firstName}
+                                        onChange={(e) => setEmailLogFilters(prev => ({ ...prev, firstName: e.target.value }))}
+                                        className="h-8"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="filter-lastname" className="text-xs">Last Name</Label>
+                                    <Input
+                                        id="filter-lastname"
+                                        placeholder="Filter by last name..."
+                                        value={emailLogFilters.lastName}
+                                        onChange={(e) => setEmailLogFilters(prev => ({ ...prev, lastName: e.target.value }))}
+                                        className="h-8"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="filter-email" className="text-xs">Email Address</Label>
+                                    <Input
+                                        id="filter-email"
+                                        placeholder="Filter by email..."
+                                        value={emailLogFilters.email}
+                                        onChange={(e) => setEmailLogFilters(prev => ({ ...prev, email: e.target.value }))}
+                                        className="h-8"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label htmlFor="filter-template" className="text-xs">Template</Label>
+                                    <Select
+                                        value={emailLogFilters.templateId}
+                                        onValueChange={(value) => setEmailLogFilters(prev => ({ ...prev, templateId: value }))}
+                                    >
+                                        <SelectTrigger className="h-8">
+                                            <SelectValue placeholder="All templates" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">All templates</SelectItem>
+                                            {templates.map(template => (
+                                                <SelectItem key={template.id} value={template.id}>
+                                                    {template.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            {(emailLogFilters.firstName || emailLogFilters.lastName || emailLogFilters.email || emailLogFilters.templateId) && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setEmailLogFilters({ firstName: '', lastName: '', email: '', templateId: '' })}
+                                    className="mt-3"
+                                >
+                                    Clear Filters
+                                </Button>
+                            )}
+                        </div>
+
+                        {/* Email List */}
+                        {isLoadingHistory ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                <span className="ml-2 text-muted-foreground">Loading emails...</span>
+                            </div>
+                        ) : getFilteredEmailHistory().length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                <p>{emailHistory.length === 0 ? 'No emails sent yet' : 'No emails match the filters'}</p>
+                                <p className="text-sm">{emailHistory.length === 0 ? 'Sent emails will appear here' : 'Try adjusting your filters'}</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                {getFilteredEmailHistory().slice(0, 50).map(entry => {
+                                    const nameParts = (entry.client_name || '').trim().split(' ');
+                                    const firstName = nameParts[0] || '';
+                                    const lastName = nameParts.slice(1).join(' ') || '';
+                                    const templateName = templates.find(t => t.id === entry.template_id)?.name || 'No template';
+
+                                    return (
+                                        <div
+                                            key={entry.id}
+                                            className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                                        >
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                    <span className="font-medium truncate">{entry.client_name || 'Unknown'}</span>
+                                                    <span className="text-xs text-muted-foreground truncate">
+                                                        ({entry.client_email})
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm font-medium truncate">{entry.subject}</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {new Date(entry.sent_at).toLocaleString()}
+                                                    </p>
+                                                    {entry.template_id && (
+                                                        <>
+                                                            <span className="text-xs text-muted-foreground">•</span>
+                                                            <span className="text-xs text-muted-foreground">Template: {templateName}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1 ml-2 flex-shrink-0">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => setViewingEmail(entry)}
+                                                    className="h-8 w-8"
+                                                    title="View email"
+                                                >
+                                                    <Eye className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {getFilteredEmailHistory().length > 50 && (
+                                    <div className="text-center pt-2 text-sm text-muted-foreground">
+                                        Showing 50 of {getFilteredEmailHistory().length} emails. View all in History tab.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                )}
             </Card>
 
             {/* Create/Edit Template Dialog */}
