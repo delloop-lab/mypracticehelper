@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
-import { Users, Mic, Calendar, Landmark, FileText, Bell, X, Link as LinkIcon, Archive, Menu, LayoutDashboard } from "lucide-react";
+import { Users, Mic, Calendar, Landmark, FileText, Bell, X, Link as LinkIcon, Archive, Menu, LayoutDashboard, NotebookPen } from "lucide-react";
 import Image from "next/image";
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ const sidebarItems = [
     {
         title: "Sessions",
         href: "/session-notes",
-        icon: FileText,
+        icon: NotebookPen,
         color: "text-green-500",
     },
     {
