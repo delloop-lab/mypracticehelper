@@ -825,20 +825,19 @@ export function EmailTab() {
 
         // Check for appointment-related shortcodes without an appointment selected
         if (!selectedAppointment) {
-            if (/\{\{appointmentDate\}\}/i.test(emailContent)) {
-                missingFields.push('Appointment Date (no appointment selected)');
-            }
-            if (/\{\{appointmentType\}\}/i.test(emailContent)) {
-                missingFields.push('Appointment Type (no appointment selected)');
-            }
-            if (/\{\{duration\}\}/i.test(emailContent)) {
-                missingFields.push('Duration (no appointment selected)');
+            const hasAppointmentFields = 
+                /\{\{appointmentDate\}\}/i.test(emailContent) ||
+                /\{\{appointmentType\}\}/i.test(emailContent) ||
+                /\{\{duration\}\}/i.test(emailContent);
+            
+            if (hasAppointmentFields) {
+                missingFields.push('Select a session from "Link to Session" to fill appointment details');
             }
         }
 
         // Check for practice logo without logo configured
         if (/\{\{practiceLogo\}\}/i.test(emailContent) && !companyLogo) {
-            missingFields.push('Practice Logo (no logo uploaded in Settings)');
+            missingFields.push('Upload a logo in Settings to display your practice logo');
         }
 
         // If there are missing fields, show warning modal
@@ -1219,26 +1218,29 @@ export function EmailTab() {
                             Missing Information
                         </DialogTitle>
                         <DialogDescription>
-                            The following fields will show placeholder text in your email:
+                            Some template fields cannot be filled. To fix this:
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-2 my-4">
                         {missingFieldsList.map((field, index) => (
                             <div
                                 key={index}
-                                className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded-md text-sm"
+                                className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm"
                             >
-                                <span className="text-amber-600 font-medium">•</span>
+                                <AlertCircle className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
                                 <span className="text-amber-800">{field}</span>
                             </div>
                         ))}
                     </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        If you send anyway, placeholder text will appear in the email.
+                    </p>
                     <DialogFooter className="gap-2 sm:gap-0">
                         <Button 
                             variant="outline" 
                             onClick={() => setShowMissingFieldsWarning(false)}
                         >
-                            Cancel
+                            Go Back
                         </Button>
                         <Button 
                             onClick={() => {
