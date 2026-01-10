@@ -402,7 +402,9 @@ export function EmailTab() {
     const [emailBody, setEmailBody] = useState<string>('');
     const [isSending, setIsSending] = useState(false);
     const [sendStatus, setSendStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
-    
+    const [showMissingFieldsWarning, setShowMissingFieldsWarning] = useState(false);
+    const [missingFieldsList, setMissingFieldsList] = useState<string[]>([]);
+
     // Template management state
     const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
@@ -839,13 +841,22 @@ export function EmailTab() {
             missingFields.push('Practice Logo (no logo uploaded in Settings)');
         }
 
-        // If there are missing fields, ask for confirmation
+        // If there are missing fields, show warning modal
         if (missingFields.length > 0) {
-            const confirmMessage = `The following fields will show placeholder text:\n\n• ${missingFields.join('\n• ')}\n\nDo you want to send the email anyway?`;
-            if (!confirm(confirmMessage)) {
-                return;
-            }
+            setMissingFieldsList(missingFields);
+            setShowMissingFieldsWarning(true);
+            return;
         }
+
+        // No missing fields, proceed with sending
+        await executeSendEmail();
+    };
+
+    const executeSendEmail = async () => {
+        const client = clients.find(c => c.id === selectedClientId);
+        if (!client) return;
+
+        const selectedAppointment = clientAppointments.find(apt => apt.id === selectedAppointmentId);
 
         setIsSending(true);
         setSendStatus(null);
@@ -1195,6 +1206,48 @@ export function EmailTab() {
                     </div>
                     <DialogFooter>
                         <Button onClick={() => setShowClientsWithoutEmails(false)}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Warning dialog for missing fields in email */}
+            <Dialog open={showMissingFieldsWarning} onOpenChange={setShowMissingFieldsWarning}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-amber-600">
+                            <AlertCircle className="h-5 w-5" />
+                            Missing Information
+                        </DialogTitle>
+                        <DialogDescription>
+                            The following fields will show placeholder text in your email:
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 my-4">
+                        {missingFieldsList.map((field, index) => (
+                            <div
+                                key={index}
+                                className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded-md text-sm"
+                            >
+                                <span className="text-amber-600 font-medium">•</span>
+                                <span className="text-amber-800">{field}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button 
+                            variant="outline" 
+                            onClick={() => setShowMissingFieldsWarning(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={() => {
+                                setShowMissingFieldsWarning(false);
+                                executeSendEmail();
+                            }}
+                        >
+                            Send Anyway
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
