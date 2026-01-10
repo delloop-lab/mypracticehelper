@@ -1675,14 +1675,14 @@ export function EmailTab() {
                                 <div className="space-y-1">
                                     <Label htmlFor="filter-template" className="text-xs">Template</Label>
                                     <Select
-                                        value={emailLogFilters.templateId}
-                                        onValueChange={(value) => setEmailLogFilters(prev => ({ ...prev, templateId: value }))}
+                                        value={emailLogFilters.templateId || 'all'}
+                                        onValueChange={(value) => setEmailLogFilters(prev => ({ ...prev, templateId: value === 'all' ? '' : value }))}
                                     >
                                         <SelectTrigger className="h-8">
                                             <SelectValue placeholder="All templates" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">All templates</SelectItem>
+                                            <SelectItem value="all">All templates</SelectItem>
                                             {templates.map(template => (
                                                 <SelectItem key={template.id} value={template.id}>
                                                     {template.name}
