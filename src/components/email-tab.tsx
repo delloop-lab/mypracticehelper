@@ -1607,10 +1607,13 @@ export function EmailTab() {
                         <div>
                             <CardTitle className="flex items-center gap-2">
                                 <History className="h-5 w-5" />
-                                Outgoing Emails Log
+                                Outgoing Emails Log ({emailHistory.length} {emailHistory.length === 1 ? 'email' : 'emails'})
                             </CardTitle>
                             <CardDescription>
-                                Recent outgoing emails sent to clients ({getFilteredEmailHistory().length} {getFilteredEmailHistory().length === 1 ? 'email' : 'emails'})
+                                Recent outgoing emails sent to clients
+                                {emailLogFilters.firstName || emailLogFilters.lastName || emailLogFilters.email || emailLogFilters.templateId ? (
+                                    <span className="ml-1">({getFilteredEmailHistory().length} {getFilteredEmailHistory().length === 1 ? 'email' : 'emails'} match filters)</span>
+                                ) : null}
                             </CardDescription>
                         </div>
                         <Button
