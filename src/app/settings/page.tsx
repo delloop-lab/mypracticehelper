@@ -523,6 +523,33 @@ export default function SettingsPage() {
                         </CardContent>
                     </Card>
 
+                    {/* Save Button */}
+                    <div className="flex justify-end">
+                        <Button
+                            onClick={saveSettings}
+                            disabled={saveStatus === "saving"}
+                            className="gap-2"
+                            size="lg"
+                        >
+                            {saveStatus === "saving" ? (
+                                <>
+                                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Saving...
+                                </>
+                            ) : saveStatus === "saved" ? (
+                                <>
+                                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                    Saved!
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="h-5 w-5 text-green-500" />
+                                    Save Settings
+                                </>
+                            )}
+                        </Button>
+                    </div>
+
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
@@ -1486,33 +1513,6 @@ export default function SettingsPage() {
 
                 </TabsContent>
             </Tabs>
-
-            {/* Save Button */}
-            <div className="flex justify-end mt-6">
-                <Button
-                    onClick={saveSettings}
-                    disabled={saveStatus === "saving"}
-                    className="gap-2"
-                    size="lg"
-                >
-                    {saveStatus === "saving" ? (
-                        <>
-                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Saving...
-                        </>
-                    ) : saveStatus === "saved" ? (
-                        <>
-                            <CheckCircle2 className="h-5 w-5 text-green-500" />
-                            Saved!
-                        </>
-                    ) : (
-                        <>
-                            <Save className="h-5 w-5 text-green-500" />
-                            Save Settings
-                        </>
-                    )}
-                </Button>
-            </div>
 
             {/* Delete Appointment Type Confirmation Dialog */}
             <DeleteConfirmationDialog
