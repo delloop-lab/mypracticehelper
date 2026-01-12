@@ -377,21 +377,21 @@ export default function RemindersPage() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Card className={reminders.length === 0 
                         ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
-                        : "border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-900"
+                        : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
                     }>
                         <CardHeader>
                             <CardTitle className={`flex items-center gap-2 ${
                                 reminders.length === 0
                                     ? "text-green-800 dark:text-green-200"
-                                    : "text-blue-800 dark:text-blue-200"
+                                    : "text-red-800 dark:text-red-200"
                             }`}>
                                 <AlertCircle className="h-5 w-5" />
-                                {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Clinical Notes
+                                {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Session Notes
                             </CardTitle>
                             <CardDescription className={
                                 reminders.length === 0
                                     ? "text-green-700 dark:text-green-300"
-                                    : "text-blue-700 dark:text-blue-300"
+                                    : "text-red-700 dark:text-red-300"
                             }>
                                 {reminders.length === 0
                                     ? "Great! All your past sessions have therapist notes."
@@ -498,13 +498,13 @@ export default function RemindersPage() {
                         return (
                             <Card className={count === 0 
                                 ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
-                                : "border-purple-200 bg-purple-50 dark:bg-purple-950/20 dark:border-purple-900"
+                                : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
                             }>
                                 <CardHeader>
                                     <CardTitle className={`flex items-center gap-2 ${
                                         count === 0
                                             ? "text-green-800 dark:text-green-200"
-                                            : "text-purple-800 dark:text-purple-200"
+                                            : "text-red-800 dark:text-red-200"
                                     }`}>
                                         <Calendar className="h-5 w-5" />
                                         {count} Client{count !== 1 ? 's' : ''} Not Seen Recently
@@ -512,7 +512,7 @@ export default function RemindersPage() {
                                     <CardDescription className={
                                         count === 0
                                             ? "text-green-700 dark:text-green-300"
-                                            : "text-purple-700 dark:text-purple-300"
+                                            : "text-red-700 dark:text-red-300"
                                     }>
                                         {count === 0
                                             ? "Great! All clients have been seen recently."
