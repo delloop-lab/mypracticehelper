@@ -68,9 +68,14 @@ export default function SettingsPage() {
     const [baseUrl, setBaseUrl] = useState<string>("");
     const [userEmail, setUserEmail] = useState<string>("");
     const [editedEmail, setEditedEmail] = useState<string>("");
+    const [emailPassword, setEmailPassword] = useState<string>("");
     const [emailSaveStatus, setEmailSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+    const [emailErrorMessage, setEmailErrorMessage] = useState<string>("");
     const [firstName, setFirstName] = useState<string>("");
     const [lastName, setLastName] = useState<string>("");
+    const [originalFirstName, setOriginalFirstName] = useState<string>("");
+    const [originalLastName, setOriginalLastName] = useState<string>("");
+    const [nameSaveStatus, setNameSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
     const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
     const [customReminderTemplates, setCustomReminderTemplates] = useState<any[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
@@ -161,31 +166,38 @@ export default function SettingsPage() {
         
         if (typeof window !== "undefined") {
             setBaseUrl(window.location.origin);
-            // Get user email from localStorage or cookie
-            const email = localStorage.getItem("userEmail") || 
-                         document.cookie.split('; ').find(row => row.startsWith('userEmail='))?.split('=')[1] || 
-                         "";
-            setUserEmail(email);
-            setEditedEmail(email);
             
-            // Extract name from email or use default
-            if (email === "claire@claireschillaci.com") {
-                setFirstName("Claire");
-                setLastName("Schillaci");
-            } else if (email) {
-                // Extract name from email (e.g., "john.doe@example.com" -> "John" "Doe")
-                const namePart = email.split('@')[0];
-                const nameParts = namePart.split('.').map(part => 
-                    part.charAt(0).toUpperCase() + part.slice(1)
-                );
-                if (nameParts.length >= 2) {
-                    setFirstName(nameParts[0]);
-                    setLastName(nameParts.slice(1).join(' '));
-                } else if (nameParts.length === 1) {
-                    setFirstName(nameParts[0]);
-                    setLastName("");
+            // Load user profile from API
+            const loadUserProfile = async () => {
+                try {
+                    const response = await fetch('/api/auth/me');
+                    if (response.ok) {
+                        const userData = await response.json();
+                        setUserEmail(userData.email || "");
+                        setEditedEmail(userData.email || "");
+                        setFirstName(userData.first_name || "");
+                        setLastName(userData.last_name || "");
+                        setOriginalFirstName(userData.first_name || "");
+                        setOriginalLastName(userData.last_name || "");
+                    } else {
+                        // Fallback to cookie/localStorage if API fails
+                        const email = localStorage.getItem("userEmail") || 
+                                     document.cookie.split('; ').find(row => row.startsWith('userEmail='))?.split('=')[1] || 
+                                     "";
+                        setUserEmail(email);
+                        setEditedEmail(email);
+                    }
+                } catch (error) {
+                    console.error('Error loading user profile:', error);
+                    // Fallback to cookie/localStorage
+                    const email = localStorage.getItem("userEmail") || 
+                                 document.cookie.split('; ').find(row => row.startsWith('userEmail='))?.split('=')[1] || 
+                                 "";
+                    setUserEmail(email);
+                    setEditedEmail(email);
                 }
-            }
+            };
+            loadUserProfile();
         }
     }, []);
 
@@ -263,35 +275,92 @@ export default function SettingsPage() {
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(editedEmail)) {
+            setEmailErrorMessage("Please enter a valid email address");
+            setEmailSaveStatus("error");
+            setTimeout(() => setEmailSaveStatus("idle"), 3000);
+            return;
+        }
+
+        // Require password for email change
+        if (!emailPassword) {
+            setEmailErrorMessage("Please enter your current password to change email");
             setEmailSaveStatus("error");
             setTimeout(() => setEmailSaveStatus("idle"), 3000);
             return;
         }
 
         setEmailSaveStatus("saving");
+        setEmailErrorMessage("");
+        
         try {
-            // Update cookies
-            const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
-            document.cookie = `userEmail=${encodeURIComponent(editedEmail)}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
-            
-            // Update localStorage
-            localStorage.setItem("userEmail", editedEmail);
-            
-            // Store allowed emails list (for login validation)
-            const allowedEmails = JSON.parse(localStorage.getItem("allowedEmails") || "[]");
-            if (!allowedEmails.includes(editedEmail)) {
-                allowedEmails.push(editedEmail);
-                localStorage.setItem("allowedEmails", JSON.stringify(allowedEmails));
+            const response = await fetch('/api/auth/update-email', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    newEmail: editedEmail.trim(),
+                    currentPassword: emailPassword
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                // Update local state and cookies
+                const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
+                document.cookie = `userEmail=${encodeURIComponent(data.user.email)}; path=/; max-age=${maxAge}; SameSite=Lax; Secure`;
+                localStorage.setItem("userEmail", data.user.email);
+                
+                setUserEmail(data.user.email);
+                setEditedEmail(data.user.email);
+                setEmailPassword("");
+                setEmailSaveStatus("saved");
+                setTimeout(() => setEmailSaveStatus("idle"), 5000);
+            } else {
+                setEmailErrorMessage(data.error || "Failed to update email");
+                setEmailSaveStatus("error");
+                setTimeout(() => setEmailSaveStatus("idle"), 5000);
             }
-            
-            // Update state
-            setUserEmail(editedEmail);
-            setEmailSaveStatus("saved");
-            setTimeout(() => setEmailSaveStatus("idle"), 3000);
         } catch (error) {
             console.error('Error saving email:', error);
+            setEmailErrorMessage("An error occurred. Please try again.");
             setEmailSaveStatus("error");
             setTimeout(() => setEmailSaveStatus("idle"), 3000);
+        }
+    };
+
+    const handleSaveName = async () => {
+        // Check if name has changed
+        if (firstName === originalFirstName && lastName === originalLastName) return;
+
+        setNameSaveStatus("saving");
+        try {
+            const response = await fetch('/api/auth/update-profile', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    firstName: firstName.trim(),
+                    lastName: lastName.trim()
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setOriginalFirstName(data.user.first_name);
+                setOriginalLastName(data.user.last_name);
+                setFirstName(data.user.first_name);
+                setLastName(data.user.last_name);
+                setNameSaveStatus("saved");
+                setTimeout(() => setNameSaveStatus("idle"), 3000);
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to update name' }));
+                console.error('Error updating name:', errorData);
+                setNameSaveStatus("error");
+                setTimeout(() => setNameSaveStatus("idle"), 3000);
+            }
+        } catch (error) {
+            console.error('Error saving name:', error);
+            setNameSaveStatus("error");
+            setTimeout(() => setNameSaveStatus("idle"), 3000);
         }
     };
 
@@ -432,59 +501,119 @@ export default function SettingsPage() {
                                     <Label htmlFor="firstName">First Name</Label>
                                     <Input
                                         id="firstName"
-                                        readOnly
                                         value={firstName}
-                                        className="bg-muted"
+                                        onChange={(e) => setFirstName(e.target.value)}
+                                        placeholder="Enter your first name"
                                     />
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="lastName">Last Name</Label>
                                     <Input
                                         id="lastName"
-                                        readOnly
                                         value={lastName}
-                                        className="bg-muted"
+                                        onChange={(e) => setLastName(e.target.value)}
+                                        placeholder="Enter your last name"
                                     />
                                 </div>
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Your name as displayed in the application
-                            </p>
-                            <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                                <p className="text-xs text-muted-foreground">
+                                    Your name as displayed in the application
+                                </p>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={handleSaveName}
+                                    disabled={
+                                        (firstName === originalFirstName && lastName === originalLastName) ||
+                                        nameSaveStatus === "saving" ||
+                                        (!firstName.trim() && !lastName.trim())
+                                    }
+                                    variant={(firstName === originalFirstName && lastName === originalLastName) ? "outline" : "default"}
+                                >
+                                    {nameSaveStatus === "saving" ? "Saving..." : nameSaveStatus === "saved" ? "Saved!" : "Save Name"}
+                                </Button>
+                            </div>
+                            {nameSaveStatus === "saved" && (
+                                <p className="text-xs text-green-600 flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    Name updated successfully.
+                                </p>
+                            )}
+                            {nameSaveStatus === "error" && (
+                                <p className="text-xs text-red-600 flex items-center gap-1">
+                                    <AlertCircle className="h-3 w-3" />
+                                    Failed to update name. Please try again.
+                                </p>
+                            )}
+                            <div className="space-y-3">
                                 <Label htmlFor="userEmail">Email</Label>
-                                <div className="flex gap-2">
-                                    <Input
-                                        id="userEmail"
-                                        type="email"
-                                        value={editedEmail}
-                                        onChange={(e) => setEditedEmail(e.target.value)}
-                                        placeholder="your@email.com"
-                                        className="flex-1"
-                                    />
+                                <Input
+                                    id="userEmail"
+                                    type="email"
+                                    value={editedEmail}
+                                    onChange={(e) => {
+                                        setEditedEmail(e.target.value);
+                                        setEmailErrorMessage("");
+                                    }}
+                                    placeholder="your@email.com"
+                                />
+                                
+                                {/* Show password field when email is changed */}
+                                {editedEmail !== userEmail && editedEmail && (
+                                    <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
+                                        <Label htmlFor="emailPassword" className="text-sm font-medium">
+                                            Enter your current password to confirm email change
+                                        </Label>
+                                        <Input
+                                            id="emailPassword"
+                                            type="password"
+                                            value={emailPassword}
+                                            onChange={(e) => {
+                                                setEmailPassword(e.target.value);
+                                                setEmailErrorMessage("");
+                                            }}
+                                            placeholder="Current password"
+                                        />
+                                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                            <AlertCircle className="h-3 w-3" />
+                                            After changing your email, you will need to login with the new email address.
+                                        </p>
+                                    </div>
+                                )}
+                                
+                                <div className="flex items-center justify-between">
+                                    <p className="text-xs text-muted-foreground">
+                                        Your email address used for login
+                                    </p>
                                     <Button
                                         type="button"
+                                        size="sm"
                                         onClick={handleSaveEmail}
-                                        disabled={editedEmail === userEmail || emailSaveStatus === "saving" || !editedEmail}
+                                        disabled={
+                                            editedEmail === userEmail || 
+                                            emailSaveStatus === "saving" || 
+                                            !editedEmail ||
+                                            (editedEmail !== userEmail && !emailPassword)
+                                        }
                                         variant={editedEmail === userEmail ? "outline" : "default"}
                                     >
-                                        {emailSaveStatus === "saving" ? "Saving..." : emailSaveStatus === "saved" ? "Saved!" : "Save"}
+                                        {emailSaveStatus === "saving" ? "Saving..." : emailSaveStatus === "saved" ? "Saved!" : "Save Email"}
                                     </Button>
                                 </div>
+                                
                                 {emailSaveStatus === "saved" && (
                                     <p className="text-xs text-green-600 flex items-center gap-1">
                                         <CheckCircle2 className="h-3 w-3" />
-                                        Email updated successfully. You can now log in with your new email address.
+                                        Email updated successfully! Please use your new email to log in next time.
                                     </p>
                                 )}
-                                {emailSaveStatus === "error" && (
+                                {emailSaveStatus === "error" && emailErrorMessage && (
                                     <p className="text-xs text-red-600 flex items-center gap-1">
                                         <AlertCircle className="h-3 w-3" />
-                                        Failed to update email. Please try again.
+                                        {emailErrorMessage}
                                     </p>
                                 )}
-                                <p className="text-xs text-muted-foreground">
-                                    Your email address used for login. You can change this and use the new email to log in.
-                                </p>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="timezone">Timezone</Label>
