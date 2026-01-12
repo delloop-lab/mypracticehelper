@@ -1781,6 +1781,49 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                         </div>
 
+                                        {/* Emergency Contact */}
+                                        <div className="space-y-2">
+                                            <Label className="text-sm font-semibold">Emergency Contact</Label>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="emergencyContactName">
+                                                        Name
+                                                    </Label>
+                                                    <Input
+                                                        id="emergencyContactName"
+                                                        type="text"
+                                                        placeholder="Emergency contact name"
+                                                        value={formData.emergencyContact?.name || ''}
+                                                        onChange={(e) => setFormData({ 
+                                                            ...formData, 
+                                                            emergencyContact: { 
+                                                                name: e.target.value,
+                                                                phone: formData.emergencyContact?.phone || ''
+                                                            }
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="emergencyContactPhone">
+                                                        Phone
+                                                    </Label>
+                                                    <Input
+                                                        id="emergencyContactPhone"
+                                                        type="tel"
+                                                        placeholder="(555) 123-4567"
+                                                        value={formData.emergencyContact?.phone || ''}
+                                                        onChange={(e) => setFormData({ 
+                                                            ...formData, 
+                                                            emergencyContact: { 
+                                                                name: formData.emergencyContact?.name || '',
+                                                                phone: e.target.value
+                                                            }
+                                                        })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
                                         {/* Next Appointment & Last Appointment */}
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
