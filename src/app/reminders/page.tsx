@@ -537,7 +537,7 @@ export default function RemindersPage() {
                         <div className="flex items-center justify-between">
                             <h2 className="text-2xl font-semibold flex items-center gap-2">
                                 <Mic className="h-6 w-6 text-amber-600" />
-                                Sessions Awaiting Clinical Notes
+                                Sessions Awaiting Session Notes
                             </h2>
                         </div>
                         <AnimatePresence>
@@ -596,7 +596,7 @@ export default function RemindersPage() {
                                                 >
                                                     <Plus className="mr-1 h-4 w-4" />
                                                     <Mic className="mr-2 h-4 w-4" />
-                                                    Record Clinical Notes
+                                                    Record Session Notes
                                                 </Button>
                                             </div>
                                         </CardContent>
