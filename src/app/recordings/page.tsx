@@ -709,7 +709,7 @@ function RecordingsContent() {
                                 <FileAudio className="h-16 w-16 text-muted-foreground mb-4" />
                                 <h3 className="text-xl font-semibold mb-2">No recordings yet</h3>
                                 <p className="text-muted-foreground text-center max-w-md">
-                                    Clinical Notes recordings will appear here. Switch to the "New Recording" tab to create Clinical Note
+                                    Session Notes recordings will appear here. Switch to the "New Recording" tab to create Session Notes
                                 </p>
                                 <Button className="mt-6" onClick={() => setActiveTab("new")}>
                                     Start Recording

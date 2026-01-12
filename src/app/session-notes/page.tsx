@@ -1058,7 +1058,7 @@ function SessionNotesContent() {
                         <DialogDescription>
                             {isPrefilledFromSession 
                                 ? "Add notes for this session"
-                                : "Document your therapy session and observations (not Clinical Notes)"
+                                : "Document your therapy session and observations"
                             }
                         </DialogDescription>
                     </DialogHeader>
@@ -1246,7 +1246,7 @@ function SessionNotesContent() {
                                 onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                             />
                             <p className="text-xs text-muted-foreground">
-                                To record Session Notes (not Clinical Notes)
+                                To record Session Notes
                             </p>
                         </div>
 

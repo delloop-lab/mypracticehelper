@@ -302,7 +302,7 @@ export function RemindersModal() {
                                 ))}
                                 {reminders.length > 5 && (
                                     <p className="text-sm text-muted-foreground text-center py-2">
-                                        + {reminders.length - 5} more session{reminders.length - 5 > 1 ? 's' : ''} awaiting clinical notes
+                                        + {reminders.length - 5} more session{reminders.length - 5 > 1 ? 's' : ''} awaiting session notes
                                     </p>
                                 )}
                             </div>
