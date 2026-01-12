@@ -239,7 +239,7 @@ export function RemindersModal() {
                                             : "text-red-800 dark:text-red-200"
                                     }`}>
                                         <AlertCircle className="h-4 w-4" />
-                                        {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Clinical Notes
+                                        {reminders.length} Session{reminders.length !== 1 ? 's' : ''} Awaiting Session Notes
                                     </CardTitle>
                                 </CardHeader>
                             </Card>

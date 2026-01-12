@@ -644,7 +644,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                                 <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
                                     You have {displayTotal} outstanding reminder{displayTotal !== 1 ? 's' : ''}: {(() => {
                                         const parts = [
-                                            reminderCounts.clinicalNotes > 0 && `${reminderCounts.clinicalNotes} Clinical Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`,
+                                            reminderCounts.clinicalNotes > 0 && `${reminderCounts.clinicalNotes} Session Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`,
                                             reminderCounts.unsignedForms > 0 && `${reminderCounts.unsignedForms} Unsigned Form${reminderCounts.unsignedForms !== 1 ? 's' : ''}`,
                                             reminderCounts.customReminders > 0 && `${reminderCounts.customReminders} Client${reminderCounts.customReminders !== 1 ? 's' : ''} Not Seen Recently`
                                         ].filter(Boolean);
@@ -694,7 +694,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                             onClick={() => onNavigate("notes")}
                         >
                             <Mic className="h-4 w-4 text-purple-500" />
-                            Record Clinical Notes
+                            Record Session Notes
                         </Button>
                         <Button
                             variant="outline"

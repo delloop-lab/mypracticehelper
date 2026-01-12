@@ -1237,7 +1237,7 @@ function SessionNotesContent() {
                         )}
 
                         <div className="space-y-2">
-                            <Label htmlFor="content">Session Notes / Content *</Label>
+                            <Label htmlFor="content">Session Note *</Label>
                             <Textarea
                                 id="content"
                                 placeholder="Document your session observations, interventions, and client progress..."

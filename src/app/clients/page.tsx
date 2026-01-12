@@ -1939,7 +1939,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         <div className="space-y-2">
                                             <Label htmlFor="notes">
                                                 <FileText className="inline h-4 w-4 mr-1 text-green-500" />
-                                                Notes
+                                                Client Notes
                                             </Label>
                                             <Textarea
                                                 id="notes"
