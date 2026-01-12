@@ -2983,7 +2983,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                                                        onClick={() => handleGDPRDeleteClick(client.id)}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleGDPRDeleteClick(client.id);
+                                                        }}
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </Button>
