@@ -1054,7 +1054,7 @@ export function VoiceNotes() {
                     <CardTitle className="flex items-center gap-2">
                         <Mic className="h-5 w-5 text-primary" /> Recording
                     </CardTitle>
-                    <CardDescription>Record Clinical Notes with automatic transcription (Chrome/Edge only).</CardDescription>
+                    <CardDescription>Record Session Notes with automatic transcription (Chrome/Edge only).</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     {/* Client and Therapist Info - Select BEFORE recording */}

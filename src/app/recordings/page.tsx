@@ -589,7 +589,7 @@ function RecordingsContent() {
                 <div className="mb-8">
                     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Recording</h1>
                     <div className="text-sm sm:text-base text-muted-foreground space-y-1">
-                        <p>Record Clinical Notes with AI transcription</p>
+                        <p>Record Session Notes with AI transcription</p>
                         <p>Upload Session Recording for AI Clinical Analysis</p>
                     </div>
                 </div>
