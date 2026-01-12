@@ -10,9 +10,9 @@ function createHeaderTemplate(
     const lines: string[] = [];
     
     if (clientName) {
-        lines.push(`**Client:** ${clientName}`);
+        lines.push(`Client: ${clientName}`);
     } else {
-        lines.push(`**Client:** Unassigned`);
+        lines.push(`Client: Unassigned`);
     }
     
     if (sessionDate) {
@@ -25,9 +25,9 @@ function createHeaderTemplate(
                 hour: '2-digit',
                 minute: '2-digit'
             });
-            lines.push(`**Date:** ${formattedDate}`);
+            lines.push(`Date: ${formattedDate}`);
         } catch (e) {
-            lines.push(`**Date:** ${sessionDate}`);
+            lines.push(`Date: ${sessionDate}`);
         }
     } else {
         const now = new Date();
@@ -38,25 +38,25 @@ function createHeaderTemplate(
             hour: '2-digit',
             minute: '2-digit'
         });
-        lines.push(`**Date:** ${formattedDate}`);
+        lines.push(`Date: ${formattedDate}`);
     }
     
     if (therapistName) {
-        lines.push(`**Therapist:** ${therapistName}`);
+        lines.push(`Therapist: ${therapistName}`);
     } else {
-        lines.push(`**Therapist:** Unknown Therapist`);
+        lines.push(`Therapist: Unknown Therapist`);
     }
     
     if (duration !== undefined && duration !== null) {
         const minutes = Math.floor(duration / 60);
         const seconds = duration % 60;
         if (minutes > 0) {
-            lines.push(`**Duration:** ${minutes} minute${minutes !== 1 ? 's' : ''}${seconds > 0 ? ` ${seconds} second${seconds !== 1 ? 's' : ''}` : ''}`);
+            lines.push(`Duration: ${minutes} minute${minutes !== 1 ? 's' : ''}${seconds > 0 ? ` ${seconds} second${seconds !== 1 ? 's' : ''}` : ''}`);
         } else {
-            lines.push(`**Duration:** ${seconds} second${seconds !== 1 ? 's' : ''}`);
+            lines.push(`Duration: ${seconds} second${seconds !== 1 ? 's' : ''}`);
         }
     } else {
-        lines.push(`**Duration:** Not recorded`);
+        lines.push(`Duration: Not recorded`);
     }
     
     return lines.join('\n') + '\n\n';

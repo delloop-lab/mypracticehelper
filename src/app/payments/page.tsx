@@ -869,29 +869,33 @@ export default function PaymentsPage() {
     }
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
-            <div className="flex items-center justify-between mb-8">
-                <div className="mb-8">
-                    <h1 className="text-4xl font-bold mb-2">Revenue</h1>
-                    <p className="text-muted-foreground">Track revenue and outstanding accounts</p>
+        <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8 max-w-6xl">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0 mb-6 sm:mb-8">
+                <div className="mb-0 sm:mb-8">
+                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Revenue</h1>
+                    <p className="text-sm sm:text-base text-muted-foreground">Track revenue and outstanding accounts</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                     <Button 
                         variant="outline" 
                         onClick={() => loadData(false)}
-                        className="flex items-center gap-2"
+                        className="flex items-center justify-center gap-2 text-xs sm:text-sm"
                         title="Refresh revenue data"
+                        size="sm"
                     >
-                        <RefreshCw className="h-4 w-4" />
+                        <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4" />
                         Refresh
                     </Button>
                     <Button 
                         variant="outline" 
                         onClick={() => setIsUnpaidReportOpen(true)}
-                        className="flex items-center gap-2"
+                        className="flex items-center justify-center gap-2 text-xs sm:text-sm"
+                        size="sm"
                     >
-                        <Calendar className="h-4 w-4" />
-                        Unpaid Sessions Report ({allUnpaidSessions.length})
+                        <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">Unpaid Sessions Report</span>
+                        <span className="sm:hidden">Unpaid ({allUnpaidSessions.length})</span>
+                        <span className="hidden sm:inline">({allUnpaidSessions.length})</span>
                     </Button>
                 </div>
             </div>
@@ -899,7 +903,7 @@ export default function PaymentsPage() {
             {/* Time Period Filter */}
             <div className="mb-6">
                 <Select value={selectedPeriod} onValueChange={(value) => setSelectedPeriod(value as TimePeriod)}>
-                    <SelectTrigger className="w-[200px]">
+                    <SelectTrigger className="w-full sm:w-[200px]">
                         <SelectValue placeholder="Select period" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1024,10 +1028,10 @@ export default function PaymentsPage() {
             {/* Weekly Revenue Chart */}
             <Card className="mb-8">
                 <CardHeader>
-                    <CardTitle>Revenue Per Week (Past 8 Weeks)</CardTitle>
+                    <CardTitle className="text-base sm:text-lg">Revenue Per Week (Past 8 Weeks)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
+                    <ResponsiveContainer width="100%" height={250} className="sm:h-[300px]">
                         <BarChart data={weeklyRevenueData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis 

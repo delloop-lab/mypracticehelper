@@ -363,11 +363,38 @@ export default function RemindersPage() {
         router.push(`/clients?client=${client.id}`);
     };
 
+    const handleMarkFormSigned = async (client: Client, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card click
+        if (!client.id) {
+            alert('Client ID not found');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/clients/toggle-form-signed', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientId: client.id, signed: true })
+            });
+
+            if (response.ok) {
+                // Reload data to reflect the change
+                await loadData();
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                alert(`Failed to update form status: ${errorData.error || 'Please try again'}`);
+            }
+        } catch (error) {
+            console.error('Error marking form as signed:', error);
+            alert('Error updating form status. Please try again.');
+        }
+    };
+
     return (
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
-            <div className="mb-8">
-                <h1 className="text-4xl font-bold mb-2">Reminders</h1>
-                <p className="text-muted-foreground">
+        <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8 max-w-6xl">
+            <div className="mb-6 sm:mb-8">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Reminders</h1>
+                <p className="text-sm sm:text-base text-muted-foreground">
                     Keep track of reminders
                 </p>
             </div>
@@ -535,9 +562,10 @@ export default function RemindersPage() {
                 ) : sortedReminders.length > 0 ? (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <h2 className="text-2xl font-semibold flex items-center gap-2">
-                                <Mic className="h-6 w-6 text-amber-600" />
-                                Sessions Awaiting Session Notes
+                            <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold flex items-center gap-2">
+                                <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
+                                <span className="hidden sm:inline">Sessions Awaiting Session Notes</span>
+                                <span className="sm:hidden">Session Notes</span>
                             </h2>
                         </div>
                         <AnimatePresence>
@@ -550,11 +578,11 @@ export default function RemindersPage() {
                                     transition={{ delay: index * 0.05 }}
                                 >
                                     <Card className="hover:shadow-md transition-shadow">
-                                        <CardContent className="p-6">
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 mb-2">
-                                                        <h3 className="text-lg font-semibold">
+                                        <CardContent className="p-4 sm:p-6">
+                                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                                                <div className="flex-1 w-full sm:w-auto">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                                                        <h3 className="text-base sm:text-lg font-semibold">
                                                             {reminder.clientId ? (
                                                                 <Link
                                                                     href={`/clients`}
@@ -566,17 +594,17 @@ export default function RemindersPage() {
                                                                 reminder.clientName
                                                             )}
                                                         </h3>
-                                                        <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                                        <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 w-fit">
                                                             {getTimeAgo(reminder.date, reminder.time)}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
                                                         <span className="flex items-center gap-1">
-                                                            <Calendar className="h-4 w-4" />
+                                                            <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
                                                             {formatDate(reminder.date)} at {reminder.time}
                                                         </span>
                                                         <span className="flex items-center gap-1">
-                                                            <FileText className="h-4 w-4" />
+                                                            <FileText className="h-3 w-3 sm:h-4 sm:w-4" />
                                                             {reminder.type}
                                                         </span>
                                                     </div>
@@ -592,11 +620,13 @@ export default function RemindersPage() {
                                                         }
                                                         router.push(`/voice-notes?${params.toString()}`);
                                                     }}
-                                                    className="shrink-0"
+                                                    className="shrink-0 w-full sm:w-auto text-xs sm:text-sm"
+                                                    size="sm"
                                                 >
-                                                    <Plus className="mr-1 h-4 w-4" />
-                                                    <Mic className="mr-2 h-4 w-4" />
-                                                    Record Session Notes
+                                                    <Plus className="mr-1 h-3 w-3 sm:h-4 sm:w-4" />
+                                                    <Mic className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                                                    <span className="hidden sm:inline">Record Session Notes</span>
+                                                    <span className="sm:hidden">Record Notes</span>
                                                 </Button>
                                             </div>
                                         </CardContent>
@@ -611,9 +641,10 @@ export default function RemindersPage() {
                 {showFormsSection ? (
                     <div ref={formsSectionRef} className="space-y-4 transition-all duration-300">
                         <div className="flex items-center justify-between">
-                            <h2 className="text-2xl font-semibold flex items-center gap-2">
-                                <ClipboardCheck className="h-6 w-6 text-green-600" />
-                                New Client Forms Awaiting Signature
+                            <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold flex items-center gap-2">
+                                <ClipboardCheck className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
+                                <span className="hidden sm:inline">New Client Forms Awaiting Signature</span>
+                                <span className="sm:hidden">Forms Pending</span>
                             </h2>
                             {unsignedFormClients.length > 0 && (
                                 <Button
@@ -651,22 +682,33 @@ export default function RemindersPage() {
                                             className="hover:shadow-md transition-shadow border-green-200 dark:border-green-900 cursor-pointer"
                                             onClick={() => handleViewClient(client)}
                                         >
-                                            <CardContent className="p-6">
-                                                <div className="flex items-start justify-between gap-4">
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <h3 className="text-lg font-semibold text-primary">
+                                            <CardContent className="p-4 sm:p-6">
+                                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                                                    <div className="flex-1 w-full sm:w-auto">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                                                            <h3 className="text-base sm:text-lg font-semibold text-primary">
                                                                 {client.name}
                                                             </h3>
-                                                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
+                                                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200 w-fit">
                                                                 Form Pending
                                                             </span>
                                                         </div>
-                                                        <p className="text-sm text-muted-foreground">
+                                                        <p className="text-xs sm:text-sm text-muted-foreground">
                                                             New Client Form has not been signed and returned.
                                                         </p>
                                                     </div>
-                                                    <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                                                    <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                                        <Button
+                                                            onClick={(e) => handleMarkFormSigned(client, e)}
+                                                            className="shrink-0 bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto text-xs sm:text-sm"
+                                                            size="sm"
+                                                        >
+                                                            <CheckCircle2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                                                            <span className="hidden sm:inline">Mark Form Signed</span>
+                                                            <span className="sm:hidden">Mark Signed</span>
+                                                        </Button>
+                                                        <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground shrink-0 hidden sm:block" />
+                                                    </div>
                                                 </div>
                                             </CardContent>
                                         </Card>
@@ -681,25 +723,25 @@ export default function RemindersPage() {
                 {/* Unpaid Sessions Section */}
                 {unpaidSessions.length > 0 && (
                     <div className="space-y-4">
-                        <h2 className="text-2xl font-semibold flex items-center gap-2">
-                            <Landmark className="h-6 w-6 text-red-600" />
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold flex items-center gap-2">
+                            <Landmark className="h-5 w-5 sm:h-6 sm:w-6 text-red-600" />
                             Unpaid Sessions ({unpaidSessions.length})
                         </h2>
                         <div className="space-y-3">
                             {unpaidSessions.map((session) => (
                                 <Card key={session.id} className="border-red-200 dark:border-red-900 cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/payments`)}>
                                     <CardContent className="p-4">
-                                        <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-start justify-between gap-3 sm:gap-4">
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <h3 className="font-semibold text-primary">
+                                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
+                                                    <h3 className="text-sm sm:text-base font-semibold text-primary">
                                                         {session.clientName}
                                                     </h3>
-                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200">
+                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200 w-fit">
                                                         Unpaid
                                                     </span>
                                                 </div>
-                                                <p className="text-sm text-muted-foreground">
+                                                <p className="text-xs sm:text-sm text-muted-foreground">
                                                     {formatDate(session.date)} at {session.time} - {session.type}
                                                 </p>
                                                 {session.fee && (
@@ -708,7 +750,7 @@ export default function RemindersPage() {
                                                     </p>
                                                 )}
                                             </div>
-                                            <Landmark className="h-5 w-5 text-red-500 shrink-0" />
+                                            <Landmark className="h-4 w-4 sm:h-5 sm:w-5 text-red-500 shrink-0 hidden sm:block" />
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -764,8 +806,8 @@ export default function RemindersPage() {
 
                                 return (
                                     <div key={type} className="space-y-4">
-                                        <h2 className="text-2xl font-semibold flex items-center gap-2">
-                                            <Icon className={`h-6 w-6 ${config.iconColor}`} />
+                                        <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold flex items-center gap-2">
+                                            <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${config.iconColor}`} />
                                             {config.title}
                                         </h2>
                                         <div className="space-y-3">
@@ -795,24 +837,24 @@ export default function RemindersPage() {
                                                             }
                                                         }}
                                                     >
-                                                        <CardContent className="p-6">
-                                                            <div className="flex items-start justify-between gap-4">
+                                                        <CardContent className="p-4 sm:p-6">
+                                                            <div className="flex items-start justify-between gap-3 sm:gap-4">
                                                                 <div className="flex-1">
-                                                                    <div className="flex items-center gap-2 mb-2">
-                                                                        <h3 className="text-lg font-semibold text-primary">
+                                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                                                                        <h3 className="text-base sm:text-lg font-semibold text-primary">
                                                                             {clientName}
                                                                         </h3>
                                                                         {daysSince !== null && daysSince !== undefined ? (
-                                                                            <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                                                            <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 w-fit">
                                                                                 {daysSince} {daysSince === 1 ? 'day' : 'days'} since last seen
                                                                             </span>
                                                                         ) : (
-                                                                            <span className={`text-xs px-2 py-1 rounded-full ${config.tagColor}`}>
+                                                                            <span className={`text-xs px-2 py-1 rounded-full ${config.tagColor} w-fit`}>
                                                                                 {config.tagText}
                                                                             </span>
                                                                         )}
                                                                     </div>
-                                                                    <p className="text-sm text-muted-foreground">
+                                                                    <p className="text-xs sm:text-sm text-muted-foreground">
                                                                         {daysSince !== null && daysSince !== undefined 
                                                                             ? `Last session was ${daysSince} ${daysSince === 1 ? 'day' : 'days'} ago`
                                                                             : 'No recent sessions found'}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense, useRef } from "react";
+import { useState, useEffect, useMemo, Suspense, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle, Globe } from "lucide-react";
+import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle, Globe, Sparkles, Loader2, X, Play, Pause, Save, Clock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { motion } from "framer-motion";
@@ -399,6 +399,37 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         };
     }, []);
 
+    // Load therapist name on mount (from logged-in user)
+    useEffect(() => {
+        const loadTherapist = async () => {
+            try {
+                const response = await fetch('/api/auth/me');
+                if (response.ok) {
+                    const userData = await response.json();
+                    const nameParts: string[] = [];
+                    if (userData.first_name && userData.first_name.trim()) {
+                        nameParts.push(userData.first_name.trim());
+                    }
+                    if (userData.last_name && userData.last_name.trim()) {
+                        nameParts.push(userData.last_name.trim());
+                    }
+                    if (nameParts.length > 0) {
+                        setCurrentTherapist(nameParts.join(' '));
+                    } else if (userData.email) {
+                        const emailParts = userData.email.split('@')[0].split('.');
+                        const name = emailParts.map((part: string) => 
+                            part.charAt(0).toUpperCase() + part.slice(1)
+                        ).join(' ');
+                        setCurrentTherapist(name);
+                    }
+                }
+            } catch (error) {
+                console.error('[Clients] Error fetching therapist:', error);
+            }
+        };
+        loadTherapist();
+    }, []);
+
     // Process Reciprocal Queue - Automatically open target client's details
     useEffect(() => {
         if (!currentReciprocal && reciprocalQueue.length > 0 && clients.length > 0) {
@@ -571,6 +602,19 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [sessionNotes, setSessionNotes] = useState<any[]>([]);
     const [isLoadingSessionNotes, setIsLoadingSessionNotes] = useState(false);
 
+    // AI Clinical Assessment State
+    const [currentTherapist, setCurrentTherapist] = useState<string>("");
+    const [isProcessingAI, setIsProcessingAI] = useState(false);
+    const [aiAssessmentResult, setAiAssessmentResult] = useState<string | null>(null);
+    const [aiAssessmentDialogOpen, setAiAssessmentDialogOpen] = useState(false);
+    const [currentNoteForAssessment, setCurrentNoteForAssessment] = useState<any>(null);
+    const [notificationModal, setNotificationModal] = useState<{ open: boolean; type: 'success' | 'error'; message: string }>({ open: false, type: 'success', message: '' });
+    const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
+    const [deleteTranscriptConfirmation, setDeleteTranscriptConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
+    const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+    const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+    const transcriptTextareaRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
+
     // Log Past Session State
     const [isLogSessionDialogOpen, setIsLogSessionDialogOpen] = useState(false);
     const [logSessionData, setLogSessionData] = useState({
@@ -734,21 +778,15 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 // This can happen if the same recording exists in both recordings and session_notes tables
                 const seenContentKeys = new Set<string>();
                 const deduplicatedNotes = notesForSession.filter((note: any) => {
-                    // Filter out empty notes (no content, no transcript, and no audioURL)
-                    // These are likely failed recordings or orphaned entries
-                    const hasContent = note.content && note.content.trim() !== '';
-                    const hasTranscript = note.transcript && note.transcript.trim() !== '';
-                    const hasAudio = note.audioURL;
+                    // Filter out empty notes - MUST have content OR transcript to be displayable
+                    // Audio alone is not enough because the player UI is inside the transcript block
+                    const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
+                    const hasTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
                     
-                    // If note has no meaningful content, exclude it (unless it's a session placeholder with content)
-                    if (!hasContent && !hasTranscript && !hasAudio) {
-                        // Allow session placeholders that have content (even if it's just session info)
-                        if (note.source === 'session' && note.content && note.content.trim() !== '') {
-                            // Keep session placeholders
-                        } else {
-                            console.log('[Load Session Notes] Filtering out empty note:', note.id, note.source);
-                            return false;
-                        }
+                    // If note has no displayable content, exclude it
+                    if (!hasContent && !hasTranscript) {
+                        console.log('[Load Session Notes] Filtering out empty/deleted note:', note.id, note.source, { content: note.content, transcript: note.transcript });
+                        return false;
                     }
                     
                     // Create a key from content + creation timestamp (rounded to the minute to handle slight differences)
@@ -921,6 +959,21 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         if (pastAppointments.length === 0) return null;
         // Return the most recent past appointment
         return pastAppointments[0];
+    };
+
+    // Check if client hasn't had a session in more than 90 days
+    const isClientInactive = (clientName: string): boolean => {
+        const lastAppointment = getLastAppointment(clientName);
+        if (!lastAppointment) {
+            // No past appointments - consider as inactive
+            return true;
+        }
+        
+        const lastDate = new Date(lastAppointment.date);
+        const now = new Date();
+        const daysDiff = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        return daysDiff > 90;
     };
 
     const getNextAppointment = (clientName: string) => {
@@ -1454,6 +1507,215 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    // Generate AI Clinical Assessment from transcript
+    const handleGenerateAIAssessment = async (transcript: string, clientName: string, sessionDate?: string, duration?: number, note?: any) => {
+        if (!transcript || transcript.trim() === '') {
+            alert('No transcript available to analyze');
+            return;
+        }
+
+        setIsProcessingAI(true);
+        // Store the note for later saving
+        setCurrentNoteForAssessment(note || null);
+        try {
+            const response = await fetch('/api/ai/process-transcript', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transcript,
+                    clientName,
+                    therapistName: currentTherapist || undefined,
+                    sessionDate,
+                    duration
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setAiAssessmentResult(data.structured || 'No assessment generated');
+                setAiAssessmentDialogOpen(true);
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to generate AI assessment: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error generating AI assessment:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error generating AI assessment. Please try again.' });
+        } finally {
+            setIsProcessingAI(false);
+        }
+    };
+
+    // Save AI Assessment to session note
+    const handleSaveAIAssessmentToNote = async () => {
+        if (!aiAssessmentResult || !currentNoteForAssessment) {
+            setNotificationModal({ open: true, type: 'error', message: 'No assessment or note available to save' });
+            return;
+        }
+
+        try {
+            // Update the note with the AI assessment as content
+            const updatedNote = {
+                ...currentNoteForAssessment,
+                content: aiAssessmentResult,
+                // Keep the transcript separate
+                transcript: currentNoteForAssessment.transcript || null
+            };
+
+            // Save via session notes API
+            const response = await fetch('/api/session-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([updatedNote])
+            });
+
+            if (response.ok) {
+                // Reload session notes to show the updated content
+                if (activeSession) {
+                    await loadSessionNotes(activeSession.id);
+                }
+                setAiAssessmentDialogOpen(false);
+                setAiAssessmentResult(null);
+                setCurrentNoteForAssessment(null);
+                setNotificationModal({ open: true, type: 'success', message: 'AI Assessment saved to session note successfully' });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to save assessment: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error saving AI assessment:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error saving AI assessment. Please try again.' });
+        }
+    };
+
+    // Handle transcript editing
+    const handleEditTranscript = useCallback((note: any) => {
+        setEditingTranscriptId(note.id);
+        // Focus the textarea after a brief delay to ensure it's rendered
+        setTimeout(() => {
+            const textarea = transcriptTextareaRefs.current.get(note.id);
+            if (textarea) {
+                textarea.focus();
+                // Move cursor to end
+                textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+        }, 0);
+    }, []);
+
+    const handleSaveTranscript = async (note: any) => {
+        // Get value directly from the textarea ref (uncontrolled)
+        const textarea = transcriptTextareaRefs.current.get(note.id);
+        const transcriptValue = textarea?.value || '';
+        if (!transcriptValue.trim()) {
+            setNotificationModal({ open: true, type: 'error', message: 'Transcript cannot be empty' });
+            return;
+        }
+
+        try {
+            const updatedNote = {
+                ...note,
+                transcript: transcriptValue.trim()
+            };
+
+            const response = await fetch('/api/session-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([updatedNote])
+            });
+
+            if (response.ok) {
+                if (activeSession) {
+                    await loadSessionNotes(activeSession.id);
+                }
+                transcriptTextareaRefs.current.delete(note.id);
+                setEditingTranscriptId(null);
+                setNotificationModal({ open: true, type: 'success', message: 'Transcript updated successfully' });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to update transcript: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error saving transcript:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error saving transcript. Please try again.' });
+        }
+    };
+
+    const handleCancelEditTranscript = () => {
+        setEditingTranscriptId(null);
+    };
+
+    const handleDeleteTranscript = (note: any) => {
+        setDeleteTranscriptConfirmation({ open: true, note });
+    };
+
+    const confirmDeleteTranscript = async () => {
+        const note = deleteTranscriptConfirmation.note;
+        if (!note) return;
+
+        try {
+            // Delete both transcript and AI assessment (content) if it exists
+            const updatedNote = {
+                ...note,
+                transcript: null,
+                content: null // Also delete AI assessment
+            };
+
+            const response = await fetch('/api/session-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([updatedNote])
+            });
+
+            if (response.ok) {
+                if (activeSession) {
+                    await loadSessionNotes(activeSession.id);
+                }
+                setNotificationModal({ open: true, type: 'success', message: 'Transcript and AI assessment deleted successfully' });
+                setDeleteTranscriptConfirmation({ open: false, note: null });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to delete transcript: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error deleting transcript:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error deleting transcript. Please try again.' });
+        }
+    };
+
+    // Handle audio playback
+    const handlePlayAudio = (note: any) => {
+        if (!note.audioURL) return;
+
+        // Stop any currently playing audio
+        if (audioElement) {
+            audioElement.pause();
+            audioElement.currentTime = 0;
+        }
+
+        if (playingAudioId === note.id) {
+            // If clicking the same note, stop playback
+            setPlayingAudioId(null);
+            setAudioElement(null);
+        } else {
+            // Play new audio
+            const audio = new Audio(note.audioURL);
+            audio.play();
+            setPlayingAudioId(note.id);
+            setAudioElement(audio);
+
+            audio.onended = () => {
+                setPlayingAudioId(null);
+                setAudioElement(null);
+            };
+
+            audio.onerror = () => {
+                setNotificationModal({ open: true, type: 'error', message: 'Error playing audio. Please check the audio file.' });
+                setPlayingAudioId(null);
+                setAudioElement(null);
+            };
+        }
+    };
+
     const confirmGDPRDelete = async () => {
         if (gdprDeleteClientId) {
             // Delete from database via API
@@ -1598,6 +1860,55 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    // Bulk restore function for archived clients
+    const handleBulkRestore = async () => {
+        if (selectedClientIds.size === 0) return;
+
+        const selectedCount = selectedClientIds.size;
+        const confirmMessage = `Are you sure you want to restore ${selectedCount} client${selectedCount > 1 ? 's' : ''} to active status?`;
+
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+
+        const idsToRestore = Array.from(selectedClientIds);
+        let successCount = 0;
+        let failCount = 0;
+
+        // Restore clients one by one
+        for (const id of idsToRestore) {
+            try {
+                const response = await fetch('/api/clients/archive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, restore: true }),
+                });
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    console.error(`Failed to restore client ${id}:`, errorData.error);
+                }
+            } catch (error) {
+                failCount++;
+                console.error(`Error restoring client ${id}:`, error);
+            }
+        }
+
+        // Clear selection and reload clients
+        setSelectedClientIds(new Set());
+        setIsSelectionMode(false);
+        await loadClients();
+
+        // Show result message
+        if (failCount === 0) {
+            alert(`Successfully restored ${successCount} client${successCount > 1 ? 's' : ''}.`);
+        } else {
+            alert(`Restored ${successCount} client${successCount > 1 ? 's' : ''}. Failed to restore ${failCount} client${failCount > 1 ? 's' : ''}.`);
+        }
+    };
+
     return (
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 max-w-7xl">
             <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -1630,15 +1941,28 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             >
                                 Cancel Selection
                             </Button>
-                            <Button
-                                variant="destructive"
-                                onClick={handleBulkDelete}
-                                size="lg"
-                                disabled={selectedClientIds.size === 0}
-                            >
-                                <Trash2 className="mr-2 h-5 w-5" />
-                                Delete Selected ({selectedClientIds.size})
-                            </Button>
+                            {activeTab === 'archived' ? (
+                                <Button
+                                    variant="default"
+                                    onClick={handleBulkRestore}
+                                    size="lg"
+                                    disabled={selectedClientIds.size === 0}
+                                    className="bg-green-500 hover:bg-green-600 text-white"
+                                >
+                                    <RotateCcw className="mr-2 h-5 w-5" />
+                                    Restore Selected ({selectedClientIds.size})
+                                </Button>
+                            ) : (
+                                <Button
+                                    variant="destructive"
+                                    onClick={handleBulkDelete}
+                                    size="lg"
+                                    disabled={selectedClientIds.size === 0}
+                                >
+                                    <Trash2 className="mr-2 h-5 w-5" />
+                                    Delete Selected ({selectedClientIds.size})
+                                </Button>
+                            )}
                         </>
                     ) : (
                         <Button
@@ -1651,31 +1975,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         </Button>
                     )}
                     {activeTab === 'active' && (
-                        <>
-                            {clients.filter(c => !c.newClientFormSigned && !c.archived).length > 0 && (
-                                <Button 
-                                    variant="outline"
-                                    size="lg"
-                                    onClick={handleBulkMarkFormsSigned}
-                                    className="border-blue-500 text-blue-600 hover:bg-blue-50"
-                                >
-                                    <CheckCircle2 className="mr-2 h-5 w-5" />
-                                    Mark All Forms Signed ({clients.filter(c => !c.newClientFormSigned && !c.archived).length})
-                                </Button>
-                            )}
-                            <Button 
-                                size="lg" 
-                                className="bg-green-500 hover:bg-green-600 text-white"
-                                onClick={() => setIsAddDialogOpen(true)}
-                            >
-                                <Plus className="mr-2 h-5 w-5" />
-                                Add Client
-                            </Button>
-                        </>
+                        <Button 
+                            size="lg" 
+                            className="bg-green-500 hover:bg-green-600 text-white"
+                            onClick={() => setIsAddDialogOpen(true)}
+                        >
+                            <Plus className="mr-2 h-5 w-5" />
+                            Add Client
+                        </Button>
                     )}
                 </div>
 
-                {activeTab === 'active' && (
                 <Dialog open={isAddDialogOpen} onOpenChange={(open: boolean) => {
                     if (open) {
                         setIsAddDialogOpen(true);
@@ -1686,29 +1996,33 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     <DialogTrigger asChild>
                         <div style={{ display: 'none' }}></div>
                     </DialogTrigger>
-                    <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col">
-                        <DialogHeader>
-                            <DialogTitle>
-                                {editingClient ? "Client Details" : "Add New Client"}
-                            </DialogTitle>
-                            <DialogDescription>
-                                {editingClient
-                                    ? `Manage information and sessions for ${editingClient.name}`
-                                    : "Enter client information to add them to your practice"}
-                            </DialogDescription>
-                        </DialogHeader>
+                    <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] sm:w-full max-h-[90vh] sm:max-h-[90vh] h-[90vh] sm:h-auto flex flex-col p-0 m-4 sm:m-0">
+                        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+                            <DialogHeader>
+                                <DialogTitle className="text-base sm:text-lg">
+                                    {editingClient ? "Client Details" : "Add New Client"}
+                                </DialogTitle>
+                                <DialogDescription className="text-xs sm:text-sm">
+                                    {editingClient
+                                        ? `Manage information and sessions for ${editingClient.name}`
+                                        : "Enter client information to add them to your practice"}
+                                </DialogDescription>
+                            </DialogHeader>
+                        </div>
 
-                        <Tabs value={clientDialogTab} onValueChange={(value) => setClientDialogTab(value as 'profile' | 'sessions')} className="w-full">
-                            <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="profile">Profile & Info</TabsTrigger>
-                                <TabsTrigger value="sessions" disabled={!editingClient}>Sessions & Notes</TabsTrigger>
-                            </TabsList>
+                        <Tabs value={clientDialogTab} onValueChange={(value) => setClientDialogTab(value as 'profile' | 'sessions')} className="w-full flex flex-col flex-1 min-h-0">
+                            <div className="px-4 sm:px-6">
+                                <TabsList className="grid w-full grid-cols-2 h-9 sm:h-10">
+                                    <TabsTrigger value="profile" className="text-xs sm:text-sm">Profile & Info</TabsTrigger>
+                                    <TabsTrigger value="sessions" disabled={!editingClient} className="text-xs sm:text-sm">Sessions & Notes</TabsTrigger>
+                                </TabsList>
+                            </div>
 
-                            <TabsContent value="profile" className="flex flex-col flex-1 min-h-0">
+                            <TabsContent value="profile" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
                                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
-                                    <div className="space-y-4 py-4 flex-1 overflow-y-auto">
+                                    <div className="space-y-4 py-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
                                         {/* Name */}
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="firstName">
                                                     <User className="inline h-4 w-4 mr-1 text-blue-500" />
@@ -1738,7 +2052,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </div>
 
                                         {/* Known As & Nationality */}
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="preferredName">
                                                     <User className="inline h-4 w-4 mr-1 text-purple-500" />
@@ -1766,7 +2080,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </div>
 
                                         {/* Email & Phone */}
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="email">
                                                     <Mail className="inline h-4 w-4 mr-1 text-blue-500" />
@@ -1801,7 +2115,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 <AlertTriangle className="inline h-4 w-4 text-red-500" />
                                                 Emergency Contact
                                             </Label>
-                                            <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div className="space-y-2">
                                                     <Label htmlFor="emergencyContactName">
                                                         Name
@@ -1842,7 +2156,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </div>
 
                                         {/* Next Appointment & Last Appointment */}
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="nextAppointment">
                                                     <Calendar className="inline h-4 w-4 mr-1 text-green-500" />
@@ -1878,7 +2192,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </div>
 
                                         {/* Gender & Date of Birth */}
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="gender">
                                                     <User className="inline h-4 w-4 mr-1 text-purple-500" />
@@ -1914,7 +2228,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </div>
 
                                         {/* Sessions & Fee */}
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <Label htmlFor="sessions">
                                                     <Hash className="inline h-4 w-4 mr-1 text-green-500" />
@@ -2118,7 +2432,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     </div>
                                     
                                     {/* New Client Form Signed */}
-                                    <div className="space-y-2 pt-4 border-t" ref={formCheckboxRef}>
+                                    <div className="space-y-2 pt-4 border-t flex-shrink-0" ref={formCheckboxRef}>
                                         <div className="flex items-center gap-2">
                                             <Checkbox
                                                 id="newClientFormSigned"
@@ -2136,7 +2450,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </p>
                                     </div>
                                     
-                                    <DialogFooter className="flex sm:justify-between gap-2 mt-2">
+                                    <DialogFooter className="flex flex-col sm:flex-row sm:justify-between gap-2 mt-2 flex-shrink-0 pb-4 sm:pb-6 px-4 sm:px-0">
                                         {editingClient && (
                                             <div className="flex gap-2">
                                                 {editingClient.archived ? (
@@ -2193,10 +2507,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 </form>
                             </TabsContent>
 
-                            <TabsContent value="sessions" className="space-y-4 py-4">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-lg font-semibold">Session History</h3>
-                                    <div className="flex gap-2">
+                            <TabsContent value="sessions" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 py-4 flex-shrink-0">
+                                    <h3 className="text-base sm:text-lg font-semibold">Session History</h3>
+                                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                                         <Button
                                             variant="default"
                                             size="sm"
@@ -2221,64 +2535,65 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     </div>
                                 </div>
 
-                                {editingClient && getClientAppointments(editingClient.name).length === 0 ? (
-                                    <div className="text-center py-8 text-muted-foreground">
-                                        <Calendar className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                                        <p>No sessions found for this client.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {editingClient && getClientAppointments(editingClient.name).map((apt) => (
-                                            <Card key={apt.id} className="border-l-4 border-l-primary">
-                                                <CardHeader className="p-4 pb-2">
-                                                    <div className="flex items-center justify-between">
-                                                        <CardTitle className="text-base">
-                                                            {new Date(apt.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                                                        </CardTitle>
-                                                        <span className="text-xs font-medium px-2 py-1 bg-secondary rounded-full">
-                                                            {apt.type}
-                                                        </span>
-                                                    </div>
-                                                    <CardDescription>
-                                                        {apt.time} ({apt.duration} mins)
-                                                    </CardDescription>
-                                                </CardHeader>
-                                                <CardContent className="p-4 pt-2">
-                                                    {apt.notes && (
-                                                        <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded mb-2">
-                                                            {apt.notes}
+                                <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 pb-4">
+                                    {editingClient && getClientAppointments(editingClient.name).length === 0 ? (
+                                        <div className="text-center py-8 text-muted-foreground">
+                                            <Calendar className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                                            <p>No sessions found for this client.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {editingClient && getClientAppointments(editingClient.name).map((apt) => (
+                                                <Card key={apt.id} className="border-l-4 border-l-primary">
+                                                    <CardHeader className="p-4 pb-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <CardTitle className="text-base">
+                                                                {new Date(apt.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                                                            </CardTitle>
+                                                            <span className="text-xs font-medium px-2 py-1 bg-secondary rounded-full">
+                                                                {apt.type}
+                                                            </span>
                                                         </div>
-                                                    )}
-                                                    <div className="flex gap-2 mt-2">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="w-full"
-                                                            onClick={() => handleOpenSession(apt, "notes")}
-                                                        >
-                                                            <FileText className="mr-2 h-3 w-3" />
-                                                            Notes
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            className="w-full"
-                                                            onClick={() => handleOpenSession(apt, "attachments")}
-                                                        >
-                                                            <Upload className="mr-2 h-3 w-3" />
-                                                            Attachments
-                                                        </Button>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        ))}
-                                    </div>
-                                )}
+                                                        <CardDescription>
+                                                            {apt.time} ({apt.duration} mins)
+                                                        </CardDescription>
+                                                    </CardHeader>
+                                                    <CardContent className="p-4 pt-2">
+                                                        {apt.notes && (
+                                                            <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded mb-2">
+                                                                {apt.notes}
+                                                            </div>
+                                                        )}
+                                                        <div className="flex gap-2 mt-2">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="w-full"
+                                                                onClick={() => handleOpenSession(apt, "notes")}
+                                                            >
+                                                                <FileText className="mr-2 h-3 w-3" />
+                                                                Notes
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="w-full"
+                                                                onClick={() => handleOpenSession(apt, "attachments")}
+                                                            >
+                                                                <Upload className="mr-2 h-3 w-3" />
+                                                                Attachments
+                                                            </Button>
+                                                        </div>
+                                                    </CardContent>
+                                                </Card>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </TabsContent>
                         </Tabs>
                     </DialogContent>
                 </Dialog>
-                )}
 
                 {/* Log Past Session Dialog */}
                 <Dialog open={isLogSessionDialogOpen} onOpenChange={setIsLogSessionDialogOpen}>
@@ -2362,61 +2677,67 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                 {/* Session Details Dialog */}
                 <Dialog open={!!activeSession} onOpenChange={(open) => !open && setActiveSession(null)}>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>Session Details</DialogTitle>
-                            <DialogDescription>
-                                {activeSession && `${new Date(activeSession.date).toLocaleDateString()} - ${activeSession.type}`}
-                            </DialogDescription>
-                        </DialogHeader>
+                    <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] sm:w-full max-h-[90vh] sm:max-h-[90vh] h-[90vh] sm:h-auto flex flex-col p-0 m-4 sm:m-0">
+                        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+                            <DialogHeader>
+                                <DialogTitle className="text-base sm:text-lg">Session Details</DialogTitle>
+                                <DialogDescription className="text-xs sm:text-sm">
+                                    {activeSession && `${new Date(activeSession.date).toLocaleDateString()} - ${activeSession.type}`}
+                                </DialogDescription>
+                            </DialogHeader>
+                        </div>
 
                         {activeSession && (
-                            <Tabs defaultValue={sessionDialogTab} className="w-full" onValueChange={async (value) => {
+                            <Tabs defaultValue={sessionDialogTab} className="w-full flex flex-col flex-1 min-h-0" onValueChange={async (value) => {
                                 setSessionDialogTab(value as "notes" | "attachments");
                                 if (value === "notes") {
                                     await loadSessionNotes(activeSession.id);
                                 }
                             }}>
-                                <TabsList className="grid w-full grid-cols-2">
-                                    <TabsTrigger value="notes">Notes</TabsTrigger>
-                                    <TabsTrigger value="attachments">Attachments</TabsTrigger>
-                                </TabsList>
+                                <div className="px-4 sm:px-6">
+                                    <TabsList className="grid w-full grid-cols-2 h-9 sm:h-10">
+                                        <TabsTrigger value="notes" className="text-xs sm:text-sm">Notes</TabsTrigger>
+                                        <TabsTrigger value="attachments" className="text-xs sm:text-sm">Attachments</TabsTrigger>
+                                    </TabsList>
+                                </div>
 
-                                <TabsContent value="notes" className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                                <TabsContent value="notes" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
+                                    <div className="py-4 space-y-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
                                     {isLoadingSessionNotes ? (
                                         <p className="text-muted-foreground text-center py-8">Loading session notes...</p>
                                     ) : sessionNotes.length > 0 ? (
-                                        <div className="space-y-4">
-                                            {/* If there is any recording-based note with audio, show a shared audio player at the top */}
-                                            {(() => {
-                                                const recordingNote = sessionNotes.find((n: any) => n.source === 'recording' && n.audioURL);
-                                                if (!recordingNote || !recordingNote.audioURL) return null;
-                                                return (
-                                                    <div className="border rounded-lg p-4 bg-muted/50">
-                                                        <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                                                            <Mic className="h-4 w-4 text-purple-600" />
-                                                            Audio Recording for this session
-                                                        </p>
-                                                        <audio controls className="w-full">
-                                                            <source src={recordingNote.audioURL} type="audio/webm" />
-                                                            <source src={recordingNote.audioURL} type="audio/mp3" />
-                                                            Your browser does not support the audio element.
-                                                        </audio>
-                                                    </div>
-                                                );
-                                            })()}
-
-                                            {sessionNotes.map((note, index) => {
+                                        <div className="space-y-6">
+                                            <TooltipProvider>
+                                            {sessionNotes.filter((note: any) => {
+                                                // Filter out notes that have been deleted or are empty
+                                                // Note: We MUST have transcript or content to display - audio alone is not enough
+                                                // because the audio player is inside the transcript block
+                                                const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
+                                                const hasTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
+                                                
+                                                // Must have either actual content OR actual transcript to be shown
+                                                // Audio-only notes cannot be displayed (player is in transcript section)
+                                                const shouldShow = hasContent || hasTranscript;
+                                                return shouldShow;
+                                            }).map((note, index) => {
+                                                // Final check - determine what content this note actually has to display
+                                                const displayContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
+                                                const displayTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
+                                                
+                                                // Don't render card if there's nothing to display
+                                                if (!displayContent && !displayTranscript) {
+                                                    return null;
+                                                }
+                                                
                                                 // Determine if this is an uploaded recording with AI Clinical Assessment
-                                                const hasAIClinicalAssessment = note.content && 
-                                                                                note.content.trim() !== '' && 
-                                                                                note.transcript && 
+                                                const hasAIClinicalAssessment = displayContent && 
+                                                                                displayTranscript && 
                                                                                 note.content !== note.transcript;
                                                 
                                                 return (
-                                                <div key={note.id || index} className="border rounded-lg p-4 bg-muted/50 space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="text-sm text-muted-foreground">
+                                                <div key={note.id || index} className="border-2 border-border rounded-lg p-5 bg-card shadow-sm hover:shadow-md transition-shadow space-y-4">
+                                                    <div className="flex items-center justify-between pb-2 border-b border-border">
+                                                        <div className="text-sm font-medium text-foreground">
                                                             {note.createdDate || note.created_at 
                                                                 ? new Date(note.createdDate || note.created_at).toLocaleString('en-GB', {
                                                                     day: '2-digit',
@@ -2444,43 +2765,207 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         )}
                                                     </div>
                                                     
-                                                    {/* Show AI Clinical Assessment content ONLY for uploaded recordings */}
-                                                    {/* For live recordings, content will be empty and we'll only show transcript */}
+                                                    {/* Show transcript FIRST - for live recordings this is the only content, for uploaded it's the original */}
+                                                    {note.transcript && (
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-3">
+                                                                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                                                    <span className="text-base">📝</span>
+                                                                    {/* Only show "Client's Words" for uploaded recordings (source === 'recording' with AI content) */}
+                                                                    {/* Manual AI assessments of therapist's words should still show "Therapist's Words" */}
+                                                                    {note.source === 'recording' && note.content && note.content !== note.transcript
+                                                                        ? "Original Transcript (Client's Words):" 
+                                                                        : "Original Transcript (Therapist's Words):"}
+                                                                </p>
+                                                                <div className="flex items-center gap-2">
+                                                                    {/* Play button for audio recordings */}
+                                                                    {note.audioURL && (
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handlePlayAudio(note);
+                                                                                    }}
+                                                                                    className="h-7 w-7 p-0"
+                                                                                >
+                                                                                    {playingAudioId === note.id ? (
+                                                                                        <Pause className="h-4 w-4 text-primary" />
+                                                                                    ) : (
+                                                                                        <Play className="h-4 w-4 text-primary" />
+                                                                                    )}
+                                                                                </Button>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>{playingAudioId === note.id ? 'Pause' : 'Play'} Recording</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    )}
+                                                                    {/* Edit button */}
+                                                                    {editingTranscriptId !== note.id && (
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleEditTranscript(note);
+                                                                                    }}
+                                                                                    className="h-7 w-7 p-0"
+                                                                                >
+                                                                                    <Edit className="h-4 w-4 text-primary" />
+                                                                                </Button>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>Edit Transcript</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    )}
+                                                                    {/* Delete button */}
+                                                                    {editingTranscriptId !== note.id && (
+                                                                        <Tooltip>
+                                                                            <TooltipTrigger asChild>
+                                                                                <Button
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleDeleteTranscript(note);
+                                                                                    }}
+                                                                                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                                                                >
+                                                                                    <Trash2 className="h-4 w-4" />
+                                                                                </Button>
+                                                                            </TooltipTrigger>
+                                                                            <TooltipContent>
+                                                                                <p>Delete Transcript</p>
+                                                                            </TooltipContent>
+                                                                        </Tooltip>
+                                                                    )}
+                                                                    {/* Save/Cancel buttons when editing */}
+                                                                    {editingTranscriptId === note.id && (
+                                                                        <>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <Button
+                                                                                        variant="ghost"
+                                                                                        size="sm"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            handleSaveTranscript(note);
+                                                                                        }}
+                                                                                        className="h-7 w-7 p-0 text-green-500 hover:text-green-700"
+                                                                                    >
+                                                                                        <Save className="h-4 w-4" />
+                                                                                    </Button>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>
+                                                                                    <p>Save Changes</p>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                            <Tooltip>
+                                                                                <TooltipTrigger asChild>
+                                                                                    <Button
+                                                                                        variant="ghost"
+                                                                                        size="sm"
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            handleCancelEditTranscript();
+                                                                                        }}
+                                                                                        className="h-7 w-7 p-0"
+                                                                                    >
+                                                                                        <X className="h-4 w-4" />
+                                                                                    </Button>
+                                                                                </TooltipTrigger>
+                                                                                <TooltipContent>
+                                                                                    <p>Cancel</p>
+                                                                                </TooltipContent>
+                                                                            </Tooltip>
+                                                                        </>
+                                                                    )}
+                                                                    {/* Show AI Assessment button only for Therapist's Words (no existing AI content) */}
+                                                                    {!(note.content && note.content !== note.transcript) && editingTranscriptId !== note.id && (
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            disabled={isProcessingAI}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleGenerateAIAssessment(
+                                                                                    note.transcript,
+                                                                                    activeSession?.clientName || editingClient?.name || 'Unknown',
+                                                                                    activeSession?.date,
+                                                                                    activeSession?.duration,
+                                                                                    note
+                                                                                );
+                                                                            }}
+                                                                            className="text-xs h-7 px-2"
+                                                                        >
+                                                                            {isProcessingAI ? (
+                                                                                <>
+                                                                                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                                                                    Processing...
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <Sparkles className="h-3 w-3 mr-1" />
+                                                                                    AI Assessment
+                                                                                </>
+                                                                            )}
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            {editingTranscriptId === note.id ? (
+                                                                <Textarea
+                                                                    key={`transcript-${note.id}`}
+                                                                    ref={(el) => {
+                                                                        if (el) {
+                                                                            transcriptTextareaRefs.current.set(note.id, el);
+                                                                        } else {
+                                                                            transcriptTextareaRefs.current.delete(note.id);
+                                                                        }
+                                                                    }}
+                                                                    defaultValue={note.transcript || ''}
+                                                                    className="min-h-[200px] font-mono text-xs"
+                                                                    placeholder="Edit transcript..."
+                                                                    autoFocus
+                                                                />
+                                                            ) : (
+                                                                <div className="whitespace-pre-wrap text-sm bg-muted/30 p-4 rounded-md border border-border text-foreground leading-relaxed font-mono text-xs">
+                                                                    {note.transcript}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Show AI Clinical Assessment AFTER transcript - for uploaded recordings or manually added assessments */}
                                                     {note.content && 
                                                      note.content.trim() !== '' && 
                                                      note.transcript && 
                                                      note.content !== note.transcript && (
-                                                        <div className="mb-3">
-                                                            <p className="text-sm font-semibold text-muted-foreground mb-2">
-                                                                🤖 AI Clinical Assessment:
+                                                        <div className="border-t border-border pt-4 mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
+                                                            <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                                                                <span className="text-lg">🤖</span>
+                                                                AI Clinical Assessment:
                                                             </p>
-                                                            <div className="whitespace-pre-wrap text-sm">
+                                                            <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
                                                                 {note.content}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {/* Show transcript - for live recordings this is the only content, for uploaded it's the original */}
-                                                    {note.transcript && (
-                                                        <div className={note.content && note.content !== note.transcript ? "border-t pt-3 mt-3" : ""}>
-                                                            <p className="text-sm font-semibold text-muted-foreground mb-2">
-                                                                {note.content && note.content !== note.transcript 
-                                                                    ? "📝 Original Transcript (Client's Words):" 
-                                                                    : "📝 Original Transcript (Therapist's Words):"}
-                                                            </p>
-                                                            <div className="whitespace-pre-wrap text-sm bg-muted/50 p-3 rounded text-muted-foreground">
-                                                                {note.transcript}
                                                             </div>
                                                         </div>
                                                     )}
                                                     
                                                     {/* Show content with AI heading ONLY for recordings without transcript */}
                                                     {note.content && note.content.trim() !== '' && !note.transcript && note.source === 'recording' && (
-                                                        <div>
-                                                            <p className="text-sm font-semibold text-muted-foreground mb-2">
-                                                                🤖 AI Clinical Assessment:
+                                                        <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
+                                                            <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                                                                <span className="text-lg">🤖</span>
+                                                                AI Clinical Assessment:
                                                             </p>
-                                                            <div className="whitespace-pre-wrap text-sm">
+                                                            <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
                                                                 {note.content}
                                                             </div>
                                                         </div>
@@ -2488,20 +2973,15 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     
                                                     {/* Show regular content (session info) without AI heading */}
                                                     {note.content && note.content.trim() !== '' && !note.transcript && note.source !== 'recording' && (
-                                                        <div className="whitespace-pre-wrap text-sm">
+                                                        <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed p-3 bg-muted/20 rounded-md">
                                                             {note.content}
                                                         </div>
                                                     )}
                                                     
-                                                    {/* Fallback if no transcript and no content */}
-                                                    {!note.transcript && !note.content && (
-                                                        <div className="whitespace-pre-wrap text-sm text-muted-foreground">
-                                                            No content available
-                                                        </div>
-                                                    )}
                                                 </div>
                                                 );
                                             })}
+                                            </TooltipProvider>
                                             <div className="pt-4 border-t">
                                                 <Button 
                                                     variant="outline" 
@@ -2575,9 +3055,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             />
                                         </div>
                                     )}
+                                    </div>
                                 </TabsContent>
 
-                                <TabsContent value="attachments" className="py-4 space-y-4">
+                                <TabsContent value="attachments" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
+                                    <div className="py-4 space-y-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
                                     <div className="space-y-2">
                                         <div className="flex items-center gap-2">
                                             <Input
@@ -2620,6 +3102,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         )}
                                     </div>
                                     <Button onClick={saveActiveSession}>Save Attachments</Button>
+                                    </div>
                                 </TabsContent>
                             </Tabs>
                         )}
@@ -2658,6 +3141,93 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     onConfirm={confirmGDPRDelete}
                     clientName={editingClient?.name || clients.find(c => c.id === gdprDeleteClientId)?.name}
                 />
+
+                {/* Delete Transcript Confirmation Dialog */}
+                <DeleteConfirmationDialog
+                    open={deleteTranscriptConfirmation.open}
+                    onOpenChange={(open) => setDeleteTranscriptConfirmation({ open, note: open ? deleteTranscriptConfirmation.note : null })}
+                    onConfirm={confirmDeleteTranscript}
+                    title="Delete Transcript and AI Assessment"
+                    description="Are you sure you want to delete this transcript and its AI assessment? This will permanently remove both the transcript text and any associated AI clinical assessment. This action cannot be undone."
+                    requireConfirmation={true}
+                    checkboxText="I understand this will delete both the transcript and AI assessment permanently"
+                    confirmButtonText="Delete"
+                />
+
+                {/* AI Clinical Assessment Dialog */}
+                <Dialog open={aiAssessmentDialogOpen} onOpenChange={setAiAssessmentDialogOpen}>
+                    <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <Sparkles className="h-5 w-5 text-purple-500" />
+                                AI Clinical Assessment
+                            </DialogTitle>
+                            <DialogDescription>
+                                AI-generated clinical assessment based on the session transcript
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                            {aiAssessmentResult && (
+                                <div className="whitespace-pre-wrap text-sm bg-muted/30 p-4 rounded-lg border">
+                                    {aiAssessmentResult}
+                                </div>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    if (aiAssessmentResult) {
+                                        navigator.clipboard.writeText(aiAssessmentResult);
+                                        setNotificationModal({ open: true, type: 'success', message: 'Assessment copied to clipboard' });
+                                    }
+                                }}
+                            >
+                                Copy to Clipboard
+                            </Button>
+                            {currentNoteForAssessment && (
+                                <Button
+                                    variant="default"
+                                    className="bg-green-500 hover:bg-green-600 text-white"
+                                    onClick={handleSaveAIAssessmentToNote}
+                                >
+                                    Add Assessment to Session Notes
+                                </Button>
+                            )}
+                            <Button onClick={() => {
+                                setAiAssessmentDialogOpen(false);
+                                setAiAssessmentResult(null);
+                                setCurrentNoteForAssessment(null);
+                            }}>
+                                Close
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Notification Modal */}
+                <Dialog open={notificationModal.open} onOpenChange={(open) => setNotificationModal({ ...notificationModal, open })}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                {notificationModal.type === 'success' ? (
+                                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                ) : (
+                                    <AlertTriangle className="h-5 w-5 text-red-500" />
+                                )}
+                                {notificationModal.type === 'success' ? 'Success' : 'Error'}
+                            </DialogTitle>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <p className="text-sm text-foreground">{notificationModal.message}</p>
+                        </div>
+                        <DialogFooter>
+                            <Button onClick={() => setNotificationModal({ ...notificationModal, open: false })}>
+                                OK
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div >
 
             {/* Comprehensive Search & Filter and Bulk Import/Export - Horizontal when collapsed */}
@@ -2921,14 +3491,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             {filteredClients.map((client, index) => (
                             <motion.div
                                 key={client.id}
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ delay: index * 0.05 }}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.15 }}
                             >
                                 <Card
                                     className={`hover:shadow-md transition-all hover:border-primary/50 group relative ${
                                         isSelectionMode ? '' : 'cursor-pointer'
-                                    } ${selectedClientIds.has(client.id) ? 'border-primary border-2' : ''}`}
+                                    } ${selectedClientIds.has(client.id) ? 'border-primary border-2' : ''} ${
+                                        isClientInactive(client.name) && activeTab !== 'archived' ? 'opacity-50' : ''
+                                    }`}
                                     onClick={() => {
                                         if (isSelectionMode) {
                                             toggleClientSelection(client.id);
@@ -2954,8 +3526,23 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         className="absolute top-2 right-2 z-10 flex items-center gap-1"
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        {/* Warning Icon */}
-                                        {!client.newClientFormSigned && (
+                                        {/* Inactive indicator - Show for clients with no session in 90+ days */}
+                                        {isClientInactive(client.name) && activeTab !== 'archived' && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <span className="cursor-default">
+                                                        <Clock 
+                                                            className="h-4 w-4 text-gray-400 dark:text-gray-500" 
+                                                        />
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p>No session in 90+ days</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                        {/* Warning Icon - Hide for archived clients */}
+                                        {!client.newClientFormSigned && activeTab !== 'archived' && (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <button
@@ -2972,27 +3559,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 </TooltipTrigger>
                                                 <TooltipContent>
                                                     <p>New Client Form not signed - Click to open and sign</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        )}
-                                        {/* Delete Button - Always visible */}
-                                        {!isSelectionMode && (
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleGDPRDeleteClick(client.id);
-                                                        }}
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent>
-                                                    <p>Delete client</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                         )}
