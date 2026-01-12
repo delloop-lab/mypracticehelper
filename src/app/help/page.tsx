@@ -164,65 +164,88 @@ export default function HelpPage() {
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div>
+                            <h3 className="font-semibold mb-2">What is a Session Note</h3>
+                            <p className="text-sm text-muted-foreground">
+                                A Session Note is a record written by a therapist after a session to summarise what happened, capture observations, and note any follow-up actions. It helps track the client's progress over time.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-semibold mb-2">What is an Admin Note</h3>
+                            <p className="text-sm text-muted-foreground">
+                                An Admin Note is an internal note used by the clinic or practice staff to record administrative details, reminders, or follow-ups related to a client or session.
+                            </p>
+                        </div>
+
+                        <div>
                             <h3 className="font-semibold mb-2">How do I add a new client?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Go to the Clients page and click the "Add New Client" button. Fill in the client's information including name, email, phone, and any other relevant details. You can also import clients from an .xlsx file.
+                                Go to the Clients page and click "Add New Client." Fill in the client's details—name, email, phone, and any other relevant information. You can also import multiple clients at once from an .xlsx file.
                             </p>
                         </div>
 
                         <div>
                             <h3 className="font-semibold mb-2">How do I mark a client form as signed?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Open the client's details by clicking on their card, then check the "New Client Form Signed" checkbox in the edit dialog. This will remove them from the reminders list.
+                                Open the client's details by clicking on their card, then check the "New Client Form Signed" box in the edit dialog. This will automatically remove them from the reminders list.
                             </p>
                         </div>
 
                         <div>
                             <h3 className="font-semibold mb-2">How do I record Session Notes?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Go to the Recording page and create a new recording with automatic AI transcription. Recordings work best in Chrome or Edge browsers.
+                                Go to the Recordings page and create a new recording. Automatic AI transcription will capture the session. For best results, use Chrome or Edge.
                             </p>
                         </div>
 
                         <div>
-                            <h3 className="font-semibold mb-2">How do I add Admin Notes</h3>
+                            <h3 className="font-semibold mb-2">How do I add Admin Notes?</h3>
                             <p className="text-sm text-muted-foreground">
-                                You can add simple notes about the session and the person's demeanour by going to Sessions and editing the relevant session.
+                                Go to the Sessions page, open the relevant session, and add notes about the session or the client's demeanour. These notes are internal and help your team stay organised.
                             </p>
                         </div>
 
                         <div>
                             <h3 className="font-semibold mb-2">How do I set up Calendly integration?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Go to Settings and find the Calendly section. You'll need a Calendly Personal Access Token (PAT). Once configured, appointments booked in Calendly will automatically appear in your schedule.
+                                Go to Settings &gt; Calendly and enter your Calendly Personal Access Token (PAT). Once set up, any appointments booked in Calendly will automatically appear in your schedule.
                             </p>
                         </div>
 
                         <div>
                             <h3 className="font-semibold mb-2">How do I create custom reminders?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Go to Settings &gt; Reminders. Click "Create New Reminder" and choose from available templates or create your own. Custom reminders will appear in the Reminders page and can be configured to check for specific conditions.
+                                Go to Settings &gt; Reminders, click "Create New Reminder," and choose a template or make your own. Custom reminders appear in the Reminders page and can be configured to trigger based on specific conditions.
                             </p>
                         </div>
 
                         <div>
                             <h3 className="font-semibold mb-2">How do I upload documents for a client?</h3>
                             <p className="text-sm text-muted-foreground">
-                                You can upload documents in two ways: 1) Open the client's details dialog and go to the Documents tab, then click "Upload Document" and select the file, or 2) Go to the Documents page and upload company documents or client-specific documents. Documents are stored securely and can be viewed or deleted at any time.
+                                You can upload documents in two ways:
+                                <br />
+                                <br />
+                                Open the client's details, go to the Documents tab, and click "Upload Document."
+                                <br />
+                                <br />
+                                Go to the Documents page to upload company-wide or client-specific files.
+                                <br />
+                                <br />
+                                All documents are stored securely and can be viewed or deleted anytime.
                             </p>
                         </div>
 
                         <div>
                             <h3 className="font-semibold mb-2">How do I mark a session as paid?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Go to the Revenue page and find the session in the list. Click on the payment status to toggle between paid and unpaid. You can also edit the fee amount for each session.
+                                Go to the Revenue page, find the session, and click the payment status to toggle between paid and unpaid. You can also edit the fee for each session.
                             </p>
                         </div>
 
                         <div>
                             <h3 className="font-semibold mb-2">Can I customize appointment types?</h3>
                             <p className="text-sm text-muted-foreground">
-                                Yes! Go to Settings &gt; Appointments. You can add, edit, or delete appointment types. Each type can have its own duration and default fee. You can also enable or disable specific types.
+                                Yes! Go to Settings &gt; Appointments to add, edit, or remove appointment types. Each type can have its own duration and default fee, and you can enable or disable specific types as needed.
                             </p>
                         </div>
                     </CardContent>
