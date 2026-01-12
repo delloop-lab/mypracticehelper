@@ -24,7 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle, Globe } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { motion } from "framer-motion";
@@ -81,6 +81,7 @@ interface Client {
     dateOfBirth?: string;
     mailingAddress?: string;
     preferredName?: string;
+    nationality?: string;
     emergencyContact?: {
         name: string;
         phone: string;
@@ -126,6 +127,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         dateOfBirth: "",
         mailingAddress: "",
         preferredName: "",
+        nationality: "",
         emergencyContact: { name: "", phone: "" },
         medicalConditions: "",
         currentMedications: "",
@@ -187,6 +189,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         client.email || '',
                         client.phone || '',
                         client.preferredName || '',
+                        client.nationality || '',
                         client.notes || '',
                         client.mailingAddress || '',
                         client.medicalConditions || '',
@@ -1130,6 +1133,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 dateOfBirth: formData.dateOfBirth || "",
                 mailingAddress: formData.mailingAddress || "",
                 preferredName: formData.preferredName || "",
+                nationality: formData.nationality || "",
                 emergencyContact: formData.emergencyContact || { name: "", phone: "" },
                 medicalConditions: formData.medicalConditions || "",
                 currentMedications: formData.currentMedications || "",
@@ -1737,18 +1741,32 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             </div>
                                         </div>
 
-                                        {/* Known As */}
-                                        <div className="space-y-2">
-                                            <Label htmlFor="preferredName">
-                                                <User className="inline h-4 w-4 mr-1 text-purple-500" />
-                                                Known As
-                                            </Label>
-                                            <Input
-                                                id="preferredName"
-                                                placeholder="Nickname"
-                                                value={formData.preferredName || ''}
-                                                onChange={(e) => setFormData({ ...formData, preferredName: e.target.value })}
-                                            />
+                                        {/* Known As & Nationality */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="preferredName">
+                                                    <User className="inline h-4 w-4 mr-1 text-purple-500" />
+                                                    Known As
+                                                </Label>
+                                                <Input
+                                                    id="preferredName"
+                                                    placeholder="Nickname"
+                                                    value={formData.preferredName || ''}
+                                                    onChange={(e) => setFormData({ ...formData, preferredName: e.target.value })}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="nationality">
+                                                    <Globe className="inline h-4 w-4 mr-1 text-blue-500" />
+                                                    Nationality
+                                                </Label>
+                                                <Input
+                                                    id="nationality"
+                                                    placeholder="e.g., British, Irish"
+                                                    value={formData.nationality || ''}
+                                                    onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
+                                                />
+                                            </div>
                                         </div>
 
                                         {/* Email & Phone */}
