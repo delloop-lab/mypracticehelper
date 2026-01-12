@@ -2197,7 +2197,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             onClick={() => handleOpenSession(apt, "notes")}
                                                         >
                                                             <FileText className="mr-2 h-3 w-3" />
-                                                            Session Notes
+                                                            Notes
                                                         </Button>
                                                         <Button
                                                             size="sm"
@@ -2318,7 +2318,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 }
                             }}>
                                 <TabsList className="grid w-full grid-cols-2">
-                                    <TabsTrigger value="notes">Session Notes</TabsTrigger>
+                                    <TabsTrigger value="notes">Notes</TabsTrigger>
                                     <TabsTrigger value="attachments">Attachments</TabsTrigger>
                                 </TabsList>
 
@@ -2467,13 +2467,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         setActiveSession(null);
                                                     }}
                                                 >
-                                                    Add Session Note
+                                                    Add Note
                                                 </Button>
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
-                                            <p className="text-muted-foreground text-center py-4">No session notes found for this session.</p>
+                                            <p className="text-muted-foreground text-center py-4">No notes found for this session.</p>
                                             <div className="flex gap-2">
                                                 <Button 
                                                     onClick={() => {
@@ -2498,13 +2498,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         setActiveSession(null);
                                                     }}
                                                 >
-                                                    Add Session Note
+                                                    Add Note
                                                 </Button>
                                                 <Button 
                                                     variant="outline"
                                                     onClick={saveActiveSession}
                                                 >
-                                                    Save Session Notes
+                                                    Save Notes
                                                 </Button>
                                             </div>
                                             <Textarea
