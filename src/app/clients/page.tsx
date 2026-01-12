@@ -1259,10 +1259,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     };
 
     const handleEdit = (client: Client, tab: 'profile' | 'sessions' = 'profile', scrollToForm: boolean = false) => {
-        // Don't open modal for archived clients when viewing archived tab
-        if (activeTab === 'archived') {
-            return; // Archived clients are view-only in the archived tab
-        }
         setEditingClient(client);
         setClientDialogTab(tab);
         setScrollToFormCheckbox(scrollToForm);
