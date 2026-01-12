@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Clock, ClipboardCheck, DollarSign, Plus, X, CheckCircle2 } from "lucide-react";
+import { AlertCircle, Clock, ClipboardCheck, Landmark, Plus, X, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -270,7 +270,7 @@ export function RemindersModal() {
                                             ? "text-green-800 dark:text-green-200"
                                             : "text-red-800 dark:text-red-200"
                                     }`}>
-                                        <DollarSign className="h-4 w-4" />
+                                        <Landmark className="h-4 w-4" />
                                         {unpaidSessions.length} Unpaid Session{unpaidSessions.length !== 1 ? 's' : ''}
                                     </CardTitle>
                                 </CardHeader>

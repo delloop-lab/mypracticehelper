@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Calendar, DollarSign, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, Plus, Trash2, Edit, FileText, ClipboardCheck, Landmark, Loader2 } from "lucide-react";
+import { Settings, Calendar, Clock, Save, CheckCircle2, Database, Download, Upload, AlertCircle, User, Mail, Plus, Trash2, Edit, FileText, ClipboardCheck, Landmark, Loader2 } from "lucide-react";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { motion } from "framer-motion";
 import Link from "next/link";
@@ -857,7 +857,7 @@ export default function SettingsPage() {
                                                 Fee ({settings.currency})
                                             </Label>
                                             <div className="flex items-center gap-2">
-                                                <DollarSign className="h-4 w-4 text-pink-500" />
+                                                <Landmark className="h-4 w-4 text-pink-500" />
                                                 <Input
                                                     id={`fee-${displayIndex}`}
                                                     type="number"
