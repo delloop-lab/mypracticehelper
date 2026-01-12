@@ -105,7 +105,7 @@ export default function HelpPage() {
                     </CardHeader>
                     <CardContent>
                         <ul className="space-y-2 text-sm text-muted-foreground">
-                            <li>• Track sessions awaiting clinical notes</li>
+                            <li>• Track sessions awaiting session notes</li>
                             <li>• Monitor unsigned client forms</li>
                             <li>• View unpaid sessions</li>
                             <li>• Create custom reminders</li>
