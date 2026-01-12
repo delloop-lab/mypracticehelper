@@ -1783,7 +1783,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                                         {/* Emergency Contact */}
                                         <div className="space-y-2">
-                                            <Label className="text-sm font-semibold">Emergency Contact</Label>
+                                            <Label className="text-sm font-semibold flex items-center gap-1">
+                                                <AlertTriangle className="inline h-4 w-4 text-red-500" />
+                                                Emergency Contact
+                                            </Label>
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
                                                     <Label htmlFor="emergencyContactName">
