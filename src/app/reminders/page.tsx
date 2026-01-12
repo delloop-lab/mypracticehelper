@@ -395,7 +395,7 @@ export default function RemindersPage() {
                             }>
                                 {reminders.length === 0
                                     ? "Great! All your past sessions have therapist notes."
-                                    : "These sessions need clinical documentation to maintain complete records."}
+                                    : "These sessions need session notes to maintain complete records."}
                             </CardDescription>
                         </CardHeader>
                     </Card>
@@ -525,7 +525,7 @@ export default function RemindersPage() {
                 </div>
 
 
-                {/* Sessions Awaiting Clinical Notes Section */}
+                {/* Sessions Awaiting Session Notes Section */}
                 {isLoading ? (
                     <Card>
                         <CardContent className="flex items-center justify-center py-16">
