@@ -178,14 +178,14 @@ export default function HelpPage() {
                         </div>
 
                         <div>
-                            <h3 className="font-semibold mb-2">How do I record Clinical Notes?</h3>
+                            <h3 className="font-semibold mb-2">How do I record Session Notes?</h3>
                             <p className="text-sm text-muted-foreground">
                                 Go to the Recording page and create a new recording with automatic AI transcription. Recordings work best in Chrome or Edge browsers.
                             </p>
                         </div>
 
                         <div>
-                            <h3 className="font-semibold mb-2">How to add Session Notes</h3>
+                            <h3 className="font-semibold mb-2">How do I add Admin Notes</h3>
                             <p className="text-sm text-muted-foreground">
                                 You can add simple notes about the session and the person's demeanour by going to Sessions and editing the relevant session.
                             </p>
