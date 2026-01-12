@@ -79,15 +79,15 @@ export default function HelpPage() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <FileText className="h-5 w-5" />
-                            Clinical and Session Notes
+                            Session and Admin Notes
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <ul className="space-y-2 text-sm text-muted-foreground">
-                            <li>• Write Session Notes</li>
-                            <li>• Record Clinical Notes audio</li>
+                            <li>• Write Admin Notes</li>
+                            <li>• Record Session Notes audio</li>
                             <li>• Automatic AI Transcription of recordings</li>
-                            <li>• Automatic Clinical Assessment of of actual session recordings</li>
+                            <li>• AI Clinical Assessment of of actual session recordings</li>
                             <li>• Filter and search notes</li>
                         </ul>
                     </CardContent>
