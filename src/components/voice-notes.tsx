@@ -53,6 +53,7 @@ export function VoiceNotes() {
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const transcriptRef = useRef<string>("");
+    const streamRef = useRef<MediaStream | null>(null);
 
     // Load clients on mount
     useEffect(() => {
@@ -257,6 +258,48 @@ export function VoiceNotes() {
         };
     }, [isRecording]);
 
+    // Cleanup MediaRecorder and stream on unmount
+    useEffect(() => {
+        return () => {
+            // Stop MediaRecorder if still recording
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+                try {
+                    mediaRecorderRef.current.stop();
+                } catch (e) {
+                    console.warn('Error stopping MediaRecorder on unmount:', e);
+                }
+            }
+            // Stop all stream tracks
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => {
+                    track.stop();
+                });
+                streamRef.current = null;
+            }
+            // Clear timer
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+        };
+    }, []);
+
+    // Warn user before navigating away during recording
+    useEffect(() => {
+        if (!isRecording) return;
+
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+            e.returnValue = 'You are currently recording. Are you sure you want to leave? Your recording will be lost.';
+            return e.returnValue;
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, [isRecording]);
+
     const formatTime = (seconds: number): string => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -320,6 +363,7 @@ export function VoiceNotes() {
                     autoGainControl: true
                 } 
             });
+            streamRef.current = stream; // Store stream for cleanup
             
             // Determine the best MIME type for this browser
             let mimeType = "audio/webm";
@@ -824,7 +868,6 @@ export function VoiceNotes() {
         // Live recordings should only have transcript, no notes
         const notes: NoteSection[] = isUploadedFile ? [{ title: "AI Clinical Assessment", content: structuredText }] : [];
         setStructuredNotes(notes);
-        setIsProcessing(false);
 
         try {
             // Save the raw-but-formatted transcript, and keep AI Clinical Assessment separately
@@ -833,9 +876,11 @@ export function VoiceNotes() {
             await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId);
             console.log("Recording saved successfully", { clientId, clientName, sessionId });
             window.dispatchEvent(new Event("recordings-updated"));
+            setIsProcessing(false);
         } catch (err) {
             console.error("Failed to save recording:", err);
             setError("Failed to save recording. Please try again.");
+            setIsProcessing(false);
         }
     };
 
@@ -1244,9 +1289,14 @@ export function VoiceNotes() {
                         <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-3">
                             <h4 className="text-sm font-semibold">Audio Recording:</h4>
                             <audio controls src={audioURL} className="w-full" />
-                            <Button onClick={downloadAudio} variant="outline" size="sm" className="w-full">
-                                Download Recording
-                            </Button>
+                            <motion.div
+                                animate={{ opacity: [1, 0.5, 1] }}
+                                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                            >
+                                <Button onClick={downloadAudio} variant="destructive" size="sm" className="w-full">
+                                    Download Recording
+                                </Button>
+                            </motion.div>
                         </div>
                     )}
 

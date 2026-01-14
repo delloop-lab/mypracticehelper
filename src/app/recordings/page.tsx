@@ -219,7 +219,7 @@ function RecordingsContent() {
                         console.warn(`[Recordings] Duration calculation timeout for ${recordingId}`);
                     }
                     finish();
-                }, 5000);
+                }, 15000);
             });
         } catch (err) {
             console.warn(`[Recordings] Error calculating duration for ${recordingId}:`, err);
