@@ -27,6 +27,7 @@ interface Appointment {
     paymentStatus?: "paid" | "pending" | "unpaid";
     fee?: number;
     currency?: string;
+    paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit";
 }
 
 interface SessionNote {
