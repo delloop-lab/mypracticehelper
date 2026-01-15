@@ -206,15 +206,49 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 );
                 setUnsignedFormClients(clientsWithoutSignedForms);
 
-                // Calculate unpaid past sessions
+                // Calculate unpaid past sessions (with proper time parsing and fee check)
+                console.log(`[Dashboard] Checking ${appointments.length} appointments for unpaid sessions...`);
                 const pastUnpaidSessions = appointments.filter((apt: any) => {
                     const dateStr = apt.date.split('T')[0];
-                    const timeStr = apt.time && apt.time.length === 5 ? `${apt.time}:00` : (apt.time || '00:00:00');
-                    const aptDate = new Date(`${dateStr}T${timeStr}`);
+                    const timeStr = apt.time || '00:00';
+                    
+                    // Handle 12-hour format (e.g., "02:00 pm") - same logic as reminders page
+                    let aptHours = 0;
+                    let aptMinutes = 0;
+                    const timeLower = timeStr.toLowerCase().trim();
+                    const isPM = timeLower.includes('pm');
+                    const isAM = timeLower.includes('am');
+                    const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                    if (timeMatch) {
+                        aptHours = parseInt(timeMatch[1], 10);
+                        aptMinutes = parseInt(timeMatch[2], 10);
+                        if (isPM && aptHours !== 12) aptHours += 12;
+                        else if (isAM && aptHours === 12) aptHours = 0;
+                    }
+                    
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
                     const isPast = aptDate < now;
-                    const isUnpaid = apt.paymentStatus !== 'paid';
-                    return isPast && isUnpaid;
+                    
+                    // Check payment status - handle null/undefined (defaults to unpaid)
+                    const paymentStatus = apt.paymentStatus || 'unpaid';
+                    const isUnpaid = paymentStatus !== 'paid';
+                    
+                    // Only include sessions with a fee > 0 (sessions with 0 fee shouldn't show as unpaid)
+                    const fee = apt.fee || 0;
+                    const hasFee = fee > 0;
+                    
+                    const shouldInclude = isPast && isUnpaid && hasFee;
+                    
+                    // Debug logging for all past sessions
+                    if (isPast) {
+                        console.log(`[Dashboard] Unpaid check: ${apt.clientName} on ${dateStr} at ${apt.time} (parsed: ${aptDate.toLocaleString()}) - isPast: ${isPast}, isUnpaid: ${isUnpaid}, hasFee: ${hasFee}, fee: ${fee}, paymentStatus: ${paymentStatus}, shouldInclude: ${shouldInclude}`);
+                    }
+                    
+                    return shouldInclude;
                 });
+                
+                console.log(`[Dashboard] Found ${pastUnpaidSessions.length} unpaid sessions:`, pastUnpaidSessions.map((s: any) => ({ client: s.clientName, date: s.date, time: s.time, fee: s.fee, paymentStatus: s.paymentStatus })));
                 setUnpaidSessions(pastUnpaidSessions);
 
                 // Store individual reminder counts
@@ -239,12 +273,17 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                     clientsNotSeenReminders.length;
                 setRemindersTotalCount(totalRemindersCount);
                 
-                setReminderCounts({
+                const counts = {
                     clinicalNotes: allMissingNotes.length,
                     unsignedForms: clientsWithoutSignedForms.length,
                     unpaidSessions: pastUnpaidSessions.length,
                     customReminders: clientsNotSeenReminders.length
-                });
+                };
+                
+                console.log(`[Dashboard] Setting reminder counts:`, counts);
+                console.log(`[Dashboard] Unpaid sessions count: ${counts.unpaidSessions}, actual sessions:`, pastUnpaidSessions.map((s: any) => s.clientName));
+                
+                setReminderCounts(counts);
 
                 // Calculate revenue based on period
                 const revenue = calculateRevenue(appointments, revenuePeriod);
@@ -630,8 +669,15 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
 
             {/* Super Reminder Banner */}
             {(() => {
-                // Calculate total from the individual counts to ensure consistency
-                const displayTotal = reminderCounts.clinicalNotes + reminderCounts.unsignedForms + reminderCounts.customReminders;
+                // Calculate total from the individual counts to ensure consistency (include unpaid sessions)
+                const displayTotal = reminderCounts.clinicalNotes + reminderCounts.unsignedForms + reminderCounts.unpaidSessions + reminderCounts.customReminders;
+                console.log(`[Dashboard] Action Required calculation:`, {
+                    clinicalNotes: reminderCounts.clinicalNotes,
+                    unsignedForms: reminderCounts.unsignedForms,
+                    unpaidSessions: reminderCounts.unpaidSessions,
+                    customReminders: reminderCounts.customReminders,
+                    displayTotal
+                });
                 return displayTotal > 0 && (
                 <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
                     <CardContent className="p-6">
@@ -646,6 +692,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                                         const parts = [
                                             reminderCounts.clinicalNotes > 0 && `${reminderCounts.clinicalNotes} Session Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`,
                                             reminderCounts.unsignedForms > 0 && `${reminderCounts.unsignedForms} Unsigned Form${reminderCounts.unsignedForms !== 1 ? 's' : ''}`,
+                                            reminderCounts.unpaidSessions > 0 && `${reminderCounts.unpaidSessions} Unpaid Session${reminderCounts.unpaidSessions !== 1 ? 's' : ''}`,
                                             reminderCounts.customReminders > 0 && `${reminderCounts.customReminders} Client${reminderCounts.customReminders !== 1 ? 's' : ''} Not Seen Recently`
                                         ].filter(Boolean);
                                         if (parts.length === 0) return '';
