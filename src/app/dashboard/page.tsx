@@ -680,14 +680,14 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 });
                 return displayTotal > 0 && (
                 <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
-                    <CardContent className="p-6">
+                    <CardContent className="p-4 sm:p-6">
                         <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                                <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2">
-                                    <FileText className="h-5 w-5 text-green-500" />
-                                    Action Required: {displayTotal} Reminder{displayTotal !== 1 ? 's' : ''}
+                            <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-2 flex items-center gap-2 text-sm sm:text-base">
+                                    <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-green-500 shrink-0" />
+                                    <span className="truncate">Action Required: {displayTotal} Reminder{displayTotal !== 1 ? 's' : ''}</span>
                                 </h3>
-                                <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+                                <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-300 mb-4 break-words">
                                     You have {displayTotal} outstanding reminder{displayTotal !== 1 ? 's' : ''}: {(() => {
                                         const parts = [
                                             reminderCounts.clinicalNotes > 0 && `${reminderCounts.clinicalNotes} Session Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`,
@@ -704,9 +704,10 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                                 <Button
                                     onClick={() => router.push('/reminders')}
                                     variant="default"
-                                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                                    className="bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm w-full sm:w-auto"
                                 >
-                                    View All Reminders
+                                    <span className="hidden sm:inline">View All Reminders</span>
+                                    <span className="sm:hidden">View Reminders</span>
                                 </Button>
                             </div>
                         </div>
@@ -721,35 +722,41 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                     <div className="space-y-2">
                         <Button
                             variant="outline"
-                            className="w-full justify-start gap-2"
+                            className="w-full justify-start gap-2 text-left overflow-hidden"
                             onClick={() => router.push('/reminders')}
                         >
-                            <FileText className="h-4 w-4 text-green-500" />
-                            View Reminders
+                            <FileText className="h-4 w-4 text-green-500 shrink-0" />
+                            <span className="truncate">View Reminders</span>
                         </Button>
                         <Button
                             variant="outline"
-                            className="w-full justify-start gap-2"
+                            className="w-full justify-start gap-2 text-left overflow-hidden"
                             onClick={() => onNavigate("schedule")}
                         >
-                            <Calendar className="h-4 w-4 text-blue-500" />
-                            Schedule New Appointment
+                            <Calendar className="h-4 w-4 text-blue-500 shrink-0" />
+                            <span className="truncate">
+                                <span className="hidden sm:inline">Schedule New Appointment</span>
+                                <span className="sm:hidden">New Appointment</span>
+                            </span>
                         </Button>
                         <Button
                             variant="outline"
-                            className="w-full justify-start gap-2"
+                            className="w-full justify-start gap-2 text-left overflow-hidden"
                             onClick={() => onNavigate("notes")}
                         >
-                            <Mic className="h-4 w-4 text-purple-500" />
-                            Record Session Notes
+                            <Mic className="h-4 w-4 text-purple-500 shrink-0" />
+                            <span className="truncate">
+                                <span className="hidden sm:inline">Record Session Notes</span>
+                                <span className="sm:hidden">Session Notes</span>
+                            </span>
                         </Button>
                         <Button
                             variant="outline"
-                            className="w-full justify-start gap-2"
+                            className="w-full justify-start gap-2 text-left overflow-hidden"
                             onClick={() => onNavigate("clients", "add")}
                         >
-                            <Users className="h-4 w-4 text-blue-500" />
-                            Add New Client
+                            <Users className="h-4 w-4 text-blue-500 shrink-0" />
+                            <span className="truncate">Add New Client</span>
                         </Button>
                     </div>
                 </div>

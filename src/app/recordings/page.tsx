@@ -66,21 +66,11 @@ function RecordingsContent() {
     const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; recording: Recording | null }>({ isOpen: false, recording: null });
-    // Default to "history" for SSR, then update to "new" on mobile after hydration
-    const [activeTab, setActiveTab] = useState("history");
+    // Default to "new" tab (New Recording)
+    const [activeTab, setActiveTab] = useState("new");
 
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
     const [calculatedDurations, setCalculatedDurations] = useState<Record<string, number>>({});
-
-    // Set initial tab based on screen size after hydration - always "new" on mobile
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const isMobile = window.innerWidth < 768;
-            if (isMobile) {
-                setActiveTab("new");
-            }
-        }
-    }, []);
 
     useEffect(() => {
         const clientParam = searchParams.get('client');
