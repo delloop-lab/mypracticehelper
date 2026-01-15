@@ -1833,7 +1833,7 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
 
             {/* View Appointment Details Dialog */}
             <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Appointment Details</DialogTitle>
                         <DialogDescription>

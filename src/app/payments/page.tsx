@@ -531,18 +531,47 @@ export default function PaymentsPage() {
         paidRevenueByCurrency[currency] = (paidRevenueByCurrency[currency] || 0) + fee;
     });
 
-    // Get all unpaid sessions (all time, not filtered by period, including future sessions)
+    // Get all unpaid sessions (past sessions only, not filtered by period)
     // Exclude cancelled and deleted sessions
+    const now = new Date();
     const allUnpaidSessions = appointments.filter(apt => {
         if (!isSessionValid(apt)) return false;
+        
+        // Check if session is in the past - handle 12-hour format (e.g., "02:00 pm")
+        const dateStr = apt.date.split('T')[0];
+        const timeStr = apt.time || '00:00';
+        
+        let aptHours = 0;
+        let aptMinutes = 0;
+        const timeLower = timeStr.toLowerCase().trim();
+        const isPM = timeLower.includes('pm');
+        const isAM = timeLower.includes('am');
+        const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+        if (timeMatch) {
+            aptHours = parseInt(timeMatch[1], 10);
+            aptMinutes = parseInt(timeMatch[2], 10);
+            if (isPM && aptHours !== 12) aptHours += 12;
+            else if (isAM && aptHours === 12) aptHours = 0;
+        }
+        
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
+        const isPast = aptDate < now;
+        
+        if (!isPast) return false; // Exclude future sessions
+        
         const fee = getAppointmentFee(apt);
         // Only include sessions with fee > 0 and payment status is not "paid"
-        const isUnpaid = fee > 0 && apt.paymentStatus !== "paid";
+        const paymentStatus = apt.paymentStatus || 'unpaid';
+        const isUnpaid = fee > 0 && paymentStatus !== "paid";
         if (isUnpaid) {
             console.log(`[Revenue] Unpaid session found:`, {
                 id: apt.id,
                 client: apt.clientName,
                 date: apt.date,
+                time: apt.time,
+                parsedDate: aptDate.toLocaleString(),
+                isPast: isPast,
                 fee: fee,
                 paymentStatus: apt.paymentStatus,
                 status: apt.status

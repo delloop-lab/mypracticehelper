@@ -13,7 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { FileText, Calendar, Search, AlertCircle, Clock, ClipboardCheck, CheckCircle2, X, ChevronDown, Landmark, Mic, Plus } from "lucide-react";
+import { FileText, Calendar, Search, AlertCircle, Clock, ClipboardCheck, CheckCircle2, X, ChevronDown, Landmark, Mic, Plus, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
@@ -73,7 +73,10 @@ export default function RemindersPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [showFormsSection, setShowFormsSection] = useState(true);
     const [dismissingReminderId, setDismissingReminderId] = useState<string | null>(null);
+    const [markingPaidSessionId, setMarkingPaidSessionId] = useState<string | null>(null);
     const formsSectionRef = useRef<HTMLDivElement>(null);
+    const sessionNotesSectionRef = useRef<HTMLDivElement>(null);
+    const unpaidSessionsSectionRef = useRef<HTMLDivElement>(null);
 
     const handleDismissReminder = async (reminderId: string, e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent card click
@@ -96,6 +99,54 @@ export default function RemindersPage() {
             alert('Failed to dismiss reminder. Please try again.');
         } finally {
             setDismissingReminderId(null);
+        }
+    };
+
+    // Get currency symbol from currency code
+    const getCurrencySymbol = (currencyCode?: string): string => {
+        if (!currencyCode) return "€"; // Default to EUR
+        switch (currencyCode.toUpperCase()) {
+            case 'USD': return '$';
+            case 'EUR': return '€';
+            case 'GBP': return '£';
+            case 'AUD': return 'A$';
+            default: return currencyCode; // Return code if unknown
+        }
+    };
+
+    const handleMarkAsPaid = async (session: Appointment, e: React.MouseEvent) => {
+        e.stopPropagation(); // Prevent card click navigation
+        setMarkingPaidSessionId(session.id);
+        try {
+            const response = await fetch('/api/appointments', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    id: session.id,
+                    paymentStatus: 'paid',
+                    fee: session.fee || undefined,
+                    currency: session.currency || 'EUR',
+                    paymentMethod: session.paymentMethod || 'Cash'
+                }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to update payment status');
+            }
+
+            // Small delay to ensure database update is complete
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Reload data to reflect the change
+            await loadData();
+        } catch (error) {
+            console.error('Error marking session as paid:', error);
+            alert(`Failed to mark session as paid: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } finally {
+            setMarkingPaidSessionId(null);
         }
     };
 
@@ -275,11 +326,37 @@ export default function RemindersPage() {
             const pastUnpaidSessions = appointmentsData.filter((apt: Appointment) => {
                 // Extract date part (YYYY-MM-DD) from date string (handles both date-only and ISO timestamp formats)
                 const dateStr = apt.date.split('T')[0];
-                const timeStr = apt.time && apt.time.length === 5 ? `${apt.time}:00` : (apt.time || '00:00:00');
-                const aptDate = new Date(`${dateStr}T${timeStr}`);
+                const timeStr = apt.time || '00:00';
+                
+                // Handle 12-hour format (e.g., "02:00 pm") - same logic as pastSessions filter
+                let aptHours = 0;
+                let aptMinutes = 0;
+                const timeLower = timeStr.toLowerCase().trim();
+                const isPM = timeLower.includes('pm');
+                const isAM = timeLower.includes('am');
+                const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                if (timeMatch) {
+                    aptHours = parseInt(timeMatch[1], 10);
+                    aptMinutes = parseInt(timeMatch[2], 10);
+                    if (isPM && aptHours !== 12) aptHours += 12;
+                    else if (isAM && aptHours === 12) aptHours = 0;
+                }
+                
+                const [year, month, day] = dateStr.split('-').map(Number);
+                const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
                 const isPast = aptDate < now;
-                const isUnpaid = apt.paymentStatus !== 'paid';
-                return isPast && isUnpaid;
+                
+                // Check payment status - handle null/undefined (defaults to unpaid)
+                const paymentStatus = apt.paymentStatus || 'unpaid';
+                const isUnpaid = paymentStatus !== 'paid';
+                
+                // Only include sessions with a fee > 0 (sessions with 0 fee shouldn't show as unpaid)
+                const fee = apt.fee || 0;
+                const hasFee = fee > 0;
+                
+                console.log(`[Reminders Page] Unpaid check: ${apt.clientName} on ${dateStr} at ${apt.time} (parsed: ${aptDate.toLocaleString()}) - isPast: ${isPast}, isUnpaid: ${isUnpaid}, hasFee: ${hasFee}, fee: ${fee}`);
+                
+                return isPast && isUnpaid && hasFee;
             });
             setUnpaidSessions(pastUnpaidSessions);
         } catch (error) {
@@ -402,10 +479,23 @@ export default function RemindersPage() {
             <div className="space-y-6">
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <Card className={reminders.length === 0 
-                        ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
-                        : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
-                    }>
+                    <Card 
+                        className={`${
+                            reminders.length === 0 
+                                ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
+                                : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
+                        } ${reminders.length > 0 ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                        onClick={() => {
+                            if (reminders.length > 0 && sessionNotesSectionRef.current) {
+                                sessionNotesSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                // Highlight the section briefly
+                                sessionNotesSectionRef.current.classList.add('ring-2', 'ring-red-500', 'ring-offset-2');
+                                setTimeout(() => {
+                                    sessionNotesSectionRef.current?.classList.remove('ring-2', 'ring-red-500', 'ring-offset-2');
+                                }, 2000);
+                            }
+                        }}
+                    >
                         <CardHeader>
                             <CardTitle className={`flex items-center gap-2 ${
                                 reminders.length === 0
@@ -484,10 +574,23 @@ export default function RemindersPage() {
                         </CardHeader>
                     </Card>
 
-                    <Card className={unpaidSessions.length === 0 
-                        ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
-                        : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
-                    }>
+                    <Card 
+                        className={`${
+                            unpaidSessions.length === 0 
+                                ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
+                                : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
+                        } ${unpaidSessions.length > 0 ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                        onClick={() => {
+                            if (unpaidSessions.length > 0 && unpaidSessionsSectionRef.current) {
+                                unpaidSessionsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                // Highlight the section briefly
+                                unpaidSessionsSectionRef.current.classList.add('ring-2', 'ring-red-500', 'ring-offset-2');
+                                setTimeout(() => {
+                                    unpaidSessionsSectionRef.current?.classList.remove('ring-2', 'ring-red-500', 'ring-offset-2');
+                                }, 2000);
+                            }
+                        }}
+                    >
                         <CardHeader>
                             <CardTitle className={`flex items-center gap-2 ${
                                 unpaidSessions.length === 0
@@ -560,7 +663,7 @@ export default function RemindersPage() {
                         </CardContent>
                     </Card>
                 ) : sortedReminders.length > 0 ? (
-                    <div className="space-y-4">
+                    <div ref={sessionNotesSectionRef} className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold flex items-center gap-2">
                                 <Mic className="h-5 w-5 sm:h-6 sm:w-6 text-amber-600" />
@@ -707,7 +810,6 @@ export default function RemindersPage() {
                                                             <span className="hidden sm:inline">Mark Form Signed</span>
                                                             <span className="sm:hidden">Mark Signed</span>
                                                         </Button>
-                                                        <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground shrink-0 hidden sm:block" />
                                                     </div>
                                                 </div>
                                             </CardContent>
@@ -722,14 +824,14 @@ export default function RemindersPage() {
 
                 {/* Unpaid Sessions Section */}
                 {unpaidSessions.length > 0 && (
-                    <div className="space-y-4">
+                    <div ref={unpaidSessionsSectionRef} className="space-y-4">
                         <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold flex items-center gap-2">
                             <Landmark className="h-5 w-5 sm:h-6 sm:w-6 text-red-600" />
                             Unpaid Sessions ({unpaidSessions.length})
                         </h2>
                         <div className="space-y-3">
                             {unpaidSessions.map((session) => (
-                                <Card key={session.id} className="border-red-200 dark:border-red-900 cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/payments`)}>
+                                <Card key={session.id} className="border-red-200 dark:border-red-900 hover:shadow-md transition-shadow">
                                     <CardContent className="p-4">
                                         <div className="flex items-start justify-between gap-3 sm:gap-4">
                                             <div className="flex-1">
@@ -746,11 +848,32 @@ export default function RemindersPage() {
                                                 </p>
                                                 {session.fee && (
                                                     <p className="text-xs text-muted-foreground mt-1">
-                                                        Amount: {session.currency || 'EUR'} {session.fee}
+                                                        Amount: {getCurrencySymbol(session.currency)}{session.fee.toFixed(2)}
                                                     </p>
                                                 )}
                                             </div>
-                                            <Landmark className="h-4 w-4 sm:h-5 sm:w-5 text-red-500 shrink-0 hidden sm:block" />
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <Button
+                                                    onClick={(e) => handleMarkAsPaid(session, e)}
+                                                    disabled={markingPaidSessionId === session.id}
+                                                    className="shrink-0 bg-green-500 hover:bg-green-600 text-white text-xs sm:text-sm"
+                                                    size="sm"
+                                                >
+                                                    {markingPaidSessionId === session.id ? (
+                                                        <>
+                                                            <Loader2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                                            <span className="hidden sm:inline">Marking...</span>
+                                                            <span className="sm:hidden">...</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <CheckCircle2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                                                            <span className="hidden sm:inline">Mark as Paid</span>
+                                                            <span className="sm:hidden">Paid</span>
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            </div>
                                         </div>
                                     </CardContent>
                                 </Card>
