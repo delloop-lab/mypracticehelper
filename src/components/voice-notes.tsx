@@ -54,6 +54,7 @@ export function VoiceNotes() {
     const audioChunksRef = useRef<Blob[]>([]);
     const transcriptRef = useRef<string>("");
     const streamRef = useRef<MediaStream | null>(null);
+    const isRecordingStoppedRef = useRef<boolean>(false);
 
     // Load clients on mount
     useEffect(() => {
@@ -69,6 +70,7 @@ export function VoiceNotes() {
                     // Check for URL params to auto-select client
                     const clientParam = searchParams.get('client');
                     const clientIdParam = searchParams.get('clientId');
+                    const sessionIdParam = searchParams.get('sessionId');
                     
                     if (clientIdParam) {
                         // Try to find by ID first
@@ -76,8 +78,29 @@ export function VoiceNotes() {
                         if (clientById) {
                             console.log('[Voice Notes] Auto-selecting client by ID:', clientById.name);
                             setSelectedClientId(clientById.id);
-                            // Load sessions for this client
-                            loadSessionsForClient(clientById.id);
+                            // Load sessions for this client, including the target session if provided
+                            loadSessionsForClient(clientById.id, sessionIdParam || undefined).then(() => {
+                                if (sessionIdParam) {
+                                    console.log('[Voice Notes] Auto-selecting session by ID:', sessionIdParam);
+                                    // Set the sessionId - even if not in the list, allow it to be set
+                                    setSelectedSessionId(sessionIdParam);
+                                    // If session not found in available sessions, add it manually
+                                    setTimeout(() => {
+                                        setAvailableSessions(prev => {
+                                            const exists = prev.some(s => s.id === sessionIdParam);
+                                            if (!exists) {
+                                                console.log('[Voice Notes] Session not in list, adding manually');
+                                                return [...prev, {
+                                                    id: sessionIdParam,
+                                                    date: new Date().toISOString(),
+                                                    type: 'Session'
+                                                }];
+                                            }
+                                            return prev;
+                                        });
+                                    }, 500);
+                                }
+                            });
                         }
                     } else if (clientParam) {
                         // Try to find by name
@@ -87,8 +110,29 @@ export function VoiceNotes() {
                         if (clientByName) {
                             console.log('[Voice Notes] Auto-selecting client by name:', clientByName.name);
                             setSelectedClientId(clientByName.id);
-                            // Load sessions for this client
-                            loadSessionsForClient(clientByName.id);
+                            // Load sessions for this client, including the target session if provided
+                            loadSessionsForClient(clientByName.id, sessionIdParam || undefined).then(() => {
+                                if (sessionIdParam) {
+                                    console.log('[Voice Notes] Auto-selecting session by ID:', sessionIdParam);
+                                    // Set the sessionId - even if not in the list, allow it to be set
+                                    setSelectedSessionId(sessionIdParam);
+                                    // If session not found in available sessions, add it manually
+                                    setTimeout(() => {
+                                        setAvailableSessions(prev => {
+                                            const exists = prev.some(s => s.id === sessionIdParam);
+                                            if (!exists) {
+                                                console.log('[Voice Notes] Session not in list, adding manually');
+                                                return [...prev, {
+                                                    id: sessionIdParam,
+                                                    date: new Date().toISOString(),
+                                                    type: 'Session'
+                                                }];
+                                            }
+                                            return prev;
+                                        });
+                                    }, 500);
+                                }
+                            });
                         }
                     }
                 }
@@ -140,9 +184,10 @@ export function VoiceNotes() {
     }, []);
 
     // Load sessions for selected client
-    const loadSessionsForClient = async (clientId: string) => {
+    const loadSessionsForClient = async (clientId: string, sessionIdToInclude?: string) => {
         console.log('[Voice Notes] ========== Loading sessions for client ==========');
         console.log('[Voice Notes] Client ID:', clientId);
+        console.log('[Voice Notes] Session ID to include:', sessionIdToInclude);
         setIsLoadingSessions(true);
         setAvailableSessions([]);
         setSelectedSessionId("");
@@ -174,16 +219,87 @@ export function VoiceNotes() {
                         id: apt.id,
                         date: apt.date,
                         type: apt.type || 'Session'
-                    }))
-                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    }));
                 
-                console.log('[Voice Notes] ✅ Found', pastSessions.length, 'past sessions');
-                setAvailableSessions(pastSessions);
+                // If a specific sessionId is provided and not in past sessions, add it
+                let sessionsToShow = [...pastSessions];
+                if (sessionIdToInclude) {
+                    const sessionExists = sessionsToShow.some(s => s.id === sessionIdToInclude);
+                    if (!sessionExists) {
+                        console.log('[Voice Notes] Target session not in past sessions, searching all appointments...');
+                        console.log('[Voice Notes] Looking for sessionId:', sessionIdToInclude);
+                        console.log('[Voice Notes] Client name:', clientName, 'Client ID:', clientId);
+                        
+                        // Find the session in all appointments - try multiple matching strategies
+                        let targetSession = appointments.find((apt: any) => 
+                            apt.id === sessionIdToInclude &&
+                            (apt.clientName === clientName ||
+                             apt.clientName?.toLowerCase() === clientName?.toLowerCase() ||
+                             apt.clientId === clientId ||
+                             apt.client_id === clientId)
+                        );
+                        
+                        // If not found, try matching by ID only (in case client matching fails)
+                        if (!targetSession) {
+                            console.log('[Voice Notes] Not found with client match, trying ID-only match...');
+                            targetSession = appointments.find((apt: any) => apt.id === sessionIdToInclude);
+                        }
+                        
+                        // If still not found, try removing prefix (apt-xxx-yyy -> xxx-yyy or just match the UUID part)
+                        if (!targetSession && sessionIdToInclude.includes('-')) {
+                            const parts = sessionIdToInclude.split('-');
+                            // Try matching with just the UUID part (last part after last dash)
+                            const uuidPart = parts[parts.length - 1];
+                            console.log('[Voice Notes] Trying UUID part match:', uuidPart);
+                            targetSession = appointments.find((apt: any) => 
+                                apt.id === uuidPart || 
+                                apt.id.endsWith(uuidPart) ||
+                                apt.id.includes(uuidPart)
+                            );
+                        }
+                        
+                        if (targetSession) {
+                            console.log('[Voice Notes] ✅ Found target session:', targetSession.id, targetSession.date);
+                            // Verify it matches the client
+                            const matchesClient = 
+                                targetSession.clientName === clientName ||
+                                targetSession.clientName?.toLowerCase() === clientName?.toLowerCase() ||
+                                targetSession.clientId === clientId ||
+                                targetSession.client_id === clientId;
+                            
+                            if (matchesClient || !clientName) {
+                                sessionsToShow.push({
+                                    id: targetSession.id,
+                                    date: targetSession.date,
+                                    type: targetSession.type || 'Session'
+                                });
+                                console.log('[Voice Notes] ✅ Added target session to list');
+                            } else {
+                                console.warn('[Voice Notes] ⚠️ Target session found but client mismatch:', {
+                                    sessionClient: targetSession.clientName,
+                                    expectedClient: clientName
+                                });
+                            }
+                        } else {
+                            console.error('[Voice Notes] ❌ Target session not found in appointments list');
+                            console.log('[Voice Notes] Available appointment IDs:', appointments.slice(0, 5).map((a: any) => a.id));
+                        }
+                    } else {
+                        console.log('[Voice Notes] ✅ Target session already in past sessions list');
+                    }
+                }
+                
+                // Sort by date (newest first)
+                sessionsToShow.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                
+                console.log('[Voice Notes] ✅ Found', sessionsToShow.length, 'sessions');
+                setAvailableSessions(sessionsToShow);
             }
         } catch (error) {
             console.error('[Voice Notes] Error loading sessions:', error);
+        } finally {
+            setIsLoadingSessions(false);
         }
-        setIsLoadingSessions(false);
     };
 
     // Initialize SpeechRecognition (WebKit only - works in Chrome/Edge)
@@ -195,6 +311,12 @@ export function VoiceNotes() {
             rec.interimResults = true;
             rec.lang = "en-US";
             rec.onresult = (ev: any) => {
+                // Don't update transcript if recording has been stopped
+                if (isRecordingStoppedRef.current) {
+                    console.log("Speech recognition result received but recording is stopped, ignoring");
+                    return;
+                }
+                
                 // Build complete transcript from ALL results (not just new ones)
                 // This ensures we capture everything even if recognition restarts
                 let completeFinalTranscript = "";
@@ -235,8 +357,8 @@ export function VoiceNotes() {
             };
             rec.onend = () => {
                 console.log("Speech recognition ended");
-                // If recording is still active, restart recognition to keep it continuous
-                if (isRecording && recognitionRef.current) {
+                // If recording is still active and hasn't been stopped, restart recognition to keep it continuous
+                if (isRecording && !isRecordingStoppedRef.current && recognitionRef.current) {
                     try {
                         recognitionRef.current.start();
                     } catch (e) {
@@ -323,6 +445,7 @@ export function VoiceNotes() {
         setIsUploadedFile(false);
         setSaveStatus("idle");
         audioChunksRef.current = [];
+        isRecordingStoppedRef.current = false; // Reset stop flag when starting new recording
 
         // Check if getUserMedia is available
         if (typeof window === "undefined") {
@@ -449,6 +572,9 @@ export function VoiceNotes() {
     };
 
     const stopRecording = () => {
+        // Mark recording as stopped to prevent further transcript updates
+        isRecordingStoppedRef.current = true;
+        
         // Stop the timer first
         if (timerRef.current) {
             clearInterval(timerRef.current);
@@ -460,7 +586,11 @@ export function VoiceNotes() {
         
         // Stop speech recognition and wait a bit for final results
         if (recognitionRef.current) {
-            recognitionRef.current.stop();
+            try {
+                recognitionRef.current.stop();
+            } catch (e) {
+                console.warn("Error stopping recognition:", e);
+            }
         }
         
         setIsRecording(false);

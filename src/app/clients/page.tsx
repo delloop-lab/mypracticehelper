@@ -612,6 +612,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
     const [deleteTranscriptConfirmation, setDeleteTranscriptConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
     const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+    const [isAdminNoteDialogOpen, setIsAdminNoteDialogOpen] = useState(false);
+    const [adminNoteContent, setAdminNoteContent] = useState("");
+    const [isSavingAdminNote, setIsSavingAdminNote] = useState(false);
     const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
     const transcriptTextareaRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
 
@@ -1682,6 +1685,54 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    // Handle saving admin note
+    const handleSaveAdminNote = async () => {
+        if (!activeSession || !adminNoteContent.trim()) {
+            return;
+        }
+
+        setIsSavingAdminNote(true);
+        try {
+            const noteId = `admin-${Date.now()}`;
+            const note = {
+                id: noteId,
+                clientName: activeSession.clientName,
+                clientId: editingClient?.id,
+                sessionId: activeSession.id,
+                sessionDate: activeSession.date,
+                content: adminNoteContent.trim(),
+                transcript: null,
+                audioURL: null,
+                createdDate: new Date().toISOString()
+            };
+
+            const response = await fetch('/api/session-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([note])
+            });
+
+            if (response.ok) {
+                // Reload session notes
+                if (activeSession) {
+                    await loadSessionNotes(activeSession.id);
+                }
+                // Close dialog and reset
+                setIsAdminNoteDialogOpen(false);
+                setAdminNoteContent("");
+                setNotificationModal({ open: true, type: 'success', message: 'Admin note saved successfully' });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to save note: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error saving admin note:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error saving note. Please try again.' });
+        } finally {
+            setIsSavingAdminNote(false);
+        }
+    };
+
     // Handle audio playback
     const handlePlayAudio = (note: any) => {
         if (!note.audioURL) return;
@@ -1996,7 +2047,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     <DialogTrigger asChild>
                         <div style={{ display: 'none' }}></div>
                     </DialogTrigger>
-                    <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] sm:w-full max-h-[90vh] sm:max-h-[90vh] h-[90vh] sm:h-auto flex flex-col p-0 m-4 sm:m-0">
+                    <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] sm:w-full max-h-[90vh] sm:max-h-[90vh] h-[90vh] sm:h-auto flex flex-col p-0 m-4 sm:m-0 overflow-hidden">
                         <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
                             <DialogHeader>
                                 <DialogTitle className="text-base sm:text-lg">
@@ -2010,16 +2061,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             </DialogHeader>
                         </div>
 
-                        <Tabs value={clientDialogTab} onValueChange={(value) => setClientDialogTab(value as 'profile' | 'sessions')} className="w-full flex flex-col flex-1 min-h-0">
-                            <div className="px-4 sm:px-6">
+                        <Tabs value={clientDialogTab} onValueChange={(value) => setClientDialogTab(value as 'profile' | 'sessions')} className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
+                            <div className="px-4 sm:px-6 flex-shrink-0">
                                 <TabsList className="grid w-full grid-cols-2 h-9 sm:h-10">
                                     <TabsTrigger value="profile" className="text-xs sm:text-sm">Profile & Info</TabsTrigger>
                                     <TabsTrigger value="sessions" disabled={!editingClient} className="text-xs sm:text-sm">Sessions & Notes</TabsTrigger>
                                 </TabsList>
                             </div>
 
-                            <TabsContent value="profile" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
-                                <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+                            <TabsContent value="profile" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6 overflow-hidden">
+                                <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
                                     <div className="space-y-4 py-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
                                         {/* Name */}
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2507,7 +2558,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 </form>
                             </TabsContent>
 
-                            <TabsContent value="sessions" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
+                            <TabsContent value="sessions" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6 overflow-hidden">
                                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 py-4 flex-shrink-0">
                                     <h3 className="text-base sm:text-lg font-semibold">Session History</h3>
                                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -2597,7 +2648,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                 {/* Log Past Session Dialog */}
                 <Dialog open={isLogSessionDialogOpen} onOpenChange={setIsLogSessionDialogOpen}>
-                    <DialogContent className="max-w-md">
+                    <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>Log Past Session</DialogTitle>
                             <DialogDescription>
@@ -2702,6 +2753,35 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 </div>
 
                                 <TabsContent value="notes" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
+                                    <div className="py-4 pb-2 border-b border-border flex gap-2">
+                                        <Button 
+                                            variant="outline" 
+                                            onClick={() => {
+                                                setAdminNoteContent("");
+                                                setIsAdminNoteDialogOpen(true);
+                                            }}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Admin Note
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            onClick={() => {
+                                                if (activeSession && editingClient) {
+                                                    const params = new URLSearchParams({
+                                                        client: activeSession.clientName,
+                                                        clientId: editingClient.id,
+                                                        sessionId: activeSession.id
+                                                    });
+                                                    router.push(`/voice-notes?${params.toString()}`);
+                                                    setActiveSession(null);
+                                                }
+                                            }}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Session Note
+                                        </Button>
+                                    </div>
                                     <div className="py-4 space-y-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
                                     {isLoadingSessionNotes ? (
                                         <p className="text-muted-foreground text-center py-8">Loading session notes...</p>
@@ -2982,64 +3062,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 );
                                             })}
                                             </TooltipProvider>
-                                            <div className="pt-4 border-t">
-                                                <Button 
-                                                    variant="outline" 
-                                                    onClick={() => {
-                                                        // Navigate to session notes page to create a new note for this session
-                                                        // Ensure date is properly formatted and encoded
-                                                        let dateParam = '';
-                                                        if (activeSession.date) {
-                                                            try {
-                                                                // Convert to ISO string if it's not already
-                                                                const date = new Date(activeSession.date);
-                                                                if (!isNaN(date.getTime())) {
-                                                                    dateParam = encodeURIComponent(date.toISOString());
-                                                                } else {
-                                                                    console.warn('[Clients] Invalid date in activeSession:', activeSession.date);
-                                                                }
-                                                            } catch (e) {
-                                                                console.error('[Clients] Error processing date:', e);
-                                                            }
-                                                        }
-                                                        console.log('[Clients] Navigating to session notes with date:', dateParam);
-                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&sessionId=${activeSession.id}&date=${dateParam}&create=true`);
-                                                        setActiveSession(null);
-                                                    }}
-                                                >
-                                                    Add Note
-                                                </Button>
-                                            </div>
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
                                             <p className="text-muted-foreground text-center py-4">No notes found for this session.</p>
                                             <div className="flex gap-2">
-                                                <Button 
-                                                    onClick={() => {
-                                                        // Navigate to session notes page to create a new note for this session
-                                                        // Ensure date is properly formatted and encoded
-                                                        let dateParam = '';
-                                                        if (activeSession.date) {
-                                                            try {
-                                                                // Convert to ISO string if it's not already
-                                                                const date = new Date(activeSession.date);
-                                                                if (!isNaN(date.getTime())) {
-                                                                    dateParam = encodeURIComponent(date.toISOString());
-                                                                } else {
-                                                                    console.warn('[Clients] Invalid date in activeSession:', activeSession.date);
-                                                                }
-                                                            } catch (e) {
-                                                                console.error('[Clients] Error processing date:', e);
-                                                            }
-                                                        }
-                                                        console.log('[Clients] Navigating to session notes with date:', dateParam);
-                                                        router.push(`/session-notes?client=${encodeURIComponent(activeSession.clientName)}&clientId=${editingClient?.id}&sessionId=${activeSession.id}&date=${dateParam}&create=true`);
-                                                        setActiveSession(null);
-                                                    }}
-                                                >
-                                                    Add Note
-                                                </Button>
                                                 <Button 
                                                     variant="outline"
                                                     onClick={saveActiveSession}
@@ -3106,6 +3133,55 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 </TabsContent>
                             </Tabs>
                         )}
+                    </DialogContent>
+                </Dialog>
+
+                {/* Admin Note Dialog */}
+                <Dialog open={isAdminNoteDialogOpen} onOpenChange={setIsAdminNoteDialogOpen}>
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Admin Note</DialogTitle>
+                            <DialogDescription>
+                                Add an admin note for this session
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="admin-note-content">Note Content</Label>
+                                <Textarea
+                                    id="admin-note-content"
+                                    placeholder="Enter your admin note here..."
+                                    value={adminNoteContent}
+                                    onChange={(e) => setAdminNoteContent(e.target.value)}
+                                    className="min-h-[200px]"
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button 
+                                variant="outline" 
+                                onClick={() => {
+                                    setIsAdminNoteDialogOpen(false);
+                                    setAdminNoteContent("");
+                                }}
+                                disabled={isSavingAdminNote}
+                            >
+                                Cancel
+                            </Button>
+                            <Button 
+                                onClick={handleSaveAdminNote}
+                                disabled={!adminNoteContent.trim() || isSavingAdminNote}
+                            >
+                                {isSavingAdminNote ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    'Save Note'
+                                )}
+                            </Button>
+                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
 
