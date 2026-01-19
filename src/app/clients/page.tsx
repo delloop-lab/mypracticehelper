@@ -2888,7 +2888,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             }}
                                         >
                                             <Plus className="mr-2 h-4 w-4" />
-                                            Written Session Note
+                                            Write Session Note
                                         </Button>
                                         <Button 
                                             variant="outline" 
@@ -2905,7 +2905,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             }}
                                         >
                                             <Plus className="mr-2 h-4 w-4" />
-                                            Session Note
+                                            Record Session Note
                                         </Button>
                                     </div>
                                     <div className="py-4 space-y-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
@@ -3369,7 +3369,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 <Dialog open={isWrittenNoteDialogOpen} onOpenChange={setIsWrittenNoteDialogOpen}>
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
-                            <DialogTitle>Written Session Note</DialogTitle>
+                            <DialogTitle>Write Session Note</DialogTitle>
                             <DialogDescription>
                                 Write a session note for this appointment
                             </DialogDescription>
