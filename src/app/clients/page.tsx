@@ -615,6 +615,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [isAdminNoteDialogOpen, setIsAdminNoteDialogOpen] = useState(false);
     const [adminNoteContent, setAdminNoteContent] = useState("");
     const [isSavingAdminNote, setIsSavingAdminNote] = useState(false);
+    const [isWrittenNoteDialogOpen, setIsWrittenNoteDialogOpen] = useState(false);
+    const [writtenNoteContent, setWrittenNoteContent] = useState("");
+    const [isSavingWrittenNote, setIsSavingWrittenNote] = useState(false);
     const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
     const transcriptTextareaRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
 
@@ -1711,6 +1714,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 content: adminNoteContent.trim(),
                 transcript: null,
                 audioURL: null,
+                source: 'admin',
                 createdDate: new Date().toISOString()
             };
 
@@ -1738,6 +1742,55 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             setNotificationModal({ open: true, type: 'error', message: 'Error saving note. Please try again.' });
         } finally {
             setIsSavingAdminNote(false);
+        }
+    };
+
+    // Handle saving written session note
+    const handleSaveWrittenNote = async () => {
+        if (!activeSession || !writtenNoteContent.trim()) {
+            return;
+        }
+
+        setIsSavingWrittenNote(true);
+        try {
+            const noteId = `written-${Date.now()}`;
+            const note = {
+                id: noteId,
+                clientName: activeSession.clientName,
+                clientId: editingClient?.id,
+                sessionId: activeSession.id,
+                sessionDate: activeSession.date,
+                content: writtenNoteContent.trim(),
+                transcript: null,
+                audioURL: null,
+                source: 'written_session_note',
+                createdDate: new Date().toISOString()
+            };
+
+            const response = await fetch('/api/session-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([note])
+            });
+
+            if (response.ok) {
+                // Reload session notes
+                if (activeSession) {
+                    await loadSessionNotes(activeSession.id);
+                }
+                // Close dialog and reset
+                setIsWrittenNoteDialogOpen(false);
+                setWrittenNoteContent("");
+                setNotificationModal({ open: true, type: 'success', message: 'Session note saved successfully' });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to save note: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error saving session note:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error saving note. Please try again.' });
+        } finally {
+            setIsSavingWrittenNote(false);
         }
     };
 
@@ -2788,6 +2841,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         <Button 
                                             variant="outline" 
                                             onClick={() => {
+                                                setWrittenNoteContent("");
+                                                setIsWrittenNoteDialogOpen(true);
+                                            }}
+                                        >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Written Session Note
+                                        </Button>
+                                        <Button 
+                                            variant="outline" 
+                                            onClick={() => {
                                                 if (activeSession && editingClient) {
                                                     const params = new URLSearchParams({
                                                         client: activeSession.clientName,
@@ -2849,21 +2912,33 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                 })
                                                                 : 'No date'}
                                                         </div>
-                                                        {note.source === 'recording' && (
-                                                            <span className="flex items-center gap-1 text-xs text-purple-600">
-                                                                {hasAIClinicalAssessment ? (
-                                                                    <>
-                                                                        <Mic className="h-3 w-3" />
-                                                                        AI Clinical Assessment
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Mic className="h-3 w-3" />
-                                                                        Voice Note
-                                                                    </>
-                                                                )}
-                                                            </span>
-                                                        )}
+                                                        <div className="flex items-center gap-2">
+                                                            {note.source === 'admin' && (
+                                                                <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-medium">
+                                                                    Admin Note
+                                                                </span>
+                                                            )}
+                                                            {note.source === 'written_session_note' && (
+                                                                <span className="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 font-medium">
+                                                                    Session Note
+                                                                </span>
+                                                            )}
+                                                            {note.source === 'recording' && (
+                                                                <span className="flex items-center gap-1 text-xs text-purple-600">
+                                                                    {hasAIClinicalAssessment ? (
+                                                                        <>
+                                                                            <Mic className="h-3 w-3" />
+                                                                            AI Clinical Assessment
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <Mic className="h-3 w-3" />
+                                                                            Voice Note
+                                                                        </>
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                     
                                                     {/* Show transcript FIRST - for live recordings this is the only content, for uploaded it's the original */}
@@ -3194,6 +3269,55 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 disabled={!adminNoteContent.trim() || isSavingAdminNote}
                             >
                                 {isSavingAdminNote ? (
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Saving...
+                                    </>
+                                ) : (
+                                    'Save Note'
+                                )}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Written Session Note Dialog */}
+                <Dialog open={isWrittenNoteDialogOpen} onOpenChange={setIsWrittenNoteDialogOpen}>
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>Written Session Note</DialogTitle>
+                            <DialogDescription>
+                                Write a session note for this appointment
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="written-note-content">Note Content</Label>
+                                <Textarea
+                                    id="written-note-content"
+                                    placeholder="Enter your session note here..."
+                                    value={writtenNoteContent}
+                                    onChange={(e) => setWrittenNoteContent(e.target.value)}
+                                    className="min-h-[200px]"
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button 
+                                variant="outline" 
+                                onClick={() => {
+                                    setIsWrittenNoteDialogOpen(false);
+                                    setWrittenNoteContent("");
+                                }}
+                                disabled={isSavingWrittenNote}
+                            >
+                                Cancel
+                            </Button>
+                            <Button 
+                                onClick={handleSaveWrittenNote}
+                                disabled={!writtenNoteContent.trim() || isSavingWrittenNote}
+                            >
+                                {isSavingWrittenNote ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                         Saving...
