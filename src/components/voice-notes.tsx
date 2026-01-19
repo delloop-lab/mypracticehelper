@@ -203,23 +203,69 @@ export function VoiceNotes() {
                 console.log('[Voice Notes] Total appointments:', appointments.length);
                 const now = new Date();
                 
-                // Filter to past sessions for this client
+                // Filter to past sessions and today's sessions for this client
                 const pastSessions = appointments
                     .filter((apt: any) => {
-                        const aptDate = new Date(apt.date);
-                        const isPast = aptDate < now;
+                        // Parse date and time properly
+                        const dateStr = apt.date.split('T')[0];
+                        const timeStr = apt.time || '00:00';
+                        
+                        // Handle 12-hour format (e.g., "08:00 am", "02:00 pm")
+                        let aptHours = 0;
+                        let aptMinutes = 0;
+                        const timeLower = timeStr.toLowerCase().trim();
+                        const isPM = timeLower.includes('pm');
+                        const isAM = timeLower.includes('am');
+                        const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+                        
+                        if (timeMatch) {
+                            aptHours = parseInt(timeMatch[1], 10);
+                            aptMinutes = parseInt(timeMatch[2], 10);
+                            if (isPM && aptHours !== 12) aptHours += 12;
+                            else if (isAM && aptHours === 12) aptHours = 0;
+                        }
+                        
+                        const [year, month, day] = dateStr.split('-').map(Number);
+                        const aptDateTime = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
+                        
+                        // Include sessions that are in the past OR from today (regardless of time)
+                        // This allows recording notes for sessions that just completed
+                        const aptDateOnly = new Date(year, month - 1, day, 0, 0, 0);
+                        const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+                        const isFromTodayOrEarlier = aptDateOnly <= todayDateOnly;
+                        
                         const matchesClient = 
                             apt.clientName === clientName ||
                             apt.clientName?.toLowerCase() === clientName?.toLowerCase() ||
                             apt.clientId === clientId ||
                             apt.client_id === clientId;
-                        return isPast && matchesClient;
+                        
+                        console.log('[Voice Notes] Session check:', {
+                            id: apt.id,
+                            client: apt.clientName,
+                            date: dateStr,
+                            time: timeStr,
+                            aptDateTime: aptDateTime.toISOString(),
+                            isFromTodayOrEarlier,
+                            matchesClient
+                        });
+                        
+                        return isFromTodayOrEarlier && matchesClient;
                     })
                     .map((apt: any) => ({
                         id: apt.id,
                         date: apt.date,
-                        type: apt.type || 'Session'
-                    }));
+                        type: apt.type || 'Session',
+                        time: apt.time
+                    }))
+                    .sort((a: any, b: any) => {
+                        // Sort by date descending (most recent first)
+                        const dateA = new Date(a.date);
+                        const dateB = new Date(b.date);
+                        return dateB.getTime() - dateA.getTime();
+                    });
+                
+                console.log('[Voice Notes] Available sessions for client:', pastSessions.length);
                 
                 // If a specific sessionId is provided and not in past sessions, add it
                 let sessionsToShow = [...pastSessions];
