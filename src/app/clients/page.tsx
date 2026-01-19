@@ -2615,7 +2615,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                 {apt.notes}
                                                             </div>
                                                         )}
-                                                        <div className="flex gap-2 mt-2">
+                                                        <div className="flex flex-col sm:flex-row gap-2 mt-2">
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
@@ -2633,6 +2633,19 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             >
                                                                 <Upload className="mr-2 h-3 w-3" />
                                                                 Attachments
+                                                            </Button>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="w-full"
+                                                                onClick={() => {
+                                                                    // Navigate to schedule page with session ID to open for editing
+                                                                    router.push(`/schedule?edit=${apt.id}`);
+                                                                    handleDialogClose();
+                                                                }}
+                                                            >
+                                                                <Edit className="mr-2 h-3 w-3" />
+                                                                Edit
                                                             </Button>
                                                         </div>
                                                     </CardContent>

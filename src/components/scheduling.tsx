@@ -73,9 +73,10 @@ const DEFAULT_APPOINTMENT_TYPES: AppointmentType[] = [
 
 interface SchedulingProps {
     preSelectedClient?: string;
+    editAppointmentId?: string;
 }
 
-export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
+export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingProps = {}) {
     const router = useRouter();
     // State hooks
     const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -173,6 +174,18 @@ export function Scheduling({ preSelectedClient }: SchedulingProps = {}) {
             }
         }
     }, [preSelectedClient, clients.length, settings.defaultFee, settings.currency]);
+
+    // Handle edit appointment ID from query parameter
+    useEffect(() => {
+        if (editAppointmentId && appointments.length > 0) {
+            const appointment = appointments.find(apt => apt.id === editAppointmentId);
+            if (appointment) {
+                console.log('[Scheduling] Opening appointment for editing:', appointment.id);
+                setSelectedAppointment(appointment);
+                setIsDetailsOpen(true);
+            }
+        }
+    }, [editAppointmentId, appointments.length, appointments]);
 
 
     const loadAppointments = async () => {
