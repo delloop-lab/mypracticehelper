@@ -2586,7 +2586,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     </div>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 pb-4">
+                                <div className="flex-1 overflow-y-auto overflow-x-hidden px-1 sm:px-0 pb-4">
                                     {editingClient && getClientAppointments(editingClient.name).length === 0 ? (
                                         <div className="text-center py-8 text-muted-foreground">
                                             <Calendar className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -2595,7 +2595,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     ) : (
                                         <div className="space-y-3">
                                             {editingClient && getClientAppointments(editingClient.name).map((apt) => (
-                                                <Card key={apt.id} className="border-l-4 border-l-primary">
+                                                <Card key={apt.id} className="border-l-4 border-l-primary overflow-hidden">
                                                     <CardHeader className="p-4 pb-2">
                                                         <div className="flex items-center justify-between">
                                                             <CardTitle className="text-base">
@@ -2609,43 +2609,43 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             {apt.time} ({apt.duration} mins)
                                                         </CardDescription>
                                                     </CardHeader>
-                                                    <CardContent className="p-4 pt-2">
+                                                    <CardContent className="p-4 pt-2 overflow-hidden">
                                                         {apt.notes && (
-                                                            <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded mb-2">
+                                                            <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded mb-2 break-words">
                                                                 {apt.notes}
                                                             </div>
                                                         )}
-                                                        <div className="flex flex-col sm:flex-row gap-2 mt-2">
+                                                        <div className="flex flex-col sm:flex-row gap-2 mt-2 w-full">
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
-                                                                className="w-full"
+                                                                className="flex-1 min-w-0"
                                                                 onClick={() => handleOpenSession(apt, "notes")}
                                                             >
-                                                                <FileText className="mr-2 h-3 w-3" />
-                                                                Notes
+                                                                <FileText className="mr-2 h-3 w-3 shrink-0" />
+                                                                <span className="truncate">Notes</span>
                                                             </Button>
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
-                                                                className="w-full"
+                                                                className="flex-1 min-w-0"
                                                                 onClick={() => handleOpenSession(apt, "attachments")}
                                                             >
-                                                                <Upload className="mr-2 h-3 w-3" />
-                                                                Attachments
+                                                                <Upload className="mr-2 h-3 w-3 shrink-0" />
+                                                                <span className="truncate">Attachments</span>
                                                             </Button>
                                                             <Button
                                                                 size="sm"
                                                                 variant="outline"
-                                                                className="w-full"
+                                                                className="flex-1 min-w-0"
                                                                 onClick={() => {
                                                                     // Navigate to schedule page with session ID to open for editing
                                                                     router.push(`/schedule?edit=${apt.id}`);
                                                                     handleDialogClose();
                                                                 }}
                                                             >
-                                                                <Edit className="mr-2 h-3 w-3" />
-                                                                Edit
+                                                                <Edit className="mr-2 h-3 w-3 shrink-0" />
+                                                                <span className="truncate">Edit</span>
                                                             </Button>
                                                         </div>
                                                     </CardContent>
