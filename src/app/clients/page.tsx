@@ -967,11 +967,19 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     // Check if client hasn't had a session in more than 90 days
     const isClientInactive = (clientName: string): boolean => {
         const lastAppointment = getLastAppointment(clientName);
+        const nextAppointment = getNextAppointment(clientName);
+        
+        // If client has an upcoming appointment, they are active
+        if (nextAppointment) {
+            return false;
+        }
+        
+        // If no past appointments and no upcoming appointments - consider as inactive
         if (!lastAppointment) {
-            // No past appointments - consider as inactive
             return true;
         }
         
+        // Check if last appointment was more than 90 days ago
         const lastDate = new Date(lastAppointment.date);
         const now = new Date();
         const daysDiff = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
