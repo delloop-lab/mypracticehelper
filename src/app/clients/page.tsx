@@ -632,6 +632,30 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         notes: ""
     });
 
+    // Get color classes for appointment type
+    const getAppointmentTypeColor = (typeName: string): { bg: string; text: string } => {
+        const normalizedName = typeName.toLowerCase();
+        
+        // Map common appointment types to colors
+        if (normalizedName.includes('discovery')) {
+            return { bg: 'bg-purple-100 dark:bg-purple-900', text: 'text-purple-800 dark:text-purple-200' };
+        }
+        if (normalizedName.includes('initial') || normalizedName.includes('consultation')) {
+            return { bg: 'bg-cyan-100 dark:bg-cyan-900', text: 'text-cyan-800 dark:text-cyan-200' };
+        }
+        if (normalizedName.includes('couples')) {
+            return { bg: 'bg-pink-100 dark:bg-pink-900', text: 'text-pink-800 dark:text-pink-200' };
+        }
+        if (normalizedName.includes('family')) {
+            return { bg: 'bg-orange-100 dark:bg-orange-900', text: 'text-orange-800 dark:text-orange-200' };
+        }
+        if (normalizedName.includes('singles')) {
+            return { bg: 'bg-green-100 dark:bg-green-900', text: 'text-green-800 dark:text-green-200' };
+        }
+        // Default color for therapy sessions and others
+        return { bg: 'bg-yellow-100 dark:bg-yellow-900', text: 'text-yellow-800 dark:text-yellow-200' };
+    };
+
     const handleLogSession = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingClient) return;
@@ -2704,7 +2728,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             <CardTitle className="text-base">
                                                                 {new Date(apt.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                                                             </CardTitle>
-                                                            <span className="text-xs font-medium px-2 py-1 bg-secondary rounded-full">
+                                                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${getAppointmentTypeColor(apt.type).bg} ${getAppointmentTypeColor(apt.type).text}`}>
                                                                 {apt.type}
                                                             </span>
                                                         </div>
