@@ -2063,7 +2063,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                 </div>
                             )}
 
-                            {selectedAppointment.fee !== undefined && selectedAppointment.type !== "Discovery Session" && (
+                            {(selectedAppointment.fee !== undefined && (selectedAppointment.fee > 0 || isEditingAppointment)) && (
                                 <div className="border-t pt-4 space-y-3">
                                     <Label className="text-xs text-muted-foreground uppercase">Payment Details</Label>
                                     <div className="grid grid-cols-2 gap-4">
@@ -2117,25 +2117,15 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                             )}
                                         </div>
                                     </div>
-                                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                                        <div>
-                                            <p className="text-sm font-medium">Payment Status</p>
-                                            <p className={`text-xs ${selectedAppointment.paymentStatus === "paid" ? "text-green-600" :
-                                                selectedAppointment.paymentStatus === "pending" ? "text-yellow-600" :
-                                                    "text-red-600"
-                                                }`}>
-                                                {selectedAppointment.paymentStatus === "paid" ? "✓ Paid" :
-                                                    selectedAppointment.paymentStatus === "pending" ? "⏳ Pending" :
-                                                        "✗ Unpaid"}
-                                            </p>
-                                        </div>
-                                        {selectedAppointment.paymentStatus !== "paid" && (
-                                            <Button
-                                                size="sm"
-                                                onClick={async () => {
+                                    <div className="space-y-2">
+                                        <Label className="text-sm text-muted-foreground">Payment Status</Label>
+                                        {isEditingAppointment && editedAppointment ? (
+                                            <Select
+                                                value={selectedAppointment.paymentStatus || "unpaid"}
+                                                onValueChange={async (value: "paid" | "unpaid" | "pending") => {
                                                     const updated = appointments.map(apt =>
                                                         apt.id === selectedAppointment.id
-                                                            ? { ...apt, paymentStatus: "paid" as const }
+                                                            ? { ...apt, paymentStatus: value }
                                                             : apt
                                                     );
                                                     try {
@@ -2146,15 +2136,72 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                         });
                                                         if (response.ok) {
                                                             setAppointments(updated);
-                                                            setSelectedAppointment({ ...selectedAppointment, paymentStatus: "paid" });
+                                                            setSelectedAppointment({ ...selectedAppointment, paymentStatus: value });
                                                         }
                                                     } catch (error) {
                                                         console.error('Error updating payment status:', error);
                                                     }
                                                 }}
                                             >
-                                                Mark as Paid
-                                            </Button>
+                                                <SelectTrigger className="w-full">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="unpaid">
+                                                        <span className="flex items-center gap-2">
+                                                            <span className="text-red-600">✗</span> Unpaid
+                                                        </span>
+                                                    </SelectItem>
+                                                    <SelectItem value="pending">
+                                                        <span className="flex items-center gap-2">
+                                                            <span className="text-yellow-600">⏳</span> Pending
+                                                        </span>
+                                                    </SelectItem>
+                                                    <SelectItem value="paid">
+                                                        <span className="flex items-center gap-2">
+                                                            <span className="text-green-600">✓</span> Paid
+                                                        </span>
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        ) : (
+                                            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                                                <p className={`text-sm font-medium ${selectedAppointment.paymentStatus === "paid" ? "text-green-600" :
+                                                    selectedAppointment.paymentStatus === "pending" ? "text-yellow-600" :
+                                                        "text-red-600"
+                                                    }`}>
+                                                    {selectedAppointment.paymentStatus === "paid" ? "✓ Paid" :
+                                                        selectedAppointment.paymentStatus === "pending" ? "⏳ Pending" :
+                                                            "✗ Unpaid"}
+                                                </p>
+                                                {selectedAppointment.paymentStatus !== "paid" && (
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={async () => {
+                                                            const updated = appointments.map(apt =>
+                                                                apt.id === selectedAppointment.id
+                                                                    ? { ...apt, paymentStatus: "paid" as const }
+                                                                    : apt
+                                                            );
+                                                            try {
+                                                                const response = await fetch('/api/appointments', {
+                                                                    method: 'POST',
+                                                                    headers: { 'Content-Type': 'application/json' },
+                                                                    body: JSON.stringify(updated),
+                                                                });
+                                                                if (response.ok) {
+                                                                    setAppointments(updated);
+                                                                    setSelectedAppointment({ ...selectedAppointment, paymentStatus: "paid" });
+                                                                }
+                                                            } catch (error) {
+                                                                console.error('Error updating payment status:', error);
+                                                            }
+                                                        }}
+                                                    >
+                                                        Mark as Paid
+                                                    </Button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
