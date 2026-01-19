@@ -611,6 +611,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [notificationModal, setNotificationModal] = useState<{ open: boolean; type: 'success' | 'error'; message: string }>({ open: false, type: 'success', message: '' });
     const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
     const [deleteTranscriptConfirmation, setDeleteTranscriptConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
+    const [deleteNoteConfirmation, setDeleteNoteConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
     const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
     const [isAdminNoteDialogOpen, setIsAdminNoteDialogOpen] = useState(false);
     const [adminNoteContent, setAdminNoteContent] = useState("");
@@ -1693,6 +1694,46 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         } catch (error) {
             console.error('Error deleting transcript:', error);
             setNotificationModal({ open: true, type: 'error', message: 'Error deleting transcript. Please try again.' });
+        }
+    };
+
+    // Handle deleting admin or written session note
+    const handleDeleteNote = (note: any) => {
+        setDeleteNoteConfirmation({ open: true, note });
+    };
+
+    const confirmDeleteNote = async () => {
+        const note = deleteNoteConfirmation.note;
+        if (!note) return;
+
+        try {
+            // Set content to null to soft-delete the note
+            const updatedNote = {
+                ...note,
+                content: null,
+                transcript: null
+            };
+
+            const response = await fetch('/api/session-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([updatedNote])
+            });
+
+            if (response.ok) {
+                if (activeSession) {
+                    await loadSessionNotes(activeSession.id);
+                }
+                const noteType = note.source === 'admin' ? 'Admin note' : 'Session note';
+                setNotificationModal({ open: true, type: 'success', message: `${noteType} deleted successfully` });
+                setDeleteNoteConfirmation({ open: false, note: null });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to delete note: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error deleting note:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error deleting note. Please try again.' });
         }
     };
 
@@ -2914,14 +2955,54 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             {note.source === 'admin' && (
-                                                                <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-medium">
-                                                                    Admin Note
-                                                                </span>
+                                                                <>
+                                                                    <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-medium">
+                                                                        Admin Note
+                                                                    </span>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleDeleteNote(note);
+                                                                                }}
+                                                                                className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                                                            >
+                                                                                <Trash2 className="h-4 w-4" />
+                                                                            </Button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>Delete Admin Note</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </>
                                                             )}
                                                             {note.source === 'written_session_note' && (
-                                                                <span className="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 font-medium">
-                                                                    Session Note
-                                                                </span>
+                                                                <>
+                                                                    <span className="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 font-medium">
+                                                                        Session Note
+                                                                    </span>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleDeleteNote(note);
+                                                                                }}
+                                                                                className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                                                            >
+                                                                                <Trash2 className="h-4 w-4" />
+                                                                            </Button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>
+                                                                            <p>Delete Session Note</p>
+                                                                        </TooltipContent>
+                                                                    </Tooltip>
+                                                                </>
                                                             )}
                                                             {note.source === 'recording' && (
                                                                 <span className="flex items-center gap-1 text-xs text-purple-600">
@@ -3372,6 +3453,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     description="Are you sure you want to delete this transcript and its AI assessment? This will permanently remove both the transcript text and any associated AI clinical assessment. This action cannot be undone."
                     requireConfirmation={true}
                     checkboxText="I understand this will delete both the transcript and AI assessment permanently"
+                    confirmButtonText="Delete"
+                />
+
+                {/* Delete Note Confirmation Dialog */}
+                <DeleteConfirmationDialog
+                    open={deleteNoteConfirmation.open}
+                    onOpenChange={(open) => setDeleteNoteConfirmation({ open, note: open ? deleteNoteConfirmation.note : null })}
+                    onConfirm={confirmDeleteNote}
+                    title={deleteNoteConfirmation.note?.source === 'admin' ? 'Delete Admin Note' : 'Delete Session Note'}
+                    description={`Are you sure you want to delete this ${deleteNoteConfirmation.note?.source === 'admin' ? 'admin' : 'session'} note? This action cannot be undone.`}
+                    requireConfirmation={false}
                     confirmButtonText="Delete"
                 />
 
