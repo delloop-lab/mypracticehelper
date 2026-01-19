@@ -1576,10 +1576,22 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         onValueChange={(value) => {
                                             const client = clients.find(c => c.name === value);
                                             const clientFee = (client?.sessionFee && client.sessionFee > 0) ? client.sessionFee : undefined;
+                                            
+                                            // Check if current appointment type has a fee of 0 (e.g., Discovery Session)
+                                            const currentType = appointmentTypes.find(t => t.name === formData.type);
+                                            let fee: number;
+                                            if (currentType?.fee !== undefined && currentType.fee === 0) {
+                                                // Keep free appointment types at 0, don't override with client fee
+                                                fee = 0;
+                                            } else {
+                                                // For paid appointment types, use client fee or default
+                                                fee = clientFee ?? settings.defaultFee ?? 80;
+                                            }
+                                            
                                             setFormData({
                                                 ...formData,
                                                 clientName: value,
-                                                fee: clientFee ?? settings.defaultFee ?? 80,
+                                                fee: fee,
                                                 currency: client?.currency ?? settings.currency ?? "EUR",
                                             });
                                         }}
@@ -1681,7 +1693,17 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                             const selectedClient = formData.clientName ? clients.find(c => c.name === formData.clientName) : null;
                                             const clientFee = (selectedClient?.sessionFee && selectedClient.sessionFee > 0) ? selectedClient.sessionFee : undefined;
                                             const clientCurrency = selectedClient?.currency;
-                                            const fee = clientFee ?? (selectedType?.fee || settings.defaultFee || 80);
+                                            
+                                            // If appointment type has a fee of 0 (e.g., Discovery Session), always use 0
+                                            // This ensures free appointment types are never overridden by client custom fees
+                                            let fee: number;
+                                            if (selectedType?.fee !== undefined && selectedType.fee === 0) {
+                                                fee = 0;
+                                            } else {
+                                                // For paid appointment types, use client fee if available, otherwise use appointment type fee or default
+                                                fee = clientFee ?? (selectedType?.fee !== undefined ? selectedType.fee : (settings.defaultFee || 80));
+                                            }
+                                            
                                             const currency = clientCurrency ?? (settings.currency || formData.currency || "EUR");
                                             setFormData({ ...formData, type: value, duration, fee, currency });
                                         }}
