@@ -1309,7 +1309,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                             {appointment.venue || "The Practice"}
                                                         </span>
                                                     </div>
-                                                    {appointment.fee && (
+                                                    {(appointment.fee !== undefined && appointment.fee > 0) && (
                                                         <div className="text-[10px] text-muted-foreground leading-tight">
                                                             {getCurrencySymbol(appointment.currency)}{appointment.fee} - {appointment.paymentStatus || "unpaid"}
                                                         </div>
@@ -1500,7 +1500,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                         {appointment.venue || "The Practice"}
                                                                     </span>
                                                                 </div>
-                                                                {appointment.fee && (
+                                                                {(appointment.fee !== undefined && appointment.fee > 0) && (
                                                                     <div className={`text-xs mt-1 ${pastDue ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}>
                                                                         {getCurrencySymbol(appointment.currency)}{appointment.fee} - {appointment.paymentStatus || "unpaid"}
                                                                     </div>
