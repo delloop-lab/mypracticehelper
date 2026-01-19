@@ -432,6 +432,7 @@ export function EmailTab() {
         firstName: '',
         lastName: '',
         email: '',
+        subject: '',
         templateId: ''
     });
 
@@ -567,7 +568,7 @@ export function EmailTab() {
 
     // Filter email history based on filters
     const getFilteredEmailHistory = () => {
-        if (!emailLogFilters.firstName && !emailLogFilters.lastName && !emailLogFilters.email && !emailLogFilters.templateId) {
+        if (!emailLogFilters.firstName && !emailLogFilters.lastName && !emailLogFilters.email && !emailLogFilters.subject && !emailLogFilters.templateId) {
             return emailHistory;
         }
 
@@ -589,6 +590,11 @@ export function EmailTab() {
 
             // Filter by email
             if (emailLogFilters.email && !entry.client_email.toLowerCase().includes(emailLogFilters.email.toLowerCase())) {
+                return false;
+            }
+
+            // Filter by subject
+            if (emailLogFilters.subject && !entry.subject.toLowerCase().includes(emailLogFilters.subject.toLowerCase())) {
                 return false;
             }
 
@@ -1720,7 +1726,7 @@ export function EmailTab() {
                             </CardTitle>
                             <CardDescription>
                                 Recent outgoing emails sent to clients
-                                {emailLogFilters.firstName || emailLogFilters.lastName || emailLogFilters.email || emailLogFilters.templateId ? (
+                                {emailLogFilters.firstName || emailLogFilters.lastName || emailLogFilters.email || emailLogFilters.subject || emailLogFilters.templateId ? (
                                     <span className="ml-1">({getFilteredEmailHistory().length} {getFilteredEmailHistory().length === 1 ? 'email' : 'emails'} match filters)</span>
                                 ) : null}
                             </CardDescription>
@@ -1785,6 +1791,16 @@ export function EmailTab() {
                                     />
                                 </div>
                                 <div className="space-y-1">
+                                    <Label htmlFor="filter-subject" className="text-xs">Subject</Label>
+                                    <Input
+                                        id="filter-subject"
+                                        placeholder="Filter by subject..."
+                                        value={emailLogFilters.subject}
+                                        onChange={(e) => setEmailLogFilters(prev => ({ ...prev, subject: e.target.value }))}
+                                        className="h-8"
+                                    />
+                                </div>
+                                <div className="space-y-1 col-span-2">
                                     <Label htmlFor="filter-template" className="text-xs">Template</Label>
                                     <Select
                                         value={emailLogFilters.templateId || 'all'}
@@ -1804,11 +1820,11 @@ export function EmailTab() {
                                     </Select>
                                 </div>
                             </div>
-                            {(emailLogFilters.firstName || emailLogFilters.lastName || emailLogFilters.email || emailLogFilters.templateId) && (
+                            {(emailLogFilters.firstName || emailLogFilters.lastName || emailLogFilters.email || emailLogFilters.subject || emailLogFilters.templateId) && (
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => setEmailLogFilters({ firstName: '', lastName: '', email: '', templateId: '' })}
+                                    onClick={() => setEmailLogFilters({ firstName: '', lastName: '', email: '', subject: '', templateId: '' })}
                                     className="mt-3"
                                 >
                                     Clear Filters
