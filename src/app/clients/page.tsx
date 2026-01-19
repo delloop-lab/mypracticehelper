@@ -1724,7 +1724,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 if (activeSession) {
                     await loadSessionNotes(activeSession.id);
                 }
-                const noteType = note.source === 'admin' ? 'Admin note' : 'Session note';
+                const isAdminNote = note.source === 'admin' || (note.id && note.id.startsWith('admin-'));
+                const noteType = isAdminNote ? 'Admin note' : 'Session note';
                 setNotificationModal({ open: true, type: 'success', message: `${noteType} deleted successfully` });
                 setDeleteNoteConfirmation({ open: false, note: null });
             } else {
@@ -2954,7 +2955,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                 : 'No date'}
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            {note.source === 'admin' && (
+                                                            {/* Admin Note: check both source field AND ID prefix for backwards compatibility */}
+                                                            {(note.source === 'admin' || (note.id && note.id.startsWith('admin-'))) && (
                                                                 <>
                                                                     <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 font-medium">
                                                                         Admin Note
@@ -2979,7 +2981,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                     </Tooltip>
                                                                 </>
                                                             )}
-                                                            {note.source === 'written_session_note' && (
+                                                            {/* Written Session Note: check both source field AND ID prefix for backwards compatibility */}
+                                                            {(note.source === 'written_session_note' || (note.id && note.id.startsWith('written-'))) && (
                                                                 <>
                                                                     <span className="text-xs px-2 py-1 rounded bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 font-medium">
                                                                         Session Note
@@ -3461,8 +3464,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     open={deleteNoteConfirmation.open}
                     onOpenChange={(open) => setDeleteNoteConfirmation({ open, note: open ? deleteNoteConfirmation.note : null })}
                     onConfirm={confirmDeleteNote}
-                    title={deleteNoteConfirmation.note?.source === 'admin' ? 'Delete Admin Note' : 'Delete Session Note'}
-                    description={`Are you sure you want to delete this ${deleteNoteConfirmation.note?.source === 'admin' ? 'admin' : 'session'} note? This action cannot be undone.`}
+                    title={(deleteNoteConfirmation.note?.source === 'admin' || deleteNoteConfirmation.note?.id?.startsWith('admin-')) ? 'Delete Admin Note' : 'Delete Session Note'}
+                    description={`Are you sure you want to delete this ${(deleteNoteConfirmation.note?.source === 'admin' || deleteNoteConfirmation.note?.id?.startsWith('admin-')) ? 'admin' : 'session'} note? This action cannot be undone.`}
                     requireConfirmation={false}
                     confirmButtonText="Delete"
                 />
