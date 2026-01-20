@@ -64,8 +64,8 @@ export async function POST(request: Request) {
         // Format: userId::timestamp::random (using :: as separator since userId is a UUID with dashes)
         const sessionToken = `${user.id}::${Date.now().toString(36)}::${Math.random().toString(36).substring(2)}`;
         
-        // Set session cookie (7 days)
-        const maxAge = 7 * 24 * 60 * 60; // 7 days in seconds
+        // Set session cookie (30 days - better for PWA installed apps)
+        const maxAge = 30 * 24 * 60 * 60; // 30 days in seconds
         const response = NextResponse.json({
             success: true,
             user: {

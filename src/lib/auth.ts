@@ -38,7 +38,7 @@ export function generateSessionToken(): string {
 export async function createSession(userId: string): Promise<string> {
     const sessionToken = generateSessionToken();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days from now (better for PWA)
 
     // Store session in database (we'll use a simple sessions table or store in users table)
     // For now, we'll store it in a cookie and verify against user_id

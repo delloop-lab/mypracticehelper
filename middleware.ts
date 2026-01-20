@@ -7,6 +7,7 @@ export function middleware(request: NextRequest) {
 
     // Allow access to login page, root page (redirects to login), public assets, webhook setup pages, and landing page
     // Also allow static files (images, fonts, etc.) from public folder
+    // IMPORTANT: Also allow PWA files (manifest.json, offline.html)
     if (
         pathname === '/login' ||
         pathname === '/' ||
@@ -16,6 +17,8 @@ export function middleware(request: NextRequest) {
         pathname.startsWith('/favicon') ||
         pathname === '/webhook-setup' ||
         pathname === '/webhook-status' ||
+        pathname === '/manifest.json' ||  // PWA manifest
+        pathname === '/offline.html' ||    // PWA offline page
         // Allow static files from public folder
         pathname.endsWith('.png') ||
         pathname.endsWith('.jpg') ||
