@@ -244,11 +244,14 @@ function TemplateEditor({ content, onChange, editorRef, placeholder }: {
 
     // Update editor content when content prop changes externally
     useEffect(() => {
-        if (editor && content !== editor.getHTML()) {
+        if (editor && !isHtmlMode && content !== editor.getHTML()) {
             editor.commands.setContent(content || '');
         }
-        setHtmlContent(content || '');
-    }, [content, editor]);
+        // Only update htmlContent when not in HTML mode to avoid overwriting user's edits
+        if (!isHtmlMode) {
+            setHtmlContent(content || '');
+        }
+    }, [content, editor, isHtmlMode]);
 
     // Toggle between HTML and visual mode
     const toggleHtmlMode = () => {
