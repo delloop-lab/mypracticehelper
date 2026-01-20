@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Outfit, Inter } from "next/font/google";
 import "./globals.css";
 import { ConditionalLayout } from "@/components/conditional-layout";
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -51,6 +52,7 @@ export default function RootLayout({
         className={`${outfit.variable} ${inter.variable} antialiased font-sans bg-background text-foreground`}
         suppressHydrationWarning
       >
+        <PWAInstallPrompt />
         <ConditionalLayout>{children}</ConditionalLayout>
       </body>
     </html>
