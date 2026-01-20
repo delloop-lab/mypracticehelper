@@ -148,14 +148,14 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between">
-        <div className="flex items-center pl-[50px]">
+        <div className="flex items-center pl-2 sm:pl-4 md:pl-[50px]">
           <Link href="/dashboard" className="flex items-center">
             <Image
               src="/logo.png"
               alt="My Practice Helper"
               width={200}
               height={64}
-              className="h-16 w-auto"
+              className="h-12 sm:h-14 md:h-16 w-auto"
               priority
             />
           </Link>
@@ -303,14 +303,17 @@ export function Navbar() {
             </NavigationMenu>
             <Button
               variant="outline"
+              size="sm"
               onClick={() => {
                 document.cookie = "isAuthenticated=; path=/; max-age=0";
                 localStorage.removeItem("isAuthenticated");
                 localStorage.removeItem("userEmail");
                 window.location.href = "/login";
               }}
+              className="text-xs sm:text-sm"
             >
-              Log out
+              <span className="hidden sm:inline">Log out</span>
+              <span className="sm:hidden">Exit</span>
             </Button>
           </nav>
         </div>
