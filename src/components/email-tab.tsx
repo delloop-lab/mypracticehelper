@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
-import { Mail, Send, History, FileText, Plus, Trash2, Edit, Loader2, CheckCircle2, AlertCircle, Eye, User, Download, ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { Mail, Send, History, FileText, Plus, Trash2, Edit, Loader2, CheckCircle2, AlertCircle, Eye, User, Download, ChevronDown, ChevronUp, Filter, Code } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { motion } from "framer-motion";
 import { RichTextEditor } from "@/components/ui/rich-text-editor";
@@ -206,6 +207,9 @@ function TemplateEditor({ content, onChange, editorRef, placeholder }: {
     editorRef: React.MutableRefObject<any>;
     placeholder: string;
 }) {
+    const [isHtmlMode, setIsHtmlMode] = useState(false);
+    const [htmlContent, setHtmlContent] = useState(content || '');
+    
     const editor = useEditor({
         extensions: [
             StarterKit.configure({
@@ -243,7 +247,32 @@ function TemplateEditor({ content, onChange, editorRef, placeholder }: {
         if (editor && content !== editor.getHTML()) {
             editor.commands.setContent(content || '');
         }
+        setHtmlContent(content || '');
     }, [content, editor]);
+
+    // Toggle between HTML and visual mode
+    const toggleHtmlMode = () => {
+        if (isHtmlMode) {
+            // Switching from HTML to visual - update editor with HTML content
+            if (editor) {
+                editor.commands.setContent(htmlContent);
+                onChange(htmlContent);
+            }
+        } else {
+            // Switching from visual to HTML - get current HTML from editor
+            if (editor) {
+                setHtmlContent(editor.getHTML());
+            }
+        }
+        setIsHtmlMode(!isHtmlMode);
+    };
+
+    // Handle HTML textarea changes
+    const handleHtmlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newHtml = e.target.value;
+        setHtmlContent(newHtml);
+        onChange(newHtml);
+    };
 
     if (!editor) {
         return <div className="border rounded-lg p-4 bg-muted/50 min-h-[150px]">Loading editor...</div>;
@@ -251,13 +280,37 @@ function TemplateEditor({ content, onChange, editorRef, placeholder }: {
 
     return (
         <div className="border rounded-lg overflow-hidden">
-            <EditorToolbar editor={editor} />
-            <div 
-                className="p-4 bg-background cursor-text min-h-[150px]"
-                onClick={() => editor.chain().focus().run()}
-            >
-                <EditorContent editor={editor} />
+            <div className="flex items-center justify-between border-b bg-muted/30 p-2">
+                {!isHtmlMode && <EditorToolbar editor={editor} />}
+                {isHtmlMode && <div className="flex-1" />}
+                <Button
+                    type="button"
+                    variant={isHtmlMode ? "default" : "ghost"}
+                    size="sm"
+                    onClick={toggleHtmlMode}
+                    className="flex items-center gap-1.5 ml-2"
+                    title={isHtmlMode ? "Switch to Visual Editor" : "Edit HTML"}
+                >
+                    <Code className="h-4 w-4" />
+                    <span className="text-xs">{isHtmlMode ? "Visual" : "HTML"}</span>
+                </Button>
             </div>
+            {isHtmlMode ? (
+                <Textarea
+                    value={htmlContent}
+                    onChange={handleHtmlChange}
+                    className="w-full p-4 bg-background font-mono text-xs min-h-[300px] border-0 rounded-none resize-none focus-visible:ring-0"
+                    placeholder="Enter HTML here..."
+                    spellCheck={false}
+                />
+            ) : (
+                <div 
+                    className="p-4 bg-background cursor-text min-h-[150px]"
+                    onClick={() => editor.chain().focus().run()}
+                >
+                    <EditorContent editor={editor} />
+                </div>
+            )}
         </div>
     );
 }

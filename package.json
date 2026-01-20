@@ -1,6 +1,6 @@
 {
   "name": "my-practice-helper",
-  "version": "0.9.737",
+  "version": "0.9.738",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
@@ -54,6 +54,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.20",
+    "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.0.7",
     "postcss": "^8.4.49",

@@ -1279,7 +1279,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                 </div>
                             ) : (
                                 <div className="space-y-1.5">
-                                    {selectedDateAppointments.sort((a, b) => {
+                                    {[...selectedDateAppointments].sort((a, b) => {
                                         const minutesA = timeToMinutes(a.time || '');
                                         const minutesB = timeToMinutes(b.time || '');
                                         return minutesA - minutesB;
