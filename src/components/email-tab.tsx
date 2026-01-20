@@ -257,6 +257,7 @@ function TemplateEditor({ content, onChange, editorRef, placeholder }: {
     const toggleHtmlMode = () => {
         if (isHtmlMode) {
             // Switching from HTML to visual - update editor with HTML content
+            console.log('[TemplateEditor] Switching from HTML to Visual, content length:', htmlContent.length);
             if (editor) {
                 editor.commands.setContent(htmlContent);
                 onChange(htmlContent);
@@ -264,7 +265,9 @@ function TemplateEditor({ content, onChange, editorRef, placeholder }: {
         } else {
             // Switching from visual to HTML - get current HTML from editor
             if (editor) {
-                setHtmlContent(editor.getHTML());
+                const currentHtml = editor.getHTML();
+                console.log('[TemplateEditor] Switching from Visual to HTML, content length:', currentHtml.length);
+                setHtmlContent(currentHtml);
             }
         }
         setIsHtmlMode(!isHtmlMode);
@@ -273,6 +276,7 @@ function TemplateEditor({ content, onChange, editorRef, placeholder }: {
     // Handle HTML textarea changes
     const handleHtmlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newHtml = e.target.value;
+        console.log('[TemplateEditor] HTML changed, length:', newHtml.length);
         setHtmlContent(newHtml);
         onChange(newHtml);
     };
@@ -966,8 +970,12 @@ export function EmailTab() {
 
     const handleSaveTemplate = async () => {
         if (!newTemplateName.trim() || !newTemplateSubject.trim()) {
+            console.log('[EmailTab] Cannot save - missing name or subject');
             return;
         }
+
+        console.log('[EmailTab] Starting save, newTemplateBody length:', newTemplateBody.length);
+        console.log('[EmailTab] newTemplateBody preview:', newTemplateBody.substring(0, 200));
 
         setIsSavingTemplate(true);
 
@@ -984,7 +992,7 @@ export function EmailTab() {
 
             console.log('[EmailTab] Saving template:', method, payload);
             console.log('[EmailTab] Template body contains userIcon:', newTemplateBody.includes('{{userIcon}}'));
-            console.log('[EmailTab] Template body HTML:', newTemplateBody);
+            console.log('[EmailTab] Template body HTML length:', newTemplateBody.length);
             
             const response = await fetch('/api/email-templates', {
                 method,
