@@ -977,6 +977,14 @@ export function EmailTab() {
         console.log('[EmailTab] Starting save, newTemplateBody length:', newTemplateBody.length);
         console.log('[EmailTab] newTemplateBody preview:', newTemplateBody.substring(0, 200));
 
+        // Clean HTML: remove empty paragraph tags that TipTap adds
+        const cleanedHtml = newTemplateBody
+            .replace(/<p><\/p>/g, '') // Remove empty <p></p> tags
+            .replace(/<p>\s*<\/p>/g, '') // Remove <p> </p> with just whitespace
+            .trim();
+        
+        console.log('[EmailTab] Cleaned HTML length:', cleanedHtml.length, '(removed', newTemplateBody.length - cleanedHtml.length, 'chars)');
+
         setIsSavingTemplate(true);
 
         try {
@@ -985,8 +993,8 @@ export function EmailTab() {
                 id: editingTemplate?.id,
                 name: newTemplateName,
                 subject: newTemplateSubject,
-                htmlBody: newTemplateBody,
-                textBody: htmlToPlainText(newTemplateBody),
+                htmlBody: cleanedHtml,
+                textBody: htmlToPlainText(cleanedHtml),
                 category: newTemplateCategory
             };
 
@@ -1053,9 +1061,17 @@ export function EmailTab() {
         setEditingTemplate(template);
         setNewTemplateName(template.name);
         setNewTemplateSubject(template.subject);
-        const templateBody = template.html_body || template.text_body || '';
+        const rawBody = template.html_body || template.text_body || '';
+        
+        // Clean HTML when loading: remove empty paragraph tags
+        const templateBody = rawBody
+            .replace(/<p><\/p>/g, '')
+            .replace(/<p>\s*<\/p>/g, '')
+            .trim();
+        
         console.log('[EmailTab] Loading template:', template.name);
-        console.log('[EmailTab] Template body from DB:', templateBody);
+        console.log('[EmailTab] Template body from DB (raw):', rawBody.length, 'chars');
+        console.log('[EmailTab] Template body (cleaned):', templateBody.length, 'chars');
         console.log('[EmailTab] Template body contains userIcon:', templateBody.includes('{{userIcon}}'));
         setNewTemplateBody(templateBody);
         setNewTemplateCategory(template.category || 'general');
