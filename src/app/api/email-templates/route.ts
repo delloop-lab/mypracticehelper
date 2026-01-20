@@ -134,22 +134,40 @@ export async function PUT(request: Request) {
         const body = await request.json();
         const { id, name, subject, htmlBody, textBody, category } = body;
 
-        console.log('[Email Templates API] PUT request:', { id, name, subject, category });
+        console.log('[Email Templates API] PUT request:', { 
+            id, 
+            name, 
+            subject, 
+            category,
+            htmlBodyLength: htmlBody?.length,
+            htmlBodyPreview: htmlBody?.substring(0, 100)
+        });
 
         if (!id) {
             return NextResponse.json({ error: 'Template ID is required' }, { status: 400 });
         }
 
+        const updateData = {
+            name,
+            subject,
+            html_body: htmlBody,
+            text_body: textBody,
+            category,
+            updated_at: new Date().toISOString()
+        };
+
+        console.log('[Email Templates API] Updating with:', {
+            id,
+            updateData: {
+                ...updateData,
+                html_body: updateData.html_body?.substring(0, 100) + '...',
+                text_body: updateData.text_body?.substring(0, 100) + '...'
+            }
+        });
+
         const { data, error } = await supabase
             .from('email_templates')
-            .update({
-                name,
-                subject,
-                html_body: htmlBody,
-                text_body: textBody,
-                category,
-                updated_at: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', id)
             .select()
             .single();
@@ -159,7 +177,11 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'Failed to update template: ' + error.message }, { status: 500 });
         }
 
-        console.log('[Email Templates API] Template updated successfully:', data?.id);
+        console.log('[Email Templates API] Template updated successfully:', {
+            id: data?.id,
+            html_body_length: data?.html_body?.length,
+            html_body_preview: data?.html_body?.substring(0, 100)
+        });
         return NextResponse.json(data);
     } catch (error: any) {
         console.error('[Email Templates API] Error:', error);
