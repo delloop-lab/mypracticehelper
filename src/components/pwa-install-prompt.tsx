@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Smartphone, Download } from 'lucide-react';
+import { X, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function PWAInstallPrompt() {
@@ -85,8 +85,12 @@ export function PWAInstallPrompt() {
 
         {/* Icon */}
         <div className="flex justify-center mb-4">
-          <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center">
-            <Smartphone className="w-8 h-8 text-indigo-600" />
+          <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg">
+            <img 
+              src="/icon-192x192.png" 
+              alt="My Practice Helper" 
+              className="w-full h-full object-cover"
+            />
           </div>
         </div>
 
