@@ -977,11 +977,22 @@ export function EmailTab() {
         console.log('[EmailTab] Starting save, newTemplateBody length:', newTemplateBody.length);
         console.log('[EmailTab] newTemplateBody preview:', newTemplateBody.substring(0, 200));
 
-        // Clean HTML: remove empty paragraph tags that TipTap adds
-        const cleanedHtml = newTemplateBody
+        // Clean HTML: remove empty paragraph tags and wrapping <p> tags that TipTap adds
+        let cleanedHtml = newTemplateBody
             .replace(/<p><\/p>/g, '') // Remove empty <p></p> tags
             .replace(/<p>\s*<\/p>/g, '') // Remove <p> </p> with just whitespace
             .trim();
+        
+        // Remove wrapping <p>...</p> if the entire content is wrapped in a single paragraph
+        if (cleanedHtml.startsWith('<p>') && cleanedHtml.endsWith('</p>')) {
+            // Check if this is a single wrapping <p> tag (not multiple paragraphs)
+            const afterFirstP = cleanedHtml.substring(3); // Remove opening <p>
+            const beforeLastP = afterFirstP.substring(0, afterFirstP.length - 4); // Remove closing </p>
+            // Only remove if there are no other <p> tags inside (meaning it's just one wrapping tag)
+            if (!beforeLastP.includes('<p>')) {
+                cleanedHtml = beforeLastP;
+            }
+        }
         
         console.log('[EmailTab] Cleaned HTML length:', cleanedHtml.length, '(removed', newTemplateBody.length - cleanedHtml.length, 'chars)');
 
@@ -1063,11 +1074,20 @@ export function EmailTab() {
         setNewTemplateSubject(template.subject);
         const rawBody = template.html_body || template.text_body || '';
         
-        // Clean HTML when loading: remove empty paragraph tags
-        const templateBody = rawBody
+        // Clean HTML when loading: remove empty paragraph tags and wrapping <p> tags
+        let templateBody = rawBody
             .replace(/<p><\/p>/g, '')
             .replace(/<p>\s*<\/p>/g, '')
             .trim();
+        
+        // Remove wrapping <p>...</p> if the entire content is wrapped in a single paragraph
+        if (templateBody.startsWith('<p>') && templateBody.endsWith('</p>')) {
+            const afterFirstP = templateBody.substring(3);
+            const beforeLastP = afterFirstP.substring(0, afterFirstP.length - 4);
+            if (!beforeLastP.includes('<p>')) {
+                templateBody = beforeLastP;
+            }
+        }
         
         console.log('[EmailTab] Loading template:', template.name);
         console.log('[EmailTab] Template body from DB (raw):', rawBody.length, 'chars');
