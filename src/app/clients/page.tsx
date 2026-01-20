@@ -2623,7 +2623,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     <FileText className="h-4 w-4 text-muted-foreground" />
                                                     <span>New Client Form Signed</span>
                                                 </Label>
-                                                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                                                <p className="hidden sm:block text-xs sm:text-sm text-muted-foreground leading-relaxed">
                                                     Check this box when the new client form has been completed and signed. This will stop daily reminders.
                                                 </p>
                                             </div>
