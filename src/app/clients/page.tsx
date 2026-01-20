@@ -2630,59 +2630,59 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </div>
                                     </div>
                                     
-                                    <DialogFooter className="flex flex-col gap-3 mt-4 flex-shrink-0 pb-4 sm:pb-6 px-4 sm:px-6 border-t pt-4">
-                                        {/* Primary action buttons - stacked on mobile */}
-                                        <div className="flex flex-col sm:flex-row gap-2 w-full">
-                                            <Button type="button" variant="outline" onClick={handleDialogClose} className="w-full sm:w-auto order-2 sm:order-1">
+                                    <DialogFooter className="flex flex-col gap-2 mt-3 flex-shrink-0 pb-3 sm:pb-6 px-4 sm:px-6 border-t pt-3">
+                                        {/* Primary action buttons - side by side on mobile */}
+                                        <div className="flex gap-2 w-full">
+                                            <Button type="button" variant="outline" onClick={handleDialogClose} className="flex-1 h-9 text-sm">
                                                 Cancel
                                             </Button>
-                                            <Button type="submit" className={`w-full sm:w-auto order-1 sm:order-2 ${editingClient ? "" : "bg-green-500 hover:bg-green-600 text-white"}`}>
-                                                {editingClient ? "Update Client" : "Add Client"}
+                                            <Button type="submit" className={`flex-1 h-9 text-sm ${editingClient ? "" : "bg-green-500 hover:bg-green-600 text-white"}`}>
+                                                {editingClient ? "Update" : "Add"}
                                             </Button>
                                         </div>
                                         
-                                        {/* Destructive action buttons - stacked on mobile */}
+                                        {/* Destructive action buttons - side by side on mobile */}
                                         {editingClient && (
-                                            <div className="flex flex-col sm:flex-row gap-2 w-full border-t pt-3">
+                                            <div className="flex gap-2 w-full">
                                                 {editingClient.archived ? (
                                                     <>
                                                         <Button
                                                             type="button"
                                                             variant="default"
-                                                            className="bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto text-sm"
+                                                            className="bg-green-500 hover:bg-green-600 text-white flex-1 h-9 text-xs"
                                                             onClick={() => handleRestore(editingClient.id)}
                                                         >
-                                                            <RotateCcw className="mr-2 h-4 w-4" />
-                                                            Restore Client
+                                                            <RotateCcw className="mr-1 h-3 w-3" />
+                                                            Restore
                                                         </Button>
                                                         <Button
                                                             type="button"
                                                             variant="destructive"
-                                                            className="w-full sm:w-auto text-sm"
+                                                            className="flex-1 h-9 text-xs"
                                                             onClick={() => handleDeleteClick(editingClient.id)}
                                                         >
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            Delete Client
+                                                            <Trash2 className="mr-1 h-3 w-3" />
+                                                            Delete
                                                         </Button>
                                                     </>
                                                 ) : (
                                                     <Button
                                                         type="button"
                                                         variant="destructive"
-                                                        className="w-full sm:w-auto text-sm"
+                                                        className="flex-1 h-9 text-xs"
                                                         onClick={() => handleDeleteClick(editingClient.id)}
                                                     >
-                                                        <Trash2 className="mr-2 h-4 w-4" />
-                                                        Archive Client
+                                                        <Trash2 className="mr-1 h-3 w-3" />
+                                                        Archive
                                                     </Button>
                                                 )}
                                                 <Button
                                                     type="button"
                                                     variant="destructive"
-                                                    className="bg-red-700 hover:bg-red-800 w-full sm:w-auto text-sm"
+                                                    className="bg-red-700 hover:bg-red-800 flex-1 h-9 text-xs"
                                                     onClick={() => handleGDPRDeleteClick(editingClient.id)}
                                                 >
-                                                    GDPR Delete
+                                                    GDPR
                                                 </Button>
                                             </div>
                                         )}
