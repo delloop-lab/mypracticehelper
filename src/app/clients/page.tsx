@@ -2174,7 +2174,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     <DialogTrigger asChild>
                         <div style={{ display: 'none' }}></div>
                     </DialogTrigger>
-                    <DialogContent className="max-w-3xl w-[calc(100vw-1rem)] sm:w-full max-h-[95vh] sm:max-h-[90vh] h-[95vh] sm:h-auto flex flex-col p-0 overflow-hidden">
+                    <DialogContent className="max-w-3xl w-[calc(100vw-1rem)] sm:w-full max-h-[95vh] sm:max-h-[90vh] flex flex-col p-0 overflow-hidden">
                         <div className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 border-b">
                             <DialogHeader>
                                 <DialogTitle className="text-lg sm:text-xl">
