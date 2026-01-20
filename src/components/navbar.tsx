@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { Button } from "@/components/ui/button";
@@ -148,7 +148,18 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-16 items-center justify-between">
-        <div className="flex items-center pl-2 sm:pl-4 md:pl-[50px]">
+        <div className="flex items-center gap-2 pl-2 sm:pl-4 md:pl-[50px]">
+          {/* Mobile Menu Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setIsOpen(true)}
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          
           <Link href="/dashboard" className="flex items-center">
             <Image
               src="/logo.png"
@@ -161,7 +172,7 @@ export function Navbar() {
           </Link>
         </div>
 
-        {/* Mobile Menu - Swipe only, no hamburger */}
+        {/* Mobile Menu */}
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetContent side="left" className="pr-0">
             <SheetHeader className="px-6 py-4">
