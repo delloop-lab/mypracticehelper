@@ -2174,13 +2174,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     <DialogTrigger asChild>
                         <div style={{ display: 'none' }}></div>
                     </DialogTrigger>
-                    <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] sm:w-full max-h-[90vh] sm:max-h-[90vh] h-[90vh] sm:h-auto flex flex-col p-0 m-4 sm:m-0 overflow-hidden">
-                        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+                    <DialogContent className="max-w-3xl w-[calc(100vw-1rem)] sm:w-full max-h-[95vh] sm:max-h-[90vh] h-[95vh] sm:h-auto flex flex-col p-0 overflow-hidden">
+                        <div className="px-4 sm:px-6 pt-5 sm:pt-6 pb-3 sm:pb-4 border-b">
                             <DialogHeader>
-                                <DialogTitle className="text-base sm:text-lg">
+                                <DialogTitle className="text-lg sm:text-xl">
                                     {editingClient ? "Client Details" : "Add New Client"}
                                 </DialogTitle>
-                                <DialogDescription className="text-xs sm:text-sm">
+                                <DialogDescription className="text-sm sm:text-base mt-1">
                                     {editingClient
                                         ? `Manage information and sessions for ${editingClient.name}`
                                         : "Enter client information to add them to your practice"}
@@ -2189,16 +2189,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         </div>
 
                         <Tabs value={clientDialogTab} onValueChange={(value) => setClientDialogTab(value as 'profile' | 'sessions')} className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
-                            <div className="px-4 sm:px-6 flex-shrink-0">
-                                <TabsList className="grid w-full grid-cols-2 h-9 sm:h-10">
-                                    <TabsTrigger value="profile" className="text-xs sm:text-sm">Profile & Info</TabsTrigger>
-                                    <TabsTrigger value="sessions" disabled={!editingClient} className="text-xs sm:text-sm">Sessions & Notes</TabsTrigger>
+                            <div className="px-4 sm:px-6 pt-3 flex-shrink-0">
+                                <TabsList className="grid w-full grid-cols-2 h-10 sm:h-11">
+                                    <TabsTrigger value="profile" className="text-sm sm:text-base">Profile & Info</TabsTrigger>
+                                    <TabsTrigger value="sessions" disabled={!editingClient} className="text-sm sm:text-base">Sessions & Notes</TabsTrigger>
                                 </TabsList>
                             </div>
 
                             <TabsContent value="profile" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6 overflow-hidden">
                                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-                                    <div className="space-y-4 py-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
+                                    <div className="space-y-4 sm:space-y-4 py-4 flex-1 overflow-y-auto pr-2 sm:pr-2">
                                         {/* Name */}
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                             <div className="space-y-2">
@@ -2610,33 +2610,46 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     </div>
                                     
                                     {/* New Client Form Signed */}
-                                    <div className="space-y-2 pt-4 border-t flex-shrink-0" ref={formCheckboxRef}>
-                                        <div className="flex items-center gap-2">
+                                    <div className="space-y-2 pt-4 border-t flex-shrink-0 bg-muted/30 p-3 sm:p-4 rounded-lg" ref={formCheckboxRef}>
+                                        <div className="flex items-start gap-3">
                                             <Checkbox
                                                 id="newClientFormSigned"
                                                 checked={formData.newClientFormSigned || false}
                                                 onCheckedChange={(checked) => setFormData({ ...formData, newClientFormSigned: checked === true })}
-                                                className="h-4 w-4"
+                                                className="h-5 w-5 mt-0.5"
                                             />
-                                            <Label htmlFor="newClientFormSigned" className="cursor-pointer flex items-center gap-2 text-sm">
-                                                <FileText className="h-4 w-4 text-muted-foreground" />
-                                                <span>New Client Form Signed</span>
-                                            </Label>
+                                            <div className="flex-1 space-y-1">
+                                                <Label htmlFor="newClientFormSigned" className="cursor-pointer flex items-center gap-2 text-sm sm:text-base font-medium">
+                                                    <FileText className="h-4 w-4 text-muted-foreground" />
+                                                    <span>New Client Form Signed</span>
+                                                </Label>
+                                                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                                                    Check this box when the new client form has been completed and signed. This will stop daily reminders.
+                                                </p>
+                                            </div>
                                         </div>
-                                        <p className="text-xs text-muted-foreground ml-6">
-                                            Check this box when the new client form has been completed and signed. This will stop daily reminders.
-                                        </p>
                                     </div>
                                     
-                                    <DialogFooter className="flex flex-col sm:flex-row sm:justify-between gap-2 mt-2 flex-shrink-0 pb-4 sm:pb-6 px-4 sm:px-0">
+                                    <DialogFooter className="flex flex-col gap-3 mt-4 flex-shrink-0 pb-4 sm:pb-6 px-4 sm:px-6 border-t pt-4">
+                                        {/* Primary action buttons - stacked on mobile */}
+                                        <div className="flex flex-col sm:flex-row gap-2 w-full">
+                                            <Button type="button" variant="outline" onClick={handleDialogClose} className="w-full sm:w-auto order-2 sm:order-1">
+                                                Cancel
+                                            </Button>
+                                            <Button type="submit" className={`w-full sm:w-auto order-1 sm:order-2 ${editingClient ? "" : "bg-green-500 hover:bg-green-600 text-white"}`}>
+                                                {editingClient ? "Update Client" : "Add Client"}
+                                            </Button>
+                                        </div>
+                                        
+                                        {/* Destructive action buttons - stacked on mobile */}
                                         {editingClient && (
-                                            <div className="flex gap-2">
+                                            <div className="flex flex-col sm:flex-row gap-2 w-full border-t pt-3">
                                                 {editingClient.archived ? (
                                                     <>
                                                         <Button
                                                             type="button"
                                                             variant="default"
-                                                            className="bg-green-500 hover:bg-green-600 text-white"
+                                                            className="bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto text-sm"
                                                             onClick={() => handleRestore(editingClient.id)}
                                                         >
                                                             <RotateCcw className="mr-2 h-4 w-4" />
@@ -2645,6 +2658,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         <Button
                                                             type="button"
                                                             variant="destructive"
+                                                            className="w-full sm:w-auto text-sm"
                                                             onClick={() => handleDeleteClick(editingClient.id)}
                                                         >
                                                             <Trash2 className="mr-2 h-4 w-4" />
@@ -2652,35 +2666,26 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </Button>
                                                     </>
                                                 ) : (
-                                                    <>
-                                                        <Button
-                                                            type="button"
-                                                            variant="destructive"
-                                                            onClick={() => handleDeleteClick(editingClient.id)}
-                                                        >
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            Archive Client
-                                                        </Button>
-                                                    </>
+                                                    <Button
+                                                        type="button"
+                                                        variant="destructive"
+                                                        className="w-full sm:w-auto text-sm"
+                                                        onClick={() => handleDeleteClick(editingClient.id)}
+                                                    >
+                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                        Archive Client
+                                                    </Button>
                                                 )}
                                                 <Button
                                                     type="button"
                                                     variant="destructive"
-                                                    className="bg-red-700 hover:bg-red-800"
+                                                    className="bg-red-700 hover:bg-red-800 w-full sm:w-auto text-sm"
                                                     onClick={() => handleGDPRDeleteClick(editingClient.id)}
                                                 >
                                                     GDPR Delete
                                                 </Button>
                                             </div>
                                         )}
-                                        <div className="flex gap-2 ml-auto">
-                                            <Button type="button" variant="outline" onClick={handleDialogClose}>
-                                                Cancel
-                                            </Button>
-                                            <Button type="submit" className={editingClient ? "" : "bg-green-500 hover:bg-green-600 text-white"}>
-                                                {editingClient ? "Update Client" : "Add Client"}
-                                            </Button>
-                                        </div>
                                     </DialogFooter>
                                 </form>
                             </TabsContent>
