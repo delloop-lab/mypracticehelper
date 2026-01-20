@@ -927,29 +927,29 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     <p className="text-sm sm:text-base text-muted-foreground">Manage your appointments and availability</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                    <div className="bg-muted p-1 rounded-lg flex items-center">
+                    <div className="bg-muted p-1 rounded-lg flex items-center gap-1">
                         <Button
                             variant={viewMode === 'list' ? 'default' : 'ghost'}
                             size="sm"
                             onClick={() => setViewMode('list')}
-                            className={cn("h-8 px-2 sm:px-3", viewMode === 'list' && "bg-blue-500 hover:bg-blue-600 text-white")}
+                            className={cn("h-8 px-2 sm:px-3 text-xs sm:text-sm", viewMode === 'list' && "bg-blue-500 hover:bg-blue-600 text-white")}
                         >
-                            <List className="h-4 w-4 sm:mr-2" />
-                            <span className="hidden sm:inline">List</span>
+                            <List className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            List
                         </Button>
                         <Button
                             variant={viewMode === 'calendar' ? 'default' : 'ghost'}
                             size="sm"
                             onClick={() => setViewMode('calendar')}
-                            className={cn("h-8 px-2 sm:px-3", viewMode === 'calendar' && "bg-blue-500 hover:bg-blue-600 text-white")}
+                            className={cn("h-8 px-2 sm:px-3 text-xs sm:text-sm", viewMode === 'calendar' && "bg-blue-500 hover:bg-blue-600 text-white")}
                         >
-                            <CalendarIcon className="h-4 w-4 sm:mr-2" />
-                            <span className="hidden sm:inline">Calendar</span>
+                            <CalendarIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            Calendar
                         </Button>
 
                     </div>
                     <Button 
-                        className="gap-2 bg-green-500 hover:bg-green-600 text-white whitespace-nowrap" 
+                        className="gap-1 sm:gap-2 bg-green-500 hover:bg-green-600 text-white whitespace-nowrap text-xs sm:text-sm px-3 sm:px-4" 
                         onClick={async () => {
                             // Ensure settings are loaded before opening dialog
                             await loadAppointmentTypes();
@@ -965,9 +965,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                             setIsDialogOpen(true);
                         }}
                     >
-                        <Plus className="h-4 w-4" />
-                        <span className="hidden xs:inline">New Appointment</span>
-                        <span className="xs:hidden">New</span>
+                        <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
+                        New Appointment
                     </Button>
                 </div>
             </div>
