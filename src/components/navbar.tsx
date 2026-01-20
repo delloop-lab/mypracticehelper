@@ -150,28 +150,14 @@ export function Navbar() {
       <div className="flex h-16 items-center justify-between">
         <div className="flex items-center pl-[50px]">
           <Link href="/dashboard" className="flex items-center">
-            {menuLogoSrc.startsWith('http') || menuLogoSrc.includes('supabase.co') ? (
-              <img
-                src={menuLogoSrc}
-                alt="Company Logo"
-                key={`header-logo-${companyLogo || 'default'}`}
-                className="h-12 sm:h-16 w-auto object-contain"
-                onError={(e) => {
-                  console.error('Header logo failed to load:', menuLogoSrc);
-                  (e.target as HTMLImageElement).src = "/your-logo-here.png";
-                }}
-              />
-            ) : (
-              <Image
-                src={menuLogoSrc}
-                alt="Company Logo"
-                width={200}
-                height={64}
-                className="h-12 sm:h-16 w-auto"
-                priority
-                key={`header-logo-${companyLogo || 'default'}`}
-              />
-            )}
+            <Image
+              src="/logo.png"
+              alt="My Practice Helper"
+              width={200}
+              height={64}
+              className="h-16 w-auto"
+              priority
+            />
           </Link>
         </div>
 
