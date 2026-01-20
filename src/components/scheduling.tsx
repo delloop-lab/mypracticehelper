@@ -921,49 +921,53 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Schedule</h2>
-                    <p className="text-muted-foreground">Manage your appointments and availability</p>
+                    <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Schedule</h2>
+                    <p className="text-sm sm:text-base text-muted-foreground">Manage your appointments and availability</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                     <div className="bg-muted p-1 rounded-lg flex items-center">
                         <Button
                             variant={viewMode === 'list' ? 'default' : 'ghost'}
                             size="sm"
                             onClick={() => setViewMode('list')}
-                            className={cn("h-8", viewMode === 'list' && "bg-blue-500 hover:bg-blue-600 text-white")}
+                            className={cn("h-8 px-2 sm:px-3", viewMode === 'list' && "bg-blue-500 hover:bg-blue-600 text-white")}
                         >
-                            <List className="h-4 w-4 mr-2" />
-                            List
+                            <List className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">List</span>
                         </Button>
                         <Button
                             variant={viewMode === 'calendar' ? 'default' : 'ghost'}
                             size="sm"
                             onClick={() => setViewMode('calendar')}
-                            className={cn("h-8", viewMode === 'calendar' && "bg-blue-500 hover:bg-blue-600 text-white")}
+                            className={cn("h-8 px-2 sm:px-3", viewMode === 'calendar' && "bg-blue-500 hover:bg-blue-600 text-white")}
                         >
-                            <CalendarIcon className="h-4 w-4 mr-2" />
-                            Calendar
+                            <CalendarIcon className="h-4 w-4 sm:mr-2" />
+                            <span className="hidden sm:inline">Calendar</span>
                         </Button>
 
                     </div>
-                    <Button className="gap-2 bg-green-500 hover:bg-green-600 text-white" onClick={async () => {
-                        // Ensure settings are loaded before opening dialog
-                        await loadAppointmentTypes();
-                        // Set default fee and currency from settings when opening dialog
-                        const currentDefaultFee = settings.defaultFee || 80;
-                        const currentCurrency = settings.currency || "EUR";
-                        setFormData({
-                            ...formData,
-                            fee: currentDefaultFee,
-                            currency: currentCurrency,
-                            type: "Therapy Session" // Reset to default type
-                        });
-                        setIsDialogOpen(true);
-                    }}>
+                    <Button 
+                        className="gap-2 bg-green-500 hover:bg-green-600 text-white whitespace-nowrap" 
+                        onClick={async () => {
+                            // Ensure settings are loaded before opening dialog
+                            await loadAppointmentTypes();
+                            // Set default fee and currency from settings when opening dialog
+                            const currentDefaultFee = settings.defaultFee || 80;
+                            const currentCurrency = settings.currency || "EUR";
+                            setFormData({
+                                ...formData,
+                                fee: currentDefaultFee,
+                                currency: currentCurrency,
+                                type: "Therapy Session" // Reset to default type
+                            });
+                            setIsDialogOpen(true);
+                        }}
+                    >
                         <Plus className="h-4 w-4" />
-                        New Appointment
+                        <span className="hidden xs:inline">New Appointment</span>
+                        <span className="xs:hidden">New</span>
                     </Button>
                 </div>
             </div>
