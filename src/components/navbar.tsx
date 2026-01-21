@@ -179,13 +179,13 @@ export function Navbar() {
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
             </SheetHeader>
-            <Link href="/dashboard" className="flex items-center px-6" onClick={() => setIsOpen(false)}>
+            <Link href="/dashboard" className="flex items-center justify-center px-6 py-4" onClick={() => setIsOpen(false)}>
               {menuLogoSrc.startsWith('http') || menuLogoSrc.includes('supabase.co') ? (
                 <img
                   src={menuLogoSrc}
                   alt="My Practice Helper"
                   key={`menu-logo-${companyLogo || 'default'}`}
-                  className="h-8 w-auto object-contain"
+                  className="h-20 w-auto object-contain max-w-full"
                   onError={(e) => {
                     console.error('Menu logo failed to load:', menuLogoSrc);
                     // Fallback to default logo if image fails to load
@@ -199,9 +199,9 @@ export function Navbar() {
                 <Image
                   src={menuLogoSrc}
                   alt="My Practice Helper"
-                  width={150}
-                  height={32}
-                  className="h-8 w-auto"
+                  width={240}
+                  height={80}
+                  className="h-20 w-auto max-w-full"
                   priority
                   key={`menu-logo-${companyLogo || 'default'}`}
                 />
