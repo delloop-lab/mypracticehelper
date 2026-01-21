@@ -174,7 +174,13 @@ export function Navbar() {
         </div>
 
         {/* Mobile Menu */}
-        <Sheet open={isOpen} onOpenChange={setIsOpen}>
+        <Sheet open={isOpen} onOpenChange={(open) => {
+          // Don't allow closing if updating
+          if (!open && isUpdating) {
+            return;
+          }
+          setIsOpen(open);
+        }}>
           <SheetContent side="left" className="pr-0">
             <SheetHeader className="px-6 py-4">
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
