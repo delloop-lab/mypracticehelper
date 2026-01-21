@@ -231,13 +231,14 @@ export function Navbar() {
                     Contact
                   </Link>
                 </SheetClose>
-                <div className="pt-4 border-t flex gap-2 justify-center">
+                <div className="pt-4 border-t flex gap-2 justify-center" onClick={(e) => e.stopPropagation()}>
                   <Button
                     variant="secondary"
                     size="sm"
                     disabled={isUpdating}
                     onClick={async (e) => {
-                      e.stopPropagation(); // Prevent menu from closing
+                      e.preventDefault();
+                      e.stopPropagation();
                       setIsUpdating(true);
                       
                       // Clear cache and reload to get latest version
