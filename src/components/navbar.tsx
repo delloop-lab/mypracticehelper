@@ -230,7 +230,7 @@ export function Navbar() {
                     Contact
                   </Link>
                 </SheetClose>
-                <div className="pt-4 border-t space-y-2">
+                <div className="pt-4 border-t flex gap-2 justify-center">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -250,13 +250,13 @@ export function Navbar() {
                       // Hard reload
                       window.location.reload();
                     }}
-                    className="w-full text-sm flex items-center justify-center gap-2"
+                    className="w-[40%] text-xs flex items-center justify-center gap-1"
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    Update Version
+                    <RefreshCw className="h-3 w-3" />
+                    Update
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
                     onClick={() => {
                       document.cookie = "isAuthenticated=; path=/; max-age=0";
@@ -265,7 +265,7 @@ export function Navbar() {
                       window.location.href = "/login";
                       setIsOpen(false);
                     }}
-                    className="w-full text-sm"
+                    className="w-[40%] text-xs bg-red-600 hover:bg-red-700"
                   >
                     Log out
                   </Button>
