@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { HelpCircle, Menu } from "lucide-react";
+import { HelpCircle, Menu, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { Button } from "@/components/ui/button";
@@ -230,7 +230,31 @@ export function Navbar() {
                     Contact
                   </Link>
                 </SheetClose>
-                <div className="pt-4 border-t">
+                <div className="pt-4 border-t space-y-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      // Clear cache and reload to get latest version
+                      if ('serviceWorker' in navigator) {
+                        navigator.serviceWorker.getRegistrations().then((registrations) => {
+                          registrations.forEach(reg => reg.unregister());
+                        });
+                      }
+                      // Clear caches
+                      if ('caches' in window) {
+                        caches.keys().then((names) => {
+                          names.forEach(name => caches.delete(name));
+                        });
+                      }
+                      // Hard reload
+                      window.location.reload();
+                    }}
+                    className="w-full text-sm flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Update Version
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
