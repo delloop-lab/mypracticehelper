@@ -46,6 +46,7 @@ export function Navbar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [companyLogo, setCompanyLogo] = useState<string | undefined>(undefined);
   const [logoVersion, setLogoVersion] = useState(0); // Version counter to force refresh
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Fetch company logo from settings (only on mount and when logo-updated event fires)
   useEffect(() => {
@@ -234,26 +235,33 @@ export function Navbar() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => {
+                    disabled={isUpdating}
+                    onClick={async () => {
+                      setIsUpdating(true);
+                      
                       // Clear cache and reload to get latest version
                       if ('serviceWorker' in navigator) {
-                        navigator.serviceWorker.getRegistrations().then((registrations) => {
+                        await navigator.serviceWorker.getRegistrations().then((registrations) => {
                           registrations.forEach(reg => reg.unregister());
                         });
                       }
                       // Clear caches
                       if ('caches' in window) {
-                        caches.keys().then((names) => {
+                        await caches.keys().then((names) => {
                           names.forEach(name => caches.delete(name));
                         });
                       }
-                      // Hard reload
-                      window.location.reload();
+                      
+                      // Wait a moment for visual feedback
+                      setTimeout(() => {
+                        // Hard reload
+                        window.location.reload();
+                      }, 500);
                     }}
                     className="w-[40%] text-xs flex items-center justify-center gap-1"
                   >
-                    <RefreshCw className="h-3 w-3" />
-                    Update
+                    <RefreshCw className={`h-3 w-3 ${isUpdating ? 'animate-spin' : ''}`} />
+                    {isUpdating ? 'Updating...' : 'Update'}
                   </Button>
                   <Button
                     variant="destructive"
