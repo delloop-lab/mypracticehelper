@@ -98,14 +98,14 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
     return (
         <>
             {/* Logo */}
-            <div className="px-4 py-4">
+            <div className="px-4 py-6">
                 <Link href="/dashboard" className="flex items-center">
                     {logoSrc.startsWith('http') || logoSrc.includes('supabase.co') ? (
                         <img
                             src={logoSrc}
                             alt="My Practice Helper"
                             key={`company-logo-${companyLogo || 'default'}`}
-                            className="w-3/4 h-auto object-contain mx-auto max-h-16"
+                            className="w-full h-auto object-contain mx-auto max-h-24"
                             onError={(e) => {
                                 console.error('Sidebar logo failed to load:', logoSrc);
                                 // Fallback to default logo if image fails to load
@@ -119,9 +119,9 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
                         <Image
                             src={logoSrc}
                             alt="My Practice Helper"
-                            width={120}
-                            height={40}
-                            className="w-3/4 h-auto mx-auto max-h-16"
+                            width={180}
+                            height={60}
+                            className="w-full h-auto mx-auto max-h-24"
                             priority
                             key={`company-logo-${companyLogo || 'default'}`}
                         />
