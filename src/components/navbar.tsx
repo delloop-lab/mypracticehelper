@@ -208,45 +208,10 @@ export function Navbar() {
               )}
             </Link>
             <div className="my-4 h-[calc(100vh-8rem)] pb-10 pl-6">
-              <div className="flex flex-col space-y-3">
+              <div className="flex flex-col space-y-4">
                 <SheetClose asChild>
                   <Link href="/dashboard" className="flex items-center py-2 text-lg font-medium">
                     Dashboard
-                  </Link>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Link href="/clients" className="flex items-center py-2 text-lg font-medium">
-                    Clients
-                  </Link>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Link href="/recordings" className="flex items-center py-2 text-lg font-medium">
-                    Recording
-                  </Link>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Link href="/schedule" className="flex items-center py-2 text-lg font-medium">
-                    Schedule
-                  </Link>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Link href="/reminders" className="flex items-center py-2 text-lg font-medium">
-                    Reminders
-                  </Link>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Link href="/session-notes" className="flex items-center py-2 text-lg font-medium">
-                    Sessions
-                  </Link>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Link href="/payments" className="flex items-center py-2 text-lg font-medium">
-                    Revenue
-                  </Link>
-                </SheetClose>
-                <SheetClose asChild>
-                  <Link href="/documents" className="flex items-center py-2 text-lg font-medium">
-                    Documents
                   </Link>
                 </SheetClose>
                 <SheetClose asChild>
@@ -265,8 +230,24 @@ export function Navbar() {
                     Contact
                   </Link>
                 </SheetClose>
+                <div className="pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      document.cookie = "isAuthenticated=; path=/; max-age=0";
+                      localStorage.removeItem("isAuthenticated");
+                      localStorage.removeItem("userEmail");
+                      window.location.href = "/login";
+                      setIsOpen(false);
+                    }}
+                    className="w-full text-sm"
+                  >
+                    Log out
+                  </Button>
+                </div>
               </div>
-              <div className="mt-auto border-t px-6 py-4">
+              <div className="mt-auto border-t pt-4">
                 <div className="text-xs text-muted-foreground text-center">
                   Version {APP_VERSION}
                 </div>
