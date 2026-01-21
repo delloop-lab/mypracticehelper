@@ -180,8 +180,21 @@ export function Navbar() {
             return;
           }
           setIsOpen(open);
-        }}>
-          <SheetContent side="left" className="pr-0">
+        }} modal={true}>
+          <SheetContent 
+            side="left" 
+            className="pr-0"
+            onInteractOutside={(e) => {
+              if (isUpdating) {
+                e.preventDefault();
+              }
+            }}
+            onEscapeKeyDown={(e) => {
+              if (isUpdating) {
+                e.preventDefault();
+              }
+            }}
+          >
             <SheetHeader className="px-6 py-4">
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
