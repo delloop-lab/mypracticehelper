@@ -1290,11 +1290,11 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                             onClick={() => handleViewAppointment(appointment)}
                                         >
                                             <CardContent className="p-3">
-                                                <div className="space-y-1">
-                                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
-                                                        <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                <div className="space-y-1.5">
+                                                    <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                    <div className="flex items-start gap-2">
                                                         <span className={cn(
-                                                            "text-[10px] px-1.5 py-0.5 rounded leading-tight whitespace-nowrap self-start",
+                                                            "text-[10px] px-2 py-0.5 rounded leading-tight whitespace-nowrap inline-block",
                                                             getAppointmentTypeColor(appointment.type).bg,
                                                             getAppointmentTypeColor(appointment.type).text
                                                         )}>
