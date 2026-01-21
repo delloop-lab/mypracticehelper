@@ -105,7 +105,7 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
                             src={logoSrc}
                             alt="My Practice Helper"
                             key={`company-logo-${companyLogo || 'default'}`}
-                            className="w-1/2 h-auto object-contain mx-auto"
+                            className="w-3/4 h-auto object-contain mx-auto max-h-16"
                             onError={(e) => {
                                 console.error('Sidebar logo failed to load:', logoSrc);
                                 // Fallback to default logo if image fails to load
@@ -119,9 +119,9 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
                         <Image
                             src={logoSrc}
                             alt="My Practice Helper"
-                            width={90}
-                            height={30}
-                            className="w-1/2 h-auto mx-auto"
+                            width={120}
+                            height={40}
+                            className="w-3/4 h-auto mx-auto max-h-16"
                             priority
                             key={`company-logo-${companyLogo || 'default'}`}
                         />
