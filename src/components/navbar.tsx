@@ -236,7 +236,8 @@ export function Navbar() {
                     variant="secondary"
                     size="sm"
                     disabled={isUpdating}
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.stopPropagation(); // Prevent menu from closing
                       setIsUpdating(true);
                       
                       // Clear cache and reload to get latest version
@@ -252,11 +253,11 @@ export function Navbar() {
                         });
                       }
                       
-                      // Wait a moment for visual feedback
+                      // Wait longer for visual feedback - keep menu open
                       setTimeout(() => {
                         // Hard reload
                         window.location.reload();
-                      }, 500);
+                      }, 1500);
                     }}
                     className="w-[40%] text-xs flex items-center justify-center gap-1"
                   >
