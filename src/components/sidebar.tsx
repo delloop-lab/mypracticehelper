@@ -170,7 +170,20 @@ export function Sidebar() {
     const [touchEnd, setTouchEnd] = useState<number | null>(null);
     const [companyLogo, setCompanyLogo] = useState<string | undefined>(undefined);
     const [logoVersion, setLogoVersion] = useState(0); // Version counter to force refresh
+    const [sidebarWidth, setSidebarWidth] = useState<number>(280); // Default width in pixels
+    const [isResizing, setIsResizing] = useState(false);
     const pathname = usePathname();
+
+    // Load saved sidebar width from localStorage on mount
+    useEffect(() => {
+        const savedWidth = localStorage.getItem('sidebarWidth');
+        if (savedWidth) {
+            const width = parseInt(savedWidth, 10);
+            if (width >= 200 && width <= 600) {
+                setSidebarWidth(width);
+            }
+        }
+    }, []);
 
     // Fetch company logo from settings (only on mount and when logo-updated event fires)
     useEffect(() => {
@@ -272,12 +285,64 @@ export function Sidebar() {
         setTouchEnd(null);
     };
 
+    // Handle sidebar resize
+    const handleMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizing(true);
+    };
+
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (!isResizing) return;
+            
+            const newWidth = e.clientX;
+            // Constrain width between 200px and 600px
+            if (newWidth >= 200 && newWidth <= 600) {
+                setSidebarWidth(newWidth);
+            }
+        };
+
+        const handleMouseUp = () => {
+            if (isResizing) {
+                setIsResizing(false);
+                // Save width to localStorage
+                localStorage.setItem('sidebarWidth', sidebarWidth.toString());
+            }
+        };
+
+        if (isResizing) {
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+    }, [isResizing, sidebarWidth]);
+
     return (
         <>
             {/* Desktop Sidebar */}
-            <div className="hidden border-r bg-muted/40 md:block md:w-64 lg:w-72 h-[calc(100vh-4rem)] sticky top-16">
+            <div 
+                className="hidden border-r bg-muted/40 md:block h-[calc(100vh-4rem)] sticky top-16 relative"
+                style={{ width: `${sidebarWidth}px` }}
+            >
                 <div className="flex h-full max-h-screen flex-col gap-2">
                     <SidebarContent companyLogo={companyLogo} logoVersion={logoVersion} />
+                </div>
+                
+                {/* Resize handle */}
+                <div
+                    className="absolute top-0 right-0 bottom-0 w-1 hover:w-1.5 cursor-col-resize bg-transparent hover:bg-primary/20 transition-all group"
+                    onMouseDown={handleMouseDown}
+                    title="Drag to resize sidebar"
+                >
+                    <div className="absolute top-1/2 right-0 -translate-y-1/2 w-1 h-12 bg-primary/0 group-hover:bg-primary/40 rounded-l transition-all" />
                 </div>
             </div>
 
