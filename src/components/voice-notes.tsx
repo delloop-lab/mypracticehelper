@@ -858,11 +858,10 @@ export function VoiceNotes() {
                 setStructuredNotes(notes);
                 try {
                     await saveRecording(formattedText, blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined);
-                    console.log("Recording saved successfully", { clientId: clientIdForSave, sessionId: selectedSessionId });
                     window.dispatchEvent(new Event("recordings-updated"));
-                } catch (err) {
+                } catch (err: any) {
                     console.error("Failed to save recording:", err);
-                    setError("Failed to save recording. Please try again.");
+                    setError(err?.message || "Failed to save recording. Please try again.");
                 }
             }
             return;
@@ -1050,12 +1049,11 @@ export function VoiceNotes() {
             // Include client information and session ID if available
             const sessionId = selectedSessionId || undefined;
             await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId);
-            console.log("Recording saved successfully", { clientId, clientName, sessionId });
             window.dispatchEvent(new Event("recordings-updated"));
             setIsProcessing(false);
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to save recording:", err);
-            setError("Failed to save recording. Please try again.");
+            setError(err?.message || "Failed to save recording. Please try again.");
             setIsProcessing(false);
         }
     };
@@ -1096,14 +1094,54 @@ export function VoiceNotes() {
     };
 
     const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[], clientId?: string, clientName?: string, sessionId?: string) => {
-        const form = new FormData();
-        form.append("file", blob);
+        const recordingId = Date.now().toString();
+        const fileName = `${recordingId}.webm`;
+        const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+        
+        // Step 1: Get a signed upload URL from our API
+        const signedUrlResponse = await fetch("/api/storage/signed-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                fileName,
+                contentType: "audio/webm",
+                bucket: "audio"
+            })
+        });
+        
+        if (!signedUrlResponse.ok) {
+            const errorData = await signedUrlResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to get upload URL: ${signedUrlResponse.status}`);
+        }
+        
+        const { signedUrl, publicUrl } = await signedUrlResponse.json();
+        
+        // Step 2: Upload directly to Supabase Storage (bypassing Vercel)
+        const uploadResponse = await fetch(signedUrl, {
+            method: "PUT",
+            headers: { 
+                "Content-Type": "audio/webm",
+                "x-upsert": "true"
+            },
+            body: blob
+        });
+        
+        if (!uploadResponse.ok) {
+            const errorText = await uploadResponse.text().catch(() => '');
+            console.error('[Voice Notes] Upload failed:', uploadResponse.status, errorText);
+            throw new Error(`Direct upload failed: ${uploadResponse.status} ${uploadResponse.statusText}. ${errorText}`);
+        }
+        
+        // Step 3: Save metadata to our API (no file, just metadata)
+        // Use our API route for audio playback (works regardless of bucket public settings)
         const meta: any = {
-            id: Date.now().toString(),
+            id: recordingId,
             date: new Date().toISOString(),
             duration: recordingTime,
             transcript,
-            notes
+            notes,
+            audioURL: `/api/audio/${fileName}`,
+            fileName
         };
         
         // Include client information if available
@@ -1118,13 +1156,20 @@ export function VoiceNotes() {
         if (sessionId) {
             meta.session_id = sessionId;
             meta.sessionId = sessionId;
-            console.log('[Voice Notes] Saving recording with session_id:', sessionId);
         }
         
-        form.append("data", JSON.stringify(meta));
-        const response = await fetch("/api/recordings", { method: "POST", body: form });
-        if (!response.ok) throw new Error(`Failed to save recording: ${response.statusText}`);
-        return await response.json();
+        const metadataResponse = await fetch("/api/recordings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ metadata: meta, directUpload: true })
+        });
+        
+        if (!metadataResponse.ok) {
+            const errorData = await metadataResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || `Failed to save recording metadata: ${metadataResponse.status}`);
+        }
+        
+        return await metadataResponse.json();
     };
 
     const downloadAudio = () => {

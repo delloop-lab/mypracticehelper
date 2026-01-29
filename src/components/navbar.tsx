@@ -260,24 +260,26 @@ export function Navbar() {
                       e.stopPropagation();
                       setIsUpdating(true);
                       
-                      // Clear cache and reload to get latest version
-                      if ('serviceWorker' in navigator) {
-                        await navigator.serviceWorker.getRegistrations().then((registrations) => {
-                          registrations.forEach(reg => reg.unregister());
-                        });
+                      try {
+                        // Clear cache and reload to get latest version
+                        if ('serviceWorker' in navigator) {
+                          await navigator.serviceWorker.getRegistrations().then((registrations) => {
+                            registrations.forEach(reg => reg.unregister());
+                          });
+                        }
+                        // Clear caches
+                        if ('caches' in window) {
+                          await caches.keys().then((names) => {
+                            names.forEach(name => caches.delete(name));
+                          });
+                        }
+                        
+                        // Show success feedback but keep sheet open
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                      } finally {
+                        // Reset updating state - keep sheet open
+                        setIsUpdating(false);
                       }
-                      // Clear caches
-                      if ('caches' in window) {
-                        await caches.keys().then((names) => {
-                          names.forEach(name => caches.delete(name));
-                        });
-                      }
-                      
-                      // Wait longer for visual feedback - keep menu open
-                      setTimeout(() => {
-                        // Hard reload
-                        window.location.reload();
-                      }, 1500);
                     }}
                     className="w-[40%] text-xs flex items-center justify-center gap-1"
                   >

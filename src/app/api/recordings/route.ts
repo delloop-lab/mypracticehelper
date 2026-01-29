@@ -8,21 +8,15 @@ export async function GET(request: Request) {
         // Check authentication (handles both new and fallback methods)
         const { userId, isFallback, userEmail } = await checkAuthentication(request);
         
-        console.log('[Recordings API] Authentication check:', { userId, isFallback, userEmail });
-        
         // If fallback auth, show legacy recordings (recordings without user_id)
         if (isFallback && userEmail === 'claire@claireschillaci.com') {
-            console.log('[Recordings API] Fallback auth detected, showing legacy recordings (no user_id)');
             const recordings = await getRecordings(null);
             return NextResponse.json(recordings);
         }
         
         if (!userId) {
-            console.error('[Recordings API] Unauthorized - no userId');
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
-
-        console.log('[Recordings API] Fetching recordings for userId:', userId);
         
         // Fetch recordings with user_id AND legacy recordings (user_id IS NULL) for migration period
         // This ensures users see their recordings even if some haven't been migrated yet
@@ -45,18 +39,6 @@ export async function GET(request: Request) {
             `)
             .is('user_id', null)
             .order('created_at', { ascending: false });
-        
-        if (userError) {
-            console.error('[Recordings API] Error fetching user recordings:', userError);
-        }
-        if (legacyError) {
-            console.error('[Recordings API] Error fetching legacy recordings:', legacyError);
-        }
-        
-        console.log('[Recordings API] Found recordings:', {
-            userRecordings: userRecordings?.length || 0,
-            legacyRecordings: legacyRecordings?.length || 0
-        });
         
         // Combine both sets and remove duplicates
         const allRecordings = [...(userRecordings || []), ...(legacyRecordings || [])];
@@ -101,7 +83,6 @@ export async function GET(request: Request) {
             };
         });
         
-        console.log('[Recordings API] Returning mapped recordings:', mappedRecordings.length);
         return NextResponse.json(mappedRecordings);
     } catch (error) {
         console.error('[Recordings API] Error:', error);
@@ -125,52 +106,54 @@ export async function POST(request: Request) {
             }, { status: 403 });
         }
 
+        // Check content type to determine if this is a direct upload (JSON) or legacy (FormData)
+        const contentType = request.headers.get('content-type') || '';
+        
+        if (contentType.includes('application/json')) {
+            // NEW: Direct upload - audio was uploaded directly to Supabase, this is just metadata
+            const body = await request.json();
+            const { metadata, directUpload } = body;
+            
+            if (!metadata || !directUpload) {
+                return NextResponse.json({ error: 'Invalid request format' }, { status: 400 });
+            }
+            
+            const newRecording = { ...metadata };
+            const recordings = await getRecordings(userId);
+            recordings.unshift(newRecording);
+            await saveRecordings(recordings, userId);
+
+            return NextResponse.json(newRecording);
+        }
+        
+        // LEGACY: FormData with file upload through Vercel
         const formData = await request.formData();
         const file = formData.get('file') as File;
         const metadataString = formData.get('data') as string;
 
-        console.log('Received recording request');
-        console.log('File:', file ? `${file.name} (${file.size} bytes)` : 'NO FILE');
-        console.log('Metadata string:', metadataString);
-
         if (!file || !metadataString) {
-            console.error('Missing file or metadata');
             return NextResponse.json({ error: 'Missing file or metadata' }, { status: 400 });
         }
 
         const metadata = JSON.parse(metadataString);
-        console.log('Parsed metadata:', metadata);
-
         const buffer = Buffer.from(await file.arrayBuffer());
-        const fileName = `${metadata.id}.webm`; // Assuming webm from MediaRecorder
+        const fileName = `${metadata.id}.webm`;
 
-        console.log('Uploading audio file:', fileName);
         await saveAudioFile(fileName, buffer);
-        console.log('Audio file uploaded successfully');
 
-        // Update metadata with file path/url
-        // We'll serve it via an API route
         const newRecording = {
             ...metadata,
             audioURL: `/api/audio/${fileName}`,
             fileName: fileName
         };
 
-        console.log('Fetching existing recordings...');
         const recordings = await getRecordings(userId);
-        console.log('Existing recordings count:', recordings.length);
-
         recordings.unshift(newRecording);
-
-        console.log('Saving updated recordings...');
         await saveRecordings(recordings, userId);
-        console.log('Recordings saved successfully');
 
         return NextResponse.json(newRecording);
     } catch (error) {
-        console.error('Error saving recording:', error);
-        console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-        console.error('Error message:', error instanceof Error ? error.message : String(error));
+        console.error('Error saving recording:', error instanceof Error ? error.message : error);
         return NextResponse.json({
             error: 'Failed to save recording',
             details: error instanceof Error ? error.message : String(error)
