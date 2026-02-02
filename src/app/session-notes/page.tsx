@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { safeFormatDate } from "@/lib/utils";
 
 interface SessionNote {
     id: string;
@@ -400,14 +401,13 @@ function SessionNotesContent() {
     }, [notes, searchQuery, selectedClient, selectedSource, sortBy]);
 
     const formatDate = (dateString: string): string => {
-        const date = new Date(dateString);
-        return date.toLocaleString('en-US', {
+        return safeFormatDate(dateString, {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
-        });
+        }, 'en-US', 'No date');
     };
 
     const loadSessionsForClient = async (clientId: string) => {

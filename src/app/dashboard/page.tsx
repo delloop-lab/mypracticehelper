@@ -689,16 +689,34 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                                 </h3>
                                 <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-300 mb-4 break-words">
                                     You have {displayTotal} outstanding reminder{displayTotal !== 1 ? 's' : ''}: {(() => {
-                                        const parts = [
-                                            reminderCounts.clinicalNotes > 0 && `${reminderCounts.clinicalNotes} Session Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`,
-                                            reminderCounts.unsignedForms > 0 && `${reminderCounts.unsignedForms} Unsigned Form${reminderCounts.unsignedForms !== 1 ? 's' : ''}`,
-                                            reminderCounts.unpaidSessions > 0 && `${reminderCounts.unpaidSessions} Unpaid Session${reminderCounts.unpaidSessions !== 1 ? 's' : ''}`,
-                                            reminderCounts.customReminders > 0 && `${reminderCounts.customReminders} Client${reminderCounts.customReminders !== 1 ? 's' : ''} Not Seen Recently`
-                                        ].filter(Boolean);
+                                        const parts: React.ReactNode[] = [];
+                                        if (reminderCounts.clinicalNotes > 0) {
+                                            parts.push(`${reminderCounts.clinicalNotes} Session Note${reminderCounts.clinicalNotes !== 1 ? 's' : ''}`);
+                                        }
+                                        if (reminderCounts.unsignedForms > 0) {
+                                            parts.push(`${reminderCounts.unsignedForms} Unsigned Form${reminderCounts.unsignedForms !== 1 ? 's' : ''}`);
+                                        }
+                                        if (reminderCounts.unpaidSessions > 0) {
+                                            parts.push(
+                                                <button
+                                                    key="unpaid"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        router.push('/payments?showUnpaid=true');
+                                                    }}
+                                                    className="underline hover:text-amber-900 dark:hover:text-amber-100 font-medium"
+                                                >
+                                                    {reminderCounts.unpaidSessions} Unpaid Session{reminderCounts.unpaidSessions !== 1 ? 's' : ''}
+                                                </button>
+                                            );
+                                        }
+                                        if (reminderCounts.customReminders > 0) {
+                                            parts.push(`${reminderCounts.customReminders} Client${reminderCounts.customReminders !== 1 ? 's' : ''} Not Seen Recently`);
+                                        }
                                         if (parts.length === 0) return '';
                                         if (parts.length === 1) return parts[0];
-                                        if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-                                        return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+                                        if (parts.length === 2) return <>{parts[0]} and {parts[1]}</>;
+                                        return <>{parts.slice(0, -1).map((p, i) => <span key={i}>{p}{i < parts.length - 2 ? ', ' : ''}</span>)}, and {parts[parts.length - 1]}</>;
                                     })()}.
                                 </p>
                                 <Button

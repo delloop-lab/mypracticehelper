@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -38,6 +39,15 @@ interface SettingsData {
 type TimePeriod = "today" | "week" | "30days" | "month" | "year" | "all";
 
 export default function PaymentsPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+            <PaymentsContent />
+        </Suspense>
+    );
+}
+
+function PaymentsContent() {
+    const searchParams = useSearchParams();
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [settings, setSettings] = useState<SettingsData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -53,6 +63,13 @@ export default function PaymentsPage() {
     const [selectedWeekSessions, setSelectedWeekSessions] = useState<Appointment[]>([]);
     const [isWeekSessionsDialogOpen, setIsWeekSessionsDialogOpen] = useState(false);
     const [selectedWeekLabel, setSelectedWeekLabel] = useState<string>("");
+
+    // Check for showUnpaid query param to auto-open unpaid report
+    useEffect(() => {
+        if (searchParams.get('showUnpaid') === 'true') {
+            setIsUnpaidReportOpen(true);
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         loadData();

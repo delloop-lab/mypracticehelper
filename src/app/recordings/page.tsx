@@ -28,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceNotes } from "@/components/voice-notes";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
+import { safeFormatDate } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NoteSection {
@@ -296,14 +297,13 @@ function RecordingsContent() {
     };
 
     const formatDate = (dateString: string): string => {
-        const date = new Date(dateString);
-        return date.toLocaleString('en-US', {
+        return safeFormatDate(dateString, {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
-        });
+        }, 'en-US', 'No date');
     };
 
     const handlePlay = (id: string) => {
