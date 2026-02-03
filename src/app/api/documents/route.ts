@@ -66,25 +66,26 @@ export async function POST(request: Request) {
         const file = formData.get('file') as File;
         const isUserDocument = formData.get('isUserDocument') === 'true'; // Flag to indicate company document
         const clientId = formData.get('clientId') as string | null; // Client ID if this is a client document
+        const sessionId = formData.get('sessionId') as string | null; // Session ID if attaching to a specific session
 
         if (!file) {
             return NextResponse.json({ error: 'No file provided' }, { status: 400 });
         }
 
         // Validate file type
-        const allowedExtensions = ['.doc', '.docx', '.txt'];
+        const allowedExtensions = ['.doc', '.docx', '.txt', '.pdf', '.jpg', '.jpeg', '.png'];
         const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
         if (!allowedExtensions.includes(fileExtension)) {
             return NextResponse.json({ 
-                error: 'Only MS Word (.doc, .docx) and Text (.txt) files are allowed.' 
+                error: 'Only MS Word (.doc, .docx), Text (.txt), PDF (.pdf), and Image (.jpg, .jpeg, .png) files are allowed.' 
             }, { status: 400 });
         }
 
-        // Validate file size (3 MB = 3 * 1024 * 1024 bytes)
-        const maxSize = 3 * 1024 * 1024; // 3 MB
+        // Validate file size (10 MB = 10 * 1024 * 1024 bytes)
+        const maxSize = 10 * 1024 * 1024; // 10 MB
         if (file.size > maxSize) {
             return NextResponse.json({ 
-                error: 'File size must be less than 3 MB.' 
+                error: 'File size must be less than 10 MB.' 
             }, { status: 400 });
         }
 
@@ -97,7 +98,77 @@ export async function POST(request: Request) {
         const fileUrl = await saveDocumentFile(fileName, buffer);
         const documentUrl = `/api/documents/${fileName}`;
 
-        // If this is a client document, save it to the client's documents array
+        // If this is a session attachment, add it to the session's metadata
+        if (sessionId && clientId) {
+            // Fetch the session
+            const { data: session, error: sessionFetchError } = await supabase
+                .from('sessions')
+                .select('*')
+                .eq('id', sessionId)
+                .eq('user_id', userId)
+                .single();
+
+            if (sessionFetchError || !session) {
+                console.error('Error fetching session:', sessionFetchError);
+                return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+            }
+
+            // Get client name for the response
+            const clients = await getClients(false, userId);
+            const client = clients.find(c => c.id === clientId);
+
+            // Add document to session's metadata.attachments
+            const newAttachment = {
+                name: file.name,
+                url: documentUrl,
+                date: new Date().toISOString(),
+            };
+
+            const existingMetadata = session.metadata || {};
+            const existingAttachments = existingMetadata.attachments || [];
+            const updatedMetadata = {
+                ...existingMetadata,
+                attachments: [...existingAttachments, newAttachment]
+            };
+
+            // Update the session
+            const { error: updateError } = await supabase
+                .from('sessions')
+                .update({ 
+                    metadata: updatedMetadata,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', sessionId)
+                .eq('user_id', userId);
+
+            if (updateError) {
+                console.error('Error updating session with attachment:', updateError);
+                return NextResponse.json({ error: 'Failed to attach document to session' }, { status: 500 });
+            }
+
+            return NextResponse.json({
+                success: true,
+                originalName: file.name,
+                url: documentUrl,
+                attachedToSession: true,
+                sessionId: sessionId,
+                document: {
+                    id: documentUrl,
+                    name: file.name,
+                    type: file.name.split('.').pop()?.toLowerCase() || 'document',
+                    size: formatSize(file.size),
+                    uploadedBy: 'System',
+                    uploadedDate: new Date().toISOString(),
+                    clientName: client?.name || 'Unknown',
+                    sessionDate: session.date,
+                    category: 'session',
+                    url: documentUrl,
+                    isUserDocument: false
+                }
+            });
+        }
+
+        // If this is a client document (no session), save it to the client's documents array
         if (clientId) {
             const clients = await getClients(false, userId);
             const client = clients.find(c => c.id === clientId);

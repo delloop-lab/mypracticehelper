@@ -4,15 +4,12 @@ import { checkAuthentication } from '@/lib/auth';
 
 export async function GET(request: Request) {
     try {
-        // Check authentication (handles both new and fallback methods)
         const { userId, isFallback, userEmail } = await checkAuthentication(request);
         
-        // If fallback auth (user doesn't exist in DB yet), show legacy data
         if (isFallback && userEmail === 'claire@claireschillaci.com') {
-            console.log('[Clients API] Fallback auth detected, showing legacy data (no user_id)');
             const { searchParams } = new URL(request.url);
             const archived = searchParams.get('archived') === 'true';
-            const clients = await getClients(archived, null); // null = show legacy data
+            const clients = await getClients(archived, null);
             return NextResponse.json(clients);
         }
         

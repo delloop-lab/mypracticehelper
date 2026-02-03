@@ -99,7 +99,9 @@ interface ClientsPageProps {
 }
 
 function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
+    console.log('[Clients Page] 🎬 RENDER START - ClientsPageContent function called');
     const searchParams = useSearchParams();
+    console.log('[Clients Page] 🎬 useSearchParams resolved');
     const router = useRouter();
     const [clients, setClients] = useState<Client[]>([]);
     const [recordings, setRecordings] = useState<any[]>([]);
@@ -357,7 +359,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     useEffect(() => {
         loadClients();
         loadRecordings();
-    }, [activeTab]); // Reload when tab changes
+    }, [activeTab]);
 
     // Open client details if client query parameter is present
     useEffect(() => {
@@ -466,21 +468,26 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
     const loadClients = async () => {
         try {
-            console.log('[Clients Page] Loading clients...', { activeTab });
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
             
-            // Load clients based on active tab with cache-busting and credentials
             const url = activeTab === 'archived' 
                 ? `/api/clients?archived=true&t=${Date.now()}` 
                 : `/api/clients?t=${Date.now()}`;
+            
             const response = await fetch(url, {
                 credentials: 'include',
+                signal: controller.signal
             });
-            const data = response.ok ? await response.json() : [];
             
-            console.log(`[Clients Page] ${activeTab === 'archived' ? 'Archived' : 'Active'} clients:`, data.length);
+            clearTimeout(timeoutId);
+            const data = response.ok ? await response.json() : [];
             setClients(data);
-        } catch (error) {
-            console.error('Error loading clients:', error);
+            loadAppointments();
+        } catch (error: any) {
+            if (error.name !== 'AbortError') {
+                console.error('[Clients Page] Error loading clients:', error);
+            }
         }
     };
 
@@ -601,6 +608,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [sessionDialogTab, setSessionDialogTab] = useState<"notes" | "attachments">("notes");
     const [sessionNotes, setSessionNotes] = useState<any[]>([]);
     const [isLoadingSessionNotes, setIsLoadingSessionNotes] = useState(false);
+    
+    // Session note counts for displaying indicators on session cards
+    const [sessionNoteCounts, setSessionNoteCounts] = useState<Record<string, { recordings: number; written: number; admin: number }>>({});
 
     // AI Clinical Assessment State
     const [currentTherapist, setCurrentTherapist] = useState<string>("");
@@ -705,45 +715,80 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     };
 
     // Handle highlight and session query parameters (from session-notes page)
+    // SIMPLE: Process once when both params exist AND data is loaded
+    const hasProcessedParamsRef = useRef<string>('');
+    
     useEffect(() => {
         const highlightClientId = searchParams.get('highlight');
         const sessionId = searchParams.get('session');
+        const paramKey = highlightClientId ? `${highlightClientId}-${sessionId || ''}` : '';
         
-        if (highlightClientId && clients.length > 0) {
-            const client = clients.find(c => c.id === highlightClientId);
-            if (client) {
-                console.log('[Clients] Highlighting client from session-notes:', client.name);
-                setEditingClient(client);
-                setFormData(client);
-                setIsAddDialogOpen(true);
-                
-                // If session ID is provided, find and open that session
-                if (sessionId && appointments.length > 0) {
-                    const session = appointments.find(apt => apt.id === sessionId);
-                    if (session) {
-                        console.log('[Clients] Opening session:', session.id, session.date);
-                        // Open the session notes dialog after a short delay to allow client dialog to render
-                        setTimeout(() => {
-                            handleOpenSession(session, "notes");
-                        }, 500);
-                    } else {
-                        console.log('[Clients] Session not found:', sessionId);
-                    }
-                }
-                
-                // Clear URL parameters after handling
-                router.replace('/clients');
+        // Reset when params cleared
+        if (!highlightClientId) {
+            hasProcessedParamsRef.current = '';
+            return;
+        }
+        
+        // Skip if already processed this exact param combo
+        if (hasProcessedParamsRef.current === paramKey) {
+            return;
+        }
+        
+        // Skip if data not loaded
+        if (clients.length === 0) {
+            return;
+        }
+        
+        const client = clients.find(c => c.id === highlightClientId);
+        if (!client) {
+            hasProcessedParamsRef.current = paramKey; // Mark as processed even if not found
+            return;
+        }
+        
+        // Mark as processed IMMEDIATELY
+        hasProcessedParamsRef.current = paramKey;
+        console.log('[Clients] ✅ Processing URL params for:', client.name);
+        
+        // Update state
+        setEditingClient(client);
+        setFormData(client);
+        setIsAddDialogOpen(true);
+        
+        // Handle session
+        if (sessionId && appointments.length > 0) {
+            const session = appointments.find(apt => apt.id === sessionId);
+            if (session) {
+                setTimeout(() => handleOpenSession(session, "notes"), 500);
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchParams, clients, appointments]);
+        
+        // DON'T clear URL - prevents infinite loop
+        // URL stays as /clients?highlight=...&session=... but that's fine
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams, clients.length, appointments.length]); // Depend on lengths, not arrays
 
     const loadSessionNotes = async (sessionId: string) => {
         setIsLoadingSessionNotes(true);
         try {
-            const response = await fetch('/api/session-notes');
+            console.log('[Clients Page] Loading session notes for:', sessionId);
+            
+            // Add timeout to prevent hanging
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => {
+                console.log('[Clients Page] Session notes fetch timeout after 15 seconds');
+                controller.abort();
+            }, 15000);
+            
+            const response = await fetch('/api/session-notes', {
+                signal: controller.signal,
+                credentials: 'include'
+            });
+            
+            clearTimeout(timeoutId);
+            
             if (response.ok) {
                 const allNotes = await response.json();
+                console.log('[Clients Page] Loaded', allNotes.length, 'total notes');
                 
                 // Get the active session to match by client and date
                 const session = appointments.find(apt => apt.id === sessionId);
@@ -840,10 +885,54 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 
                 setSessionNotes(deduplicatedNotes);
             }
-        } catch (error) {
-            console.error('Error loading session notes:', error);
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.error('[Clients Page] Session notes fetch was aborted (timeout)');
+            } else {
+                console.error('[Clients Page] Error loading session notes:', error);
+            }
         } finally {
             setIsLoadingSessionNotes(false);
+        }
+    };
+
+    // Load note counts for all sessions of a client (for displaying indicators on session cards)
+    const loadSessionNoteCounts = async (clientName: string) => {
+        try {
+            const response = await fetch('/api/session-notes');
+            if (response.ok) {
+                const allNotes = await response.json();
+                
+                // Filter notes for this client
+                const clientNotes = allNotes.filter((note: any) => 
+                    note.clientName?.toLowerCase() === clientName.toLowerCase()
+                );
+                
+                // Group counts by session ID
+                const counts: Record<string, { recordings: number; written: number; admin: number }> = {};
+                
+                clientNotes.forEach((note: any) => {
+                    const sessionId = note.sessionId || note.session_id;
+                    if (!sessionId) return;
+                    
+                    if (!counts[sessionId]) {
+                        counts[sessionId] = { recordings: 0, written: 0, admin: 0 };
+                    }
+                    
+                    // Check note type
+                    if (note.source === 'recording') {
+                        counts[sessionId].recordings++;
+                    } else if (note.source === 'written_session_note' || (note.id && note.id.startsWith('written-'))) {
+                        counts[sessionId].written++;
+                    } else if (note.source === 'admin' || (note.id && note.id.startsWith('admin-'))) {
+                        counts[sessionId].admin++;
+                    }
+                });
+                
+                setSessionNoteCounts(counts);
+            }
+        } catch (error) {
+            console.error('Error loading session note counts:', error);
         }
     };
 
@@ -930,6 +1019,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     };
 
     useEffect(() => {
+        console.log('[Clients Page] useEffect: About to load appointments...');
         loadAppointments();
     }, []);
 
@@ -950,14 +1040,27 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     // Users can manually set the total number of sessions if needed
 
     const loadAppointments = async () => {
+        if (appointments.length > 0) return;
+        
         try {
-            const response = await fetch('/api/appointments');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            const response = await fetch('/api/appointments', {
+                signal: controller.signal,
+                credentials: 'include'
+            });
+            
+            clearTimeout(timeoutId);
+            
             if (response.ok) {
                 const data = await response.json();
                 setAppointments(data);
             }
-        } catch (error) {
-            console.error('Error loading appointments:', error);
+        } catch (error: any) {
+            if (error.name !== 'AbortError') {
+                console.error('[Clients Page] Error loading appointments:', error);
+            }
         }
     };
 
@@ -1068,6 +1171,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
         const uploadFormData = new FormData();
         uploadFormData.append('file', file);
+        
+        // If editing an existing client, include clientId to save document immediately
+        if (editingClient?.id) {
+            uploadFormData.append('clientId', editingClient.id);
+        }
 
         try {
             const response = await fetch('/api/documents', {
@@ -1083,10 +1191,21 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     date: new Date().toISOString(),
                 };
 
+                // Update local form state
                 setFormData(prev => ({
                     ...prev,
                     documents: [...(prev.documents || []), newDoc]
                 }));
+
+                // If editing an existing client, also update the clients array immediately
+                // (the API already saved it to the database)
+                if (editingClient?.id) {
+                    setClients(prevClients => prevClients.map(c => 
+                        c.id === editingClient.id 
+                            ? { ...c, documents: [...(c.documents || []), newDoc] }
+                            : c
+                    ));
+                }
             }
         } catch (error) {
             console.error('Error uploading document:', error);
@@ -1097,7 +1216,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         setDeleteDocumentConfirm({ isOpen: true, index });
     };
 
-    const confirmRemoveDocument = () => {
+    const confirmRemoveDocument = async () => {
         if (deleteDocumentConfirm.index !== null) {
             const updatedDocuments = formData.documents?.filter((_, i) => i !== deleteDocumentConfirm.index) || [];
             setFormData(prev => ({
@@ -1113,6 +1232,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         : c
                 );
                 setClients(updatedClients);
+                
+                // Save to database immediately (no need to click Update)
+                try {
+                    await fetch('/api/clients', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updatedClients),
+                    });
+                } catch (error) {
+                    console.error('Error saving client after document removal:', error);
+                }
             }
             
             setDeleteDocumentConfirm({ isOpen: false, index: null });
@@ -1363,6 +1493,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             nextAppointment: nextApt ? new Date(nextApt.date).toISOString().slice(0, 16) : ''
         });
         setIsAddDialogOpen(true);
+        
+        // Load session note counts when opening sessions tab
+        if (tab === 'sessions') {
+            loadSessionNoteCounts(client.name);
+        }
     };
 
     const handleToggleFormSigned = async (clientId: string, currentStatus: boolean) => {
@@ -2188,7 +2323,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             </DialogHeader>
                         </div>
 
-                        <Tabs value={clientDialogTab} onValueChange={(value) => setClientDialogTab(value as 'profile' | 'sessions')} className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
+                        <Tabs value={clientDialogTab} onValueChange={(value) => {
+                            setClientDialogTab(value as 'profile' | 'sessions');
+                            // Load session note counts when switching to sessions tab
+                            if (value === 'sessions' && editingClient?.name) {
+                                loadSessionNoteCounts(editingClient.name);
+                            }
+                        }} className="w-full flex flex-col flex-1 min-h-0 overflow-hidden">
                             <div className="px-4 sm:px-6 pt-3 flex-shrink-0">
                                 <TabsList className="grid w-full grid-cols-2 h-10 sm:h-11">
                                     <TabsTrigger value="profile" className="text-sm sm:text-base">Profile & Info</TabsTrigger>
@@ -2521,6 +2662,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                             type="file"
                                                             className="hidden"
                                                             onChange={handleFileUpload}
+                                                            accept=".doc,.docx,.txt,.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                                                         />
                                                         <Label
                                                             htmlFor="file-upload"
@@ -2747,6 +2889,48 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                 {apt.notes}
                                                             </div>
                                                         )}
+                                                        
+                                                        {/* Session content indicators */}
+                                                        {(() => {
+                                                            const counts = sessionNoteCounts[apt.id];
+                                                            const hasRecordings = counts?.recordings > 0;
+                                                            const hasWritten = counts?.written > 0;
+                                                            const hasAdmin = counts?.admin > 0;
+                                                            const hasAttachments = apt.attachments && apt.attachments.length > 0;
+                                                            const hasAnyContent = hasRecordings || hasWritten || hasAdmin || hasAttachments;
+                                                            
+                                                            if (!hasAnyContent) return null;
+                                                            
+                                                            return (
+                                                                <div className="flex flex-wrap gap-1.5 mb-3">
+                                                                    {hasRecordings && (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                                                            <Mic className="h-3 w-3" />
+                                                                            {counts.recordings}
+                                                                        </span>
+                                                                    )}
+                                                                    {hasWritten && (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800">
+                                                                            <FileText className="h-3 w-3" />
+                                                                            {counts.written}
+                                                                        </span>
+                                                                    )}
+                                                                    {hasAdmin && (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                                                            <User className="h-3 w-3" />
+                                                                            {counts.admin}
+                                                                        </span>
+                                                                    )}
+                                                                    {hasAttachments && (
+                                                                        <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                                                            <File className="h-3 w-3" />
+                                                                            {apt.attachments!.length}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                        
                                                         <div className="flex flex-col sm:flex-row gap-2 mt-2 w-full">
                                                             <Button
                                                                 size="sm"
@@ -2938,6 +3122,106 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         </Button>
                                     </div>
                                     <div className="py-4 space-y-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
+                                    {/* Session Content Summary Cards */}
+                                    {!isLoadingSessionNotes && sessionNotes.length > 0 && (() => {
+                                        const adminNotes = sessionNotes.filter((n: any) => n.source === 'admin' || (n.id && n.id.startsWith('admin-')));
+                                        const writtenNotes = sessionNotes.filter((n: any) => n.source === 'written_session_note' || (n.id && n.id.startsWith('written-')));
+                                        const recordedNotes = sessionNotes.filter((n: any) => n.source === 'recording');
+                                        const hasAttachments = activeSession?.attachments && activeSession.attachments.length > 0;
+                                        
+                                        return (
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                                                {/* Recorded Notes */}
+                                                {recordedNotes.length > 0 && (
+                                                    <div className="border-2 border-purple-300 dark:border-purple-700 rounded-lg p-3 bg-purple-50 dark:bg-purple-950/30">
+                                                        <div className="flex items-center gap-2">
+                                                            <Mic className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                                            <div>
+                                                                <p className="text-xs font-semibold text-purple-800 dark:text-purple-200">
+                                                                    {recordedNotes.length} Recording{recordedNotes.length !== 1 ? 's' : ''}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Written Session Notes */}
+                                                {writtenNotes.length > 0 && (
+                                                    <div className="border-2 border-green-300 dark:border-green-700 rounded-lg p-3 bg-green-50 dark:bg-green-950/30">
+                                                        <div className="flex items-center gap-2">
+                                                            <FileText className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                                            <div>
+                                                                <p className="text-xs font-semibold text-green-800 dark:text-green-200">
+                                                                    {writtenNotes.length} Written Note{writtenNotes.length !== 1 ? 's' : ''}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Admin Notes */}
+                                                {adminNotes.length > 0 && (
+                                                    <div className="border-2 border-amber-300 dark:border-amber-700 rounded-lg p-3 bg-amber-50 dark:bg-amber-950/30">
+                                                        <div className="flex items-center gap-2">
+                                                            <User className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                                            <div>
+                                                                <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+                                                                    {adminNotes.length} Admin Note{adminNotes.length !== 1 ? 's' : ''}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Attachments */}
+                                                {hasAttachments && (
+                                                    <div 
+                                                        className="border-2 border-blue-300 dark:border-blue-700 rounded-lg p-3 bg-blue-50 dark:bg-blue-950/30 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                                                        onClick={() => setSessionDialogTab("attachments")}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <File className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                                            <div>
+                                                                <p className="text-xs font-semibold text-blue-800 dark:text-blue-200">
+                                                                    {activeSession!.attachments!.length} Attachment{activeSession!.attachments!.length !== 1 ? 's' : ''}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
+                                    
+                                    {/* Attachments Only Card (when no notes but has attachments) */}
+                                    {!isLoadingSessionNotes && sessionNotes.length === 0 && activeSession?.attachments && activeSession.attachments.length > 0 && (
+                                        <div 
+                                            className="border-2 border-blue-300 dark:border-blue-700 rounded-lg p-4 bg-blue-50 dark:bg-blue-950/30 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                                            onClick={() => setSessionDialogTab("attachments")}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900">
+                                                    <File className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <p className="font-semibold text-blue-800 dark:text-blue-200">
+                                                        {activeSession.attachments.length} Attachment{activeSession.attachments.length !== 1 ? 's' : ''}
+                                                    </p>
+                                                    <p className="text-sm text-blue-600 dark:text-blue-400">
+                                                        {activeSession.attachments.map(a => a.name).join(', ')}
+                                                    </p>
+                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                                                >
+                                                    View
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
                                     {isLoadingSessionNotes ? (
                                         <p className="text-muted-foreground text-center py-8">Loading session notes...</p>
                                     ) : sessionNotes.length > 0 ? (
@@ -3303,6 +3587,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 type="file"
                                                 className="hidden"
                                                 onChange={handleSessionFileUpload}
+                                                accept=".doc,.docx,.txt,.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                                             />
                                             <Label
                                                 htmlFor="session-file-upload"
@@ -3495,6 +3780,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     onConfirm={confirmDeleteNote}
                     title={(deleteNoteConfirmation.note?.source === 'admin' || deleteNoteConfirmation.note?.id?.startsWith('admin-')) ? 'Delete Admin Note' : 'Delete Session Note'}
                     description={`Are you sure you want to delete this ${(deleteNoteConfirmation.note?.source === 'admin' || deleteNoteConfirmation.note?.id?.startsWith('admin-')) ? 'admin' : 'session'} note? This action cannot be undone.`}
+                    requireConfirmation={false}
+                    confirmButtonText="Delete"
+                />
+
+                {/* Delete Document Confirmation Dialog */}
+                <DeleteConfirmationDialog
+                    open={deleteDocumentConfirm.isOpen}
+                    onOpenChange={(open) => setDeleteDocumentConfirm({ isOpen: open, index: open ? deleteDocumentConfirm.index : null })}
+                    onConfirm={confirmRemoveDocument}
+                    title="Delete Document"
+                    description="Are you sure you want to remove this document from the client record? This action cannot be undone."
                     requireConfirmation={false}
                     confirmButtonText="Delete"
                 />
@@ -4069,8 +4365,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 }
 
 export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPageProps) {
+    console.log('[Clients Page] 🎯 Default export function called');
     return (
-        <Suspense fallback={<div>Loading...</div>}>
+        <Suspense fallback={<div>Loading clients page...</div>}>
             <ClientsPageContent autoOpenAddDialog={autoOpenAddDialog} />
         </Suspense>
     );

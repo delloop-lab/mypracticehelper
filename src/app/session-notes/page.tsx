@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File, Mic, Play, MapPin } from "lucide-react";
+import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File, Mic, Play, MapPin, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
@@ -59,6 +59,12 @@ function SessionNotesContent() {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [editingNote, setEditingNote] = useState<SessionNote | null>(null);
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; note: SessionNote | null }>({ isOpen: false, note: null });
+    const [openAudioIds, setOpenAudioIds] = useState<string[]>([]);
+    const [playingId, setPlayingId] = useState<string | null>(null);
+    const [loadingAudioIds, setLoadingAudioIds] = useState<Set<string>>(new Set());
+    const [audioDurations, setAudioDurations] = useState<Record<string, number>>({});
+    const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+    const [isUnauthorized, setIsUnauthorized] = useState(false);
     const [formData, setFormData] = useState({
         clientName: "",
         clientId: undefined as string | undefined,
@@ -74,12 +80,21 @@ function SessionNotesContent() {
     const [availableSessions, setAvailableSessions] = useState<{ id: string; date: string; type: string; time: string }[]>([]);
     const [currentTherapist, setCurrentTherapist] = useState<string>("");
     
+    const markUnauthorized = (context: string) => {
+        console.error(`[Session Notes] ❌ Unauthorized (${context}). User is not authenticated.`);
+        setIsUnauthorized(true);
+    };
+
     // Fetch therapist name on mount (from logged-in user's first_name and last_name)
     useEffect(() => {
         const fetchTherapist = async () => {
             try {
                 console.log('[Session Notes] ========== Fetching therapist name ==========');
                 const response = await fetch('/api/auth/me');
+                if (response.status === 401) {
+                    markUnauthorized('auth/me');
+                    return;
+                }
                 if (response.ok) {
                     const userData = await response.json();
                     console.log('[Session Notes] User data from /api/auth/me:', {
@@ -235,10 +250,12 @@ function SessionNotesContent() {
     }, [searchParams, clients]);
 
     useEffect(() => {
+        if (isUnauthorized) return;
         loadNotes();
         loadClients();
 
         const handleFocus = () => {
+            if (isUnauthorized) return;
             loadNotes();
             loadClients();
         };
@@ -248,12 +265,18 @@ function SessionNotesContent() {
         return () => {
             window.removeEventListener('focus', handleFocus);
         };
-    }, []);
+    }, [isUnauthorized]);
 
     const loadClients = async () => {
         try {
+            if (isUnauthorized) return;
             console.log('[Session Notes] Loading clients...');
             const response = await fetch('/api/clients');
+            if (response.status === 401) {
+                markUnauthorized('clients');
+                setClients([]);
+                return;
+            }
             if (response.ok) {
                 const data = await response.json();
                 console.log('[Session Notes] Loaded', data.length, 'clients');
@@ -271,8 +294,14 @@ function SessionNotesContent() {
 
     const loadNotes = async () => {
         try {
+            if (isUnauthorized) return;
             console.log('[Session Notes] Loading notes from API...');
             const response = await fetch('/api/session-notes');
+            if (response.status === 401) {
+                markUnauthorized('session-notes');
+                setNotes([]);
+                return;
+            }
             if (response.ok) {
                 const data = await response.json();
                 console.log('[Session Notes] Loaded', data?.length || 0, 'notes');
@@ -326,7 +355,10 @@ function SessionNotesContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedNotes),
             });
-            
+            if (response.status === 401) {
+                markUnauthorized('session-notes save');
+                return;
+            }
             if (response.ok) {
                 console.log('[Session Notes] Successfully saved notes');
                 const responseData = await response.json().catch(() => ({}));
@@ -400,6 +432,32 @@ function SessionNotesContent() {
         return sorted;
     }, [notes, searchQuery, selectedClient, selectedSource, sortBy]);
 
+    // Group notes by client + session date
+    const groupedNotes = useMemo(() => {
+        const groups = new Map<string, SessionNote[]>();
+        
+        filteredAndSortedNotes.forEach(note => {
+            // Create a group key: clientName + sessionDate (normalized to date only, no time)
+            const sessionDateStr = note.sessionDate ? note.sessionDate.split('T')[0] : '';
+            const groupKey = `${note.clientName || 'Unknown'}_${sessionDateStr}_${note.sessionId || 'no-session'}`;
+            
+            if (!groups.has(groupKey)) {
+                groups.set(groupKey, []);
+            }
+            groups.get(groupKey)!.push(note);
+        });
+        
+        // Convert to array of groups
+        return Array.from(groups.entries()).map(([key, notes]) => ({
+            key,
+            clientName: notes[0].clientName,
+            sessionDate: notes[0].sessionDate,
+            sessionId: notes[0].sessionId,
+            venue: notes[0].venue,
+            notes
+        }));
+    }, [filteredAndSortedNotes]);
+
     const formatDate = (dateString: string): string => {
         return safeFormatDate(dateString, {
             month: 'short',
@@ -410,13 +468,51 @@ function SessionNotesContent() {
         }, 'en-US', 'No date');
     };
 
+    const formatDuration = (seconds: number): string => {
+        if (!seconds || isNaN(seconds) || !isFinite(seconds) || seconds <= 0) return '0:00';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    const toggleAudioPlayer = (noteId: string) => {
+        setOpenAudioIds(prev =>
+            prev.includes(noteId) ? prev.filter(id => id !== noteId) : [...prev, noteId]
+        );
+    };
+
+    const toggleAudioPlayback = (noteId: string) => {
+        setPlayingId(prev => (prev === noteId ? null : noteId));
+    };
+
+    useEffect(() => {
+        Object.entries(audioRefs.current).forEach(([id, audio]) => {
+            if (!audio) return;
+            if (id === playingId) {
+                const playPromise = audio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(() => {});
+                }
+            } else {
+                audio.pause();
+                audio.currentTime = 0;
+            }
+        });
+    }, [playingId]);
+
     const loadSessionsForClient = async (clientId: string) => {
         try {
+            if (isUnauthorized) return;
             console.log('[Session Notes] ========== Loading sessions for client ==========');
             console.log('[Session Notes] clientId:', clientId);
             console.log('[Session Notes] clients array length:', clients.length);
             
             const response = await fetch('/api/appointments');
+            if (response.status === 401) {
+                markUnauthorized('appointments');
+                setAvailableSessions([]);
+                return;
+            }
             if (response.ok) {
                 const appointments = await response.json();
                 console.log('[Session Notes] Total appointments loaded:', appointments.length);
@@ -711,6 +807,21 @@ function SessionNotesContent() {
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-6xl">
+            {isUnauthorized && (
+                <Card className="mb-6 border-amber-200 bg-amber-50">
+                    <CardContent className="py-6">
+                        <h2 className="text-lg font-semibold mb-2">Session expired</h2>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Your session is no longer authenticated. Please sign in again to load notes and clients.
+                        </p>
+                        <Link href="/login">
+                            <Button size="sm" className="bg-green-500 hover:bg-green-600 text-white">
+                                Go to Login
+                            </Button>
+                        </Link>
+                    </CardContent>
+                </Card>
+            )}
             <div className="mb-8">
                 <h1 className="text-4xl font-bold mb-2">Session Notes</h1>
                 <p className="text-muted-foreground">
@@ -832,213 +943,476 @@ function SessionNotesContent() {
                         </CardContent>
                     </Card>
                 ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         <AnimatePresence>
-                            {filteredAndSortedNotes.map((note, index) => (
+                            {groupedNotes.map((group, groupIndex) => (
                                 <motion.div
-                                    key={note.id}
+                                    key={group.key}
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -20 }}
-                                    transition={{ delay: index * 0.05 }}
+                                    transition={{ delay: groupIndex * 0.05 }}
                                 >
-                                    <Card className="hover:shadow-md transition-shadow">
-                                        <CardHeader>
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex-1">
-                                                    <CardTitle className="text-lg">
-                                                        {note.clientId ? (
-                                                            <Link
-                                                                href={`/clients?highlight=${note.clientId}${note.sessionId ? `&session=${note.sessionId}` : ''}`}
-                                                                className="hover:underline text-primary"
-                                                            >
-                                                                {note.clientName}
-                                                            </Link>
-                                                        ) : (
-                                                            note.clientName
-                                                        )}
-                                                    </CardTitle>
-                                                    <CardDescription>
-                                                        <div className="flex flex-col gap-1 mt-1">
-                                                            <div className="flex items-center gap-1">
-                                                                <Calendar className="h-3 w-3" />
-                                                                Session: {formatDate(note.sessionDate)}
-                                                            </div>
-                                                            <div className="flex items-center gap-4 flex-wrap">
-                                                                <span className="flex items-center gap-1 text-xs">
-                                                                    <MapPin className="h-3 w-3" />
-                                                                    Venue: {note.venue || "The Practice"}
-                                                                </span>
-                                                                {note.source !== 'session' && (
-                                                                    <span className="text-xs">
-                                                                        Created: {formatDate(note.createdDate)}
-                                                                    </span>
-                                                                )}
-                                                                {note.source === 'recording' && (
-                                                                    <span className="flex items-center gap-1 text-xs text-purple-600">
-                                                                        <Mic className="h-3 w-3" />
-                                                                        Voice Note
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </CardDescription>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    {/* View Client/Session button */}
-                                                    {note.clientId && (
+                                    {/* Session Group Container */}
+                                    <div className="border-2 border-primary/20 rounded-lg bg-muted/30 p-4 space-y-3">
+                                        {/* Session Header - shown once per group */}
+                                        <div className="flex items-center justify-between pb-2 border-b border-border">
+                                            <div className="flex-1">
+                                                <h3 className="text-lg font-semibold text-primary">
+                                                    {group.notes[0].clientId ? (
                                                         <Link
-                                                            href={`/clients?highlight=${note.clientId}${note.sessionId ? `&session=${note.sessionId}` : ''}`}
-                                                            title="View client profile"
+                                                            href={`/clients?highlight=${group.notes[0].clientId}${group.sessionId ? `&session=${group.sessionId}` : ''}`}
+                                                            className="hover:underline"
                                                         >
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="icon"
-                                                            >
-                                                                <FileText className="h-4 w-4 text-green-500" />
-                                                            </Button>
+                                                            {group.clientName}
                                                         </Link>
+                                                    ) : (
+                                                        group.clientName
                                                     )}
-                                                    {note.source !== 'recording' && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => handleEdit(note)}
-                                                            title="Edit note"
-                                                        >
-                                                            <Edit className="h-4 w-4 text-blue-500" />
-                                                        </Button>
-                                                    )}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleDeleteClick(note.id)}
-                                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-                                                        title="Delete"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                    {note.source === 'recording' && note.audioURL && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => {
-                                                                const audio = new Audio(note.audioURL!);
-                                                                audio.play();
-                                                            }}
-                                                            title="Play audio"
-                                                        >
-                                                            <Play className="h-4 w-4 text-primary" />
-                                                        </Button>
+                                                </h3>
+                                                <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                                                    <span className="flex items-center gap-1">
+                                                        <Calendar className="h-4 w-4" />
+                                                        {formatDate(group.sessionDate)}
+                                                    </span>
+                                                    <span className="flex items-center gap-1">
+                                                        <MapPin className="h-4 w-4" />
+                                                        {group.venue || "The Practice"}
+                                                    </span>
+                                                    {group.notes.length > 1 && (
+                                                        <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded">
+                                                            {group.notes.length} items
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {note.source === 'recording' ? (
-                                                <>
-                                                    <Accordion type="multiple" className="w-full">
-                                                        {note.transcript && (
-                                                            <AccordionItem value="transcript">
-                                                                <AccordionTrigger>
-                                                                    <div className="flex flex-col items-start text-left gap-0.5">
-                                                                        <span className="text-sm font-semibold">
-                                                                            Transcript
-                                                                        </span>
-                                                                        <span className="text-xs text-muted-foreground truncate max-w-[260px]">
-                                                                            {getTranscriptPreview(note.transcript)}
-                                                                        </span>
+                                        </div>
+                                        
+                                        {/* Notes within this session */}
+                                        <div className="space-y-3">
+                                            {group.notes.map((note, noteIndex) => (
+                                                <Card key={note.id} className="hover:shadow-md transition-shadow border-l-4 border-l-primary/50 gap-0 py-3">
+                                                    <CardHeader className="pb-1 pt-2">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1">
+                                                                <CardDescription>
+                                                                    <div className="flex items-center gap-4 flex-wrap">
+                                                                        {note.source === 'recording' && (
+                                                                            <span className="flex items-center gap-1 text-xs text-purple-600 font-medium">
+                                                                                <Mic className="h-3 w-3" />
+                                                                                Voice Note
+                                                                            </span>
+                                                                        )}
+                                                                        {note.source === 'session_note' && (
+                                                                            <span className="flex items-center gap-1 text-xs text-blue-600 font-medium">
+                                                                                <FileText className="h-3 w-3" />
+                                                                                Session Note
+                                                                            </span>
+                                                                        )}
+                                                                        {note.source === 'session' && (
+                                                                            <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                                                                                <Calendar className="h-3 w-3" />
+                                                                                Scheduled Session
+                                                                            </span>
+                                                                        )}
+                                                                        {note.source !== 'session' && (
+                                                                            <span className="text-xs text-muted-foreground">
+                                                                                Created: {formatDate(note.createdDate)}
+                                                                            </span>
+                                                                        )}
                                                                     </div>
-                                                                </AccordionTrigger>
-                                                                <AccordionContent>
-                                                                    <p className="text-sm whitespace-pre-wrap">
-                                                                        {note.transcript}
-                                                                    </p>
-                                                                </AccordionContent>
-                                                            </AccordionItem>
+                                                                </CardDescription>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                {/* View Client/Session button */}
+                                                                {note.clientId && (
+                                                                    <Link
+                                                                        href={`/clients?highlight=${note.clientId}${note.sessionId ? `&session=${note.sessionId}` : ''}`}
+                                                                        title="View client profile"
+                                                                    >
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                        >
+                                                                            <FileText className="h-4 w-4 text-green-500" />
+                                                                        </Button>
+                                                                    </Link>
+                                                                )}
+                                                                {note.source !== 'recording' && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        onClick={() => handleEdit(note)}
+                                                                        title="Edit note"
+                                                                    >
+                                                                        <Edit className="h-4 w-4 text-blue-500" />
+                                                                    </Button>
+                                                                )}
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    onClick={() => handleDeleteClick(note.id)}
+                                                                    className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                                    title="Delete"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                                {note.source === 'recording' && note.audioURL && (
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        onClick={() => toggleAudioPlayback(note.id)}
+                                                                        aria-pressed={playingId === note.id}
+                                                                        title={playingId === note.id ? "Stop recording" : "Play recording"}
+                                                                        className={
+                                                                            playingId === note.id
+                                                                                ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                                                : "text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/20"
+                                                                        }
+                                                                        disabled={loadingAudioIds.has(note.id)}
+                                                                    >
+                                                                        {loadingAudioIds.has(note.id) ? (
+                                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                                        ) : (
+                                                                            <Play className="h-4 w-4" style={playingId === note.id ? { fill: 'currentColor' } : {}} />
+                                                                        )}
+                                                                    </Button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </CardHeader>
+                                                    <CardContent className="pt-1">
+                                                        {note.source === 'recording' ? (
+                                                            <>
+                                                                <Accordion type="multiple" className="w-full">
+                                                                    {note.transcript && (
+                                                                        <AccordionItem value="transcript">
+                                                                            <AccordionTrigger>
+                                                                                <div className="flex flex-col items-start text-left gap-0.5">
+                                                                                    <span className="text-sm font-semibold">
+                                                                                        Transcript
+                                                                                    </span>
+                                                                                    <span className="text-xs text-muted-foreground truncate max-w-[260px]">
+                                                                                        {getTranscriptPreview(note.transcript)}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </AccordionTrigger>
+                                                                            <AccordionContent>
+                                                                                <p className="text-sm whitespace-pre-wrap leading-tight">
+                                                                                    {note.transcript}
+                                                                                </p>
+                                                                            </AccordionContent>
+                                                                        </AccordionItem>
+                                                                    )}
+                                                                    {note.content && 
+                                                                     note.content.trim() !== '' && 
+                                                                     note.transcript && 
+                                                                     note.content !== note.transcript && (
+                                                                        <AccordionItem value="ai-notes">
+                                                                            <AccordionTrigger>
+                                                                                <div className="flex flex-col items-start text-left">
+                                                                                    <span className="text-sm font-semibold">AI Clinical Assessment</span>
+                                                                                </div>
+                                                                            </AccordionTrigger>
+                                                                            <AccordionContent>
+                                                                                <p className="text-sm whitespace-pre-wrap leading-tight">
+                                                                                    {note.content}
+                                                                                </p>
+                                                                            </AccordionContent>
+                                                                        </AccordionItem>
+                                                                    )}
+                                                                </Accordion>
+                                                            </>
+                                                        ) : (
+                                                            <div className="space-y-1">
+                                                                {note.transcript && (
+                                                                    <div>
+                                                                        <p className="text-sm font-semibold mb-0.5">Transcript:</p>
+                                                                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded leading-tight">{note.transcript}</p>
+                                                                    </div>
+                                                                )}
+                                                                {note.audioURL && (
+                                                                    <div>
+                                                                        <p className="text-sm font-semibold mb-0.5">Audio Recording:</p>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="outline"
+                                                                                size="sm"
+                                                                                onClick={() => toggleAudioPlayer(note.id)}
+                                                                            >
+                                                                                {openAudioIds.includes(note.id) ? "Hide player" : "Show player"}
+                                                                            </Button>
+                                                                        </div>
+                                                                        {(openAudioIds.includes(note.id) || playingId === note.id) && (
+                                                                            <>
+                                                                                {loadingAudioIds.has(note.id) && (
+                                                                                    <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                                                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                                                        <span>Loading audio...</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                <audio
+                                                                                    ref={(el) => {
+                                                                                        audioRefs.current[note.id] = el;
+                                                                                    }}
+                                                                                    controls
+                                                                                    onLoadedMetadata={(e) => {
+                                                                                        const audio = e.currentTarget;
+                                                                                        if (audio.duration && 
+                                                                                            !isNaN(audio.duration) && 
+                                                                                            isFinite(audio.duration) && 
+                                                                                            audio.duration > 0) {
+                                                                                            setAudioDurations(prev => ({
+                                                                                                ...prev,
+                                                                                                [note.id]: audio.duration
+                                                                                            }));
+                                                                                        }
+                                                                                    }}
+                                                                                    onDurationChange={(e) => {
+                                                                                        const audio = e.currentTarget;
+                                                                                        if (audio.duration && 
+                                                                                            !isNaN(audio.duration) && 
+                                                                                            isFinite(audio.duration) && 
+                                                                                            audio.duration > 0) {
+                                                                                            setAudioDurations(prev => ({
+                                                                                                ...prev,
+                                                                                                [note.id]: audio.duration
+                                                                                            }));
+                                                                                        }
+                                                                                    }}
+                                                                                    onLoadStart={() => {
+                                                                                        setLoadingAudioIds(prev => new Set(prev).add(note.id));
+                                                                                    }}
+                                                                                    onCanPlay={() => {
+                                                                                        setLoadingAudioIds(prev => {
+                                                                                            const next = new Set(prev);
+                                                                                            next.delete(note.id);
+                                                                                            return next;
+                                                                                        });
+                                                                                        // Try to get duration if not already set
+                                                                                        const audio = audioRefs.current[note.id];
+                                                                                        if (audio && audio.duration && 
+                                                                                            !isNaN(audio.duration) && 
+                                                                                            isFinite(audio.duration) && 
+                                                                                            audio.duration > 0 &&
+                                                                                            !audioDurations[note.id]) {
+                                                                                            setAudioDurations(prev => ({
+                                                                                                ...prev,
+                                                                                                [note.id]: audio.duration
+                                                                                            }));
+                                                                                        }
+                                                                                    }}
+                                                                                    onWaiting={() => {
+                                                                                        setLoadingAudioIds(prev => new Set(prev).add(note.id));
+                                                                                    }}
+                                                                                    onPlaying={() => {
+                                                                                        setLoadingAudioIds(prev => {
+                                                                                            const next = new Set(prev);
+                                                                                            next.delete(note.id);
+                                                                                            return next;
+                                                                                        });
+                                                                                        // Try to get duration if not already set
+                                                                                        const audio = audioRefs.current[note.id];
+                                                                                        if (audio && audio.duration && 
+                                                                                            !isNaN(audio.duration) && 
+                                                                                            isFinite(audio.duration) && 
+                                                                                            audio.duration > 0 &&
+                                                                                            !audioDurations[note.id]) {
+                                                                                            setAudioDurations(prev => ({
+                                                                                                ...prev,
+                                                                                                [note.id]: audio.duration
+                                                                                            }));
+                                                                                        }
+                                                                                    }}
+                                                                                    onPlay={() => setPlayingId(note.id)}
+                                                                                    onPause={() => {
+                                                                                        if (playingId === note.id) setPlayingId(null);
+                                                                                    }}
+                                                                                    onEnded={() => {
+                                                                                        if (playingId === note.id) setPlayingId(null);
+                                                                                    }}
+                                                                                    className={openAudioIds.includes(note.id) ? "w-full mt-2" : "hidden pointer-events-none absolute -z-10"}
+                                                                                >
+                                                                                    <source src={note.audioURL} type="audio/webm" />
+                                                                                    <source src={note.audioURL} type="audio/mp3" />
+                                                                                    Your browser does not support the audio element.
+                                                                                </audio>
+                                                                                {openAudioIds.includes(note.id) && 
+                                                                                 audioDurations[note.id] && 
+                                                                                 isFinite(audioDurations[note.id]) && 
+                                                                                 !isNaN(audioDurations[note.id]) && 
+                                                                                 audioDurations[note.id] > 0 && (
+                                                                                    <div className="text-xs text-muted-foreground mt-1 text-right">
+                                                                                        Duration: {formatDuration(audioDurations[note.id])}
+                                                                                    </div>
+                                                                                )}
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                {note.aiOverview && (
+                                                                    <div>
+                                                                        <p className="text-sm font-semibold mb-0.5">AI Session Overview:</p>
+                                                                        <p className="text-sm whitespace-pre-wrap bg-primary/10 p-3 rounded leading-tight">{note.aiOverview}</p>
+                                                                    </div>
+                                                                )}
+                                                                {note.content && (
+                                                                    <div>
+                                                                        <p className="text-sm whitespace-pre-wrap leading-tight">{note.content}</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         )}
-                                                        <AccordionItem value="ai-notes">
-                                                            <AccordionTrigger>
-                                                                <div className="flex flex-col items-start text-left">
-                                                                    <span className="text-sm font-semibold">AI Clinical Assessment</span>
-                                                                </div>
-                                                            </AccordionTrigger>
-                                                            <AccordionContent>
-                                                                <p className="text-sm whitespace-pre-wrap">
-                                                                    {note.content}
+                                                        {note.source === 'recording' && note.audioURL && (
+                                                            <div className="mt-4 pt-4 border-t">
+                                                                <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                                                                    <Mic className="h-4 w-4 text-purple-600" />
+                                                                    Audio Recording:
                                                                 </p>
-                                                            </AccordionContent>
-                                                        </AccordionItem>
-                                                    </Accordion>
-                                                </>
-                                            ) : (
-                                                <div className="space-y-4">
-                                                    {note.transcript && (
-                                                        <div>
-                                                            <p className="text-sm font-semibold mb-2">Transcript:</p>
-                                                            <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded">{note.transcript}</p>
-                                                        </div>
-                                                    )}
-                                                    {note.audioURL && (
-                                                        <div>
-                                                            <p className="text-sm font-semibold mb-2">Audio Recording:</p>
-                                                            <audio controls className="w-full">
-                                                                <source src={note.audioURL} type="audio/webm" />
-                                                                <source src={note.audioURL} type="audio/mp3" />
-                                                                Your browser does not support the audio element.
-                                                            </audio>
-                                                        </div>
-                                                    )}
-                                                    {note.aiOverview && (
-                                                        <div>
-                                                            <p className="text-sm font-semibold mb-2">AI Session Overview:</p>
-                                                            <p className="text-sm whitespace-pre-wrap bg-primary/10 p-3 rounded">{note.aiOverview}</p>
-                                                        </div>
-                                                    )}
-                                                    {note.content && (
-                                                        <div>
-                                                            <p className="text-sm font-semibold mb-2">Session Notes:</p>
-                                                            <p className="text-sm whitespace-pre-wrap">{note.content}</p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                            {note.source === 'recording' && note.audioURL && (
-                                                <div className="mt-4 pt-4 border-t">
-                                                    <p className="text-sm font-medium mb-2 flex items-center gap-2">
-                                                        <Mic className="h-4 w-4 text-purple-600" />
-                                                        Audio Recording:
-                                                    </p>
-                                                    <audio controls className="w-full mt-2">
-                                                        <source src={note.audioURL} type="audio/webm" />
-                                                        <source src={note.audioURL} type="audio/mp3" />
-                                                        Your browser does not support the audio element.
-                                                    </audio>
-                                                </div>
-                                            )}
-                                            {note.attachments && note.attachments.length > 0 && (
-                                                <div className="mt-4 pt-4 border-t">
-                                                    <p className="text-sm font-medium mb-2">Attachments:</p>
-                                                    <div className="space-y-1">
-                                                        {note.attachments.map((att, i) => (
-                                                            <a
-                                                                key={i}
-                                                                href={att.url}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="flex items-center gap-2 text-sm text-primary hover:underline"
-                                                            >
-                                                                <File className="h-3 w-3" />
-                                                                {att.name}
-                                                            </a>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                </motion.div>
-                            ))}
+                                                                <div className="flex items-center gap-3">
+                                                                    <Button
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        onClick={() => toggleAudioPlayer(note.id)}
+                                                                    >
+                                                                        {openAudioIds.includes(note.id) ? "Hide player" : "Show player"}
+                                                                    </Button>
+                                                                </div>
+                                                                {(openAudioIds.includes(note.id) || playingId === note.id) && (
+                                                                    <>
+                                                                        {loadingAudioIds.has(note.id) && (
+                                                                            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-2">
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                                <span>Loading audio...</span>
+                                                                            </div>
+                                                                        )}
+                                                                        <audio
+                                                                            ref={(el) => {
+                                                                                audioRefs.current[note.id] = el;
+                                                                            }}
+                                                                            controls
+                                                                            onLoadedMetadata={(e) => {
+                                                                                const audio = e.currentTarget;
+                                                                                if (audio.duration && 
+                                                                                    !isNaN(audio.duration) && 
+                                                                                    isFinite(audio.duration) && 
+                                                                                    audio.duration > 0) {
+                                                                                    setAudioDurations(prev => ({
+                                                                                        ...prev,
+                                                                                        [note.id]: audio.duration
+                                                                                    }));
+                                                                                }
+                                                                            }}
+                                                                            onDurationChange={(e) => {
+                                                                                const audio = e.currentTarget;
+                                                                                if (audio.duration && 
+                                                                                    !isNaN(audio.duration) && 
+                                                                                    isFinite(audio.duration) && 
+                                                                                    audio.duration > 0) {
+                                                                                    setAudioDurations(prev => ({
+                                                                                        ...prev,
+                                                                                        [note.id]: audio.duration
+                                                                                    }));
+                                                                                }
+                                                                            }}
+                                                                            onLoadStart={() => {
+                                                                                setLoadingAudioIds(prev => new Set(prev).add(note.id));
+                                                                            }}
+                                                                            onCanPlay={() => {
+                                                                                setLoadingAudioIds(prev => {
+                                                                                    const next = new Set(prev);
+                                                                                    next.delete(note.id);
+                                                                                    return next;
+                                                                                });
+                                                                                // Try to get duration if not already set
+                                                                                const audio = audioRefs.current[note.id];
+                                                                                if (audio && audio.duration && 
+                                                                                    !isNaN(audio.duration) && 
+                                                                                    isFinite(audio.duration) && 
+                                                                                    audio.duration > 0 &&
+                                                                                    !audioDurations[note.id]) {
+                                                                                    setAudioDurations(prev => ({
+                                                                                        ...prev,
+                                                                                        [note.id]: audio.duration
+                                                                                    }));
+                                                                                }
+                                                                            }}
+                                                                            onWaiting={() => {
+                                                                                setLoadingAudioIds(prev => new Set(prev).add(note.id));
+                                                                            }}
+                                                                            onPlaying={() => {
+                                                                                setLoadingAudioIds(prev => {
+                                                                                    const next = new Set(prev);
+                                                                                    next.delete(note.id);
+                                                                                    return next;
+                                                                                });
+                                                                                // Try to get duration if not already set
+                                                                                const audio = audioRefs.current[note.id];
+                                                                                if (audio && audio.duration && 
+                                                                                    !isNaN(audio.duration) && 
+                                                                                    isFinite(audio.duration) && 
+                                                                                    audio.duration > 0 &&
+                                                                                    !audioDurations[note.id]) {
+                                                                                    setAudioDurations(prev => ({
+                                                                                        ...prev,
+                                                                                        [note.id]: audio.duration
+                                                                                    }));
+                                                                                }
+                                                                            }}
+                                                                            onPlay={() => setPlayingId(note.id)}
+                                                                            onPause={() => {
+                                                                                if (playingId === note.id) setPlayingId(null);
+                                                                            }}
+                                                                            onEnded={() => {
+                                                                                if (playingId === note.id) setPlayingId(null);
+                                                                            }}
+                                                                            className={openAudioIds.includes(note.id) ? "w-full mt-2" : "hidden pointer-events-none absolute -z-10"}
+                                                                        >
+                                                                            <source src={note.audioURL} type="audio/webm" />
+                                                                            <source src={note.audioURL} type="audio/mp3" />
+                                                                            Your browser does not support the audio element.
+                                                                        </audio>
+                                                                        {openAudioIds.includes(note.id) && 
+                                                                         audioDurations[note.id] && 
+                                                                         isFinite(audioDurations[note.id]) && 
+                                                                         !isNaN(audioDurations[note.id]) && 
+                                                                         audioDurations[note.id] > 0 && (
+                                                                            <div className="text-xs text-muted-foreground mt-1 text-right">
+                                                                                Duration: {formatDuration(audioDurations[note.id])}
+                                                                            </div>
+                                                                        )}
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {note.attachments && note.attachments.length > 0 && (
+                                                            <div className="mt-4 pt-4 border-t">
+                                                                <p className="text-sm font-medium mb-2">Attachments:</p>
+                                                                <div className="space-y-1">
+                                                                    {note.attachments.map((att, i) => (
+                                                                        <a
+                                                                            key={i}
+                                                                            href={att.url}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="flex items-center gap-2 text-sm text-primary hover:underline"
+                                                                        >
+                                                                            <File className="h-3 w-3" />
+                                                                            {att.name}
+                                                                        </a>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </CardContent>
+                                                    </Card>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                ))}
                         </AnimatePresence>
                     </div>
                 )}

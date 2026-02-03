@@ -41,11 +41,14 @@ function DocumentsContent() {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [documentType, setDocumentType] = useState<'company' | 'client'>('company');
     const [selectedClientId, setSelectedClientId] = useState<string>('');
+    const [selectedSessionId, setSelectedSessionId] = useState<string>('');
+    const [clientSessions, setClientSessions] = useState<any[]>([]);
+    const [isLoadingSessions, setIsLoadingSessions] = useState(false);
     const [clients, setClients] = useState<any[]>([]);
     const [isDragging, setIsDragging] = useState(false);
     const [showDocuments, setShowDocuments] = useState(true); // Show documents by default
     const [showFilters, setShowFilters] = useState(false);
-    const [uploadSuccessDialog, setUploadSuccessDialog] = useState<{ isOpen: boolean, fileName: string }>({ isOpen: false, fileName: '' });
+    const [uploadSuccessDialog, setUploadSuccessDialog] = useState<{ isOpen: boolean, fileName: string, attachedToSession?: boolean, sessionDate?: string }>({ isOpen: false, fileName: '' });
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync client filter from URL
@@ -75,6 +78,45 @@ function DocumentsContent() {
         } catch (error) {
             console.error('Error loading clients:', error);
         }
+    };
+
+    const loadClientSessions = async (clientId: string) => {
+        if (!clientId) {
+            setClientSessions([]);
+            return;
+        }
+        
+        // Get client name to match with appointments
+        const client = clients.find(c => c.id === clientId);
+        if (!client) {
+            setClientSessions([]);
+            return;
+        }
+        
+        setIsLoadingSessions(true);
+        try {
+            const response = await fetch('/api/appointments', { credentials: 'include' });
+            if (response.ok) {
+                const allAppointments = await response.json();
+                // Filter appointments for this client (by clientName) and sort by date (newest first)
+                const sessions = allAppointments
+                    .filter((apt: any) => apt.clientName === client.name)
+                    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                setClientSessions(sessions);
+            }
+        } catch (error) {
+            console.error('Error loading client sessions:', error);
+            setClientSessions([]);
+        } finally {
+            setIsLoadingSessions(false);
+        }
+    };
+
+    // Load sessions when client is selected for upload
+    const handleClientSelect = (clientId: string) => {
+        setSelectedClientId(clientId);
+        setSelectedSessionId(''); // Reset session selection
+        loadClientSessions(clientId);
     };
 
     const loadDocuments = async () => {
@@ -178,17 +220,17 @@ function DocumentsContent() {
         if (!file) return;
 
         // Validate file type
-        const allowedTypes = ['.doc', '.docx', '.txt'];
+        const allowedTypes = ['.doc', '.docx', '.txt', '.pdf', '.jpg', '.jpeg', '.png'];
         const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
         if (!allowedTypes.includes(fileExtension)) {
-            alert('Only MS Word (.doc, .docx) and Text (.txt) files are allowed.');
+            alert('Only MS Word (.doc, .docx), Text (.txt), PDF (.pdf), and Image (.jpg, .jpeg, .png) files are allowed.');
             return;
         }
 
-        // Validate file size (3 MB = 3 * 1024 * 1024 bytes)
-        const maxSize = 3 * 1024 * 1024; // 3 MB
+        // Validate file size (10 MB = 10 * 1024 * 1024 bytes)
+        const maxSize = 10 * 1024 * 1024; // 10 MB
         if (file.size > maxSize) {
-            alert('File size must be less than 3 MB.');
+            alert('File size must be less than 10 MB.');
             return;
         }
 
@@ -250,6 +292,10 @@ function DocumentsContent() {
             formData.append('isUserDocument', 'true');
         } else {
             formData.append('clientId', selectedClientId);
+            // If a session is selected, attach to that session
+            if (selectedSessionId) {
+                formData.append('sessionId', selectedSessionId);
+            }
         }
 
         try {
@@ -257,7 +303,8 @@ function DocumentsContent() {
                 fileName: selectedFile.name,
                 fileSize: selectedFile.size,
                 documentType,
-                clientId: selectedClientId || 'none'
+                clientId: selectedClientId || 'none',
+                sessionId: selectedSessionId || 'none'
             });
             
             const response = await fetch('/api/documents', {
@@ -270,8 +317,10 @@ function DocumentsContent() {
                 const result = await response.json();
                 console.log('[Documents] Upload successful:', result);
                 
-                // Store filename before resetting
+                // Store info before resetting
                 const uploadedFileName = selectedFile.name;
+                const wasAttachedToSession = result.attachedToSession || false;
+                const sessionDate = result.document?.sessionDate;
                 
                 // Ensure documents are visible after upload
                 setShowDocuments(true);
@@ -286,9 +335,16 @@ function DocumentsContent() {
                 setSelectedFile(null);
                 setDocumentType('company');
                 setSelectedClientId('');
+                setSelectedSessionId('');
+                setClientSessions([]);
                 
-                // Show success modal
-                setUploadSuccessDialog({ isOpen: true, fileName: uploadedFileName });
+                // Show success modal with session info if applicable
+                setUploadSuccessDialog({ 
+                    isOpen: true, 
+                    fileName: uploadedFileName,
+                    attachedToSession: wasAttachedToSession,
+                    sessionDate: sessionDate
+                });
             } else {
                 const errorText = await response.text();
                 let error;
@@ -521,7 +577,7 @@ function DocumentsContent() {
                             onChange={handleFileInputChange}
                             className="hidden"
                             id="document-upload"
-                            accept=".doc,.docx,.txt"
+                            accept=".doc,.docx,.txt,.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                             disabled={isUploading}
                         />
                         {isUploading ? (
@@ -544,7 +600,7 @@ function DocumentsContent() {
                                     or click to browse
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    MS Word (.doc, .docx) and Text (.txt) files only, max 3 MB
+                                    PDF, Word, Text, and Image files (max 10 MB)
                                 </p>
                             </>
                         )}
@@ -741,27 +797,54 @@ function DocumentsContent() {
                             </Select>
                         </div>
                         {documentType === 'client' && (
-                            <div className="space-y-2">
-                                <Label>Select Client</Label>
-                                <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Choose a client..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {[...clients]
-                                            .sort((a, b) => {
-                                                const firstNameA = (a.firstName || a.name || '').toLowerCase();
-                                                const firstNameB = (b.firstName || b.name || '').toLowerCase();
-                                                return firstNameA.localeCompare(firstNameB);
-                                            })
-                                            .map(client => (
-                                                <SelectItem key={client.id} value={client.id}>
-                                                    {client.name}
-                                                </SelectItem>
-                                            ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            <>
+                                <div className="space-y-2">
+                                    <Label>Select Client</Label>
+                                    <Select value={selectedClientId} onValueChange={handleClientSelect}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Choose a client..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {[...clients]
+                                                .sort((a, b) => {
+                                                    const firstNameA = (a.firstName || a.name || '').toLowerCase();
+                                                    const firstNameB = (b.firstName || b.name || '').toLowerCase();
+                                                    return firstNameA.localeCompare(firstNameB);
+                                                })
+                                                .map(client => (
+                                                    <SelectItem key={client.id} value={client.id}>
+                                                        {client.name}
+                                                    </SelectItem>
+                                                ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {selectedClientId && (
+                                    <div className="space-y-2">
+                                        <Label>Attach to Session (Optional)</Label>
+                                        <Select value={selectedSessionId || "none"} onValueChange={(val) => setSelectedSessionId(val === "none" ? "" : val)}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder={isLoadingSessions ? "Loading sessions..." : "General Documents (no session)"} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">General Documents (no session)</SelectItem>
+                                                {clientSessions.map(session => (
+                                                    <SelectItem key={session.id} value={session.id}>
+                                                        {new Date(session.date).toLocaleDateString('en-GB', { 
+                                                            day: '2-digit', 
+                                                            month: 'short', 
+                                                            year: 'numeric' 
+                                                        })} - {session.type || 'Session'}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            Select a session to attach this document to the session notes, or leave as "General Documents" to add to client's general files.
+                                        </p>
+                                    </div>
+                                )}
+                            </>
                         )}
                         {selectedFile && (
                             <div className="p-3 bg-muted rounded-md">
@@ -776,6 +859,8 @@ function DocumentsContent() {
                             setSelectedFile(null);
                             setDocumentType('company');
                             setSelectedClientId('');
+                            setSelectedSessionId('');
+                            setClientSessions([]);
                         }}>
                             Cancel
                         </Button>
@@ -799,6 +884,15 @@ function DocumentsContent() {
                         </DialogTitle>
                         <DialogDescription>
                             Document &quot;{uploadSuccessDialog.fileName}&quot; has been uploaded successfully.
+                            {uploadSuccessDialog.attachedToSession && uploadSuccessDialog.sessionDate && (
+                                <span className="block mt-2 text-blue-600 dark:text-blue-400">
+                                    Attached to session on {new Date(uploadSuccessDialog.sessionDate).toLocaleDateString('en-GB', { 
+                                        day: '2-digit', 
+                                        month: 'short', 
+                                        year: 'numeric' 
+                                    })}
+                                </span>
+                            )}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>

@@ -6,7 +6,6 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
     try {
-        // Check authentication (handles both new and fallback methods)
         const { userId, isFallback, userEmail } = await checkAuthentication(request);
         
         // If fallback auth, show legacy data (sessions without user_id)
@@ -71,7 +70,8 @@ export async function GET(request: Request) {
                     fee: (metadata as any).fee,
                     currency: (metadata as any).currency,
                     paymentStatus: (metadata as any).paymentStatus || 'unpaid',
-                    paymentMethod: (metadata as any).paymentMethod
+                    paymentMethod: (metadata as any).paymentMethod,
+                    attachments: (metadata as any).attachments || []
                 };
             });
             
@@ -199,7 +199,8 @@ export async function GET(request: Request) {
                 fee: (metadata as any).fee,
                 currency: (metadata as any).currency,
                 paymentStatus: (metadata as any).paymentStatus || 'unpaid',
-                paymentMethod: (metadata as any).paymentMethod
+                paymentMethod: (metadata as any).paymentMethod,
+                attachments: (metadata as any).attachments || []
             };
         });
 
@@ -215,7 +216,7 @@ export async function GET(request: Request) {
 
         return NextResponse.json(appointments);
     } catch (error) {
-        console.error('Error in GET appointments:', error);
+        console.error('[Appointments API] Error:', error);
         return NextResponse.json([]);
     }
 }
@@ -276,7 +277,7 @@ export async function POST(request: Request) {
             }
             console.log(`[Appointments API POST] Appointment ${index + 1} - Final dateValue:`, dateValue);
             
-            // Store fee, currency, paymentStatus, paymentMethod, and venue in metadata JSONB
+            // Store fee, currency, paymentStatus, paymentMethod, venue, and attachments in metadata JSONB
             const metadata: any = {};
             if (apt.fee !== undefined) metadata.fee = apt.fee;
             if (apt.currency) metadata.currency = apt.currency;
@@ -287,6 +288,7 @@ export async function POST(request: Request) {
             }
             if (apt.venue) metadata.venue = apt.venue;
             if (apt.status) metadata.status = apt.status;
+            if (apt.attachments && apt.attachments.length > 0) metadata.attachments = apt.attachments;
             
             console.log(`[Appointments API POST] Appointment ${index + 1} - Final metadata:`, metadata);
 

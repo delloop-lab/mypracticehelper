@@ -125,6 +125,7 @@ export function DocumentStorage() {
                         ref={fileInputRef}
                         className="hidden"
                         onChange={handleFileUpload}
+                        accept=".doc,.docx,.txt,.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                     />
                     <Button className="gap-2" onClick={() => fileInputRef.current?.click()}>
                         <Upload className="h-4 w-4" />

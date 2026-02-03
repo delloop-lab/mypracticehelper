@@ -538,8 +538,8 @@ export async function GET(request: Request) {
                     const source = (metadata as any).source || 'manual';
                     const isCalendly = source === 'calendly';
                     content = isCalendly 
-                        ? `📅 Booked via Calendly\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes${sessionNotes ? '\n' + sessionNotes : ''}`
-                        : `📅 Scheduled Session\n\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes${sessionNotes ? '\n' + sessionNotes : ''}`;
+                        ? `📅 Booked via Calendly\nSession Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes${sessionNotes ? '\n' + sessionNotes : ''}`
+                        : `Session Type: ${session.type || 'Therapy Session'}\nDuration: ${session.duration || 60} minutes${sessionNotes ? '\n' + sessionNotes : ''}`;
                 }
                 
                 return {

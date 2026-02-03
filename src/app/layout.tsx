@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Outfit, Inter } from "next/font/google";
 import "./globals.css";
 import { ConditionalLayout } from "@/components/conditional-layout";
@@ -18,17 +18,10 @@ export const metadata: Metadata = {
   title: "My Practice Helper",
   description: "The all-in-one platform for modern therapy practices. Scheduling, billing, notes, and more.",
   manifest: "/manifest.json",
-  themeColor: "#4F46E5",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "My Practice Helper",
-  },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
-    userScalable: true,
   },
   icons: {
     icon: [
@@ -41,13 +34,26 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  themeColor: "#4F46E5",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="scroll-smooth" suppressHydrationWarning>
+    <html
+      lang="en"
+      className="scroll-smooth"
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
       <body
         className={`${outfit.variable} ${inter.variable} antialiased font-sans bg-background text-foreground`}
         suppressHydrationWarning
