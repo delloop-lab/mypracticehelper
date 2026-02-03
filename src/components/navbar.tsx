@@ -111,12 +111,6 @@ export function Navbar() {
 
   // Calculate logo source for mobile menu - should NEVER show logo.png, only custom logo or your-logo-here.png
   const menuLogoSrc = useMemo(() => {
-    console.log('[Navbar] Calculating menuLogoSrc:', { 
-      companyLogo, 
-      hasCompanyLogo: !!companyLogo,
-      logoVersion 
-    });
-    
     // Only use companyLogo if it exists, is not empty, and is NOT the default app logo (/logo.png)
     // Allow company-logo.png and other uploaded logos, just exclude the default /logo.png
     const isDefaultAppLogo = companyLogo === '/logo.png';
@@ -124,12 +118,9 @@ export function Navbar() {
         ? companyLogo 
         : "/your-logo-here.png";
     
-    console.log('[Navbar] Initial src calculation:', { src, companyLogo, isDefaultAppLogo });
-    
     // Final safety check: ensure we never use the default app logo.png in menu
     if (src === '/logo.png') {
       src = "/your-logo-here.png";
-      console.log('[Navbar] Filtered out default logo.png, using default');
     }
     
     if (src.startsWith('http') || src.includes('supabase.co')) {
@@ -137,12 +128,9 @@ export function Navbar() {
       const url = new URL(src);
       url.searchParams.set('v', (logoVersion || 0).toString());
       url.searchParams.set('t', Date.now().toString());
-      const finalSrc = url.toString();
-      console.log('[Navbar] Final logo src (URL):', finalSrc);
-      return finalSrc;
+      return url.toString();
     }
     
-    console.log('[Navbar] Final logo src (local):', src);
     return src;
   }, [companyLogo, logoVersion]);
 

@@ -185,9 +185,6 @@ export function VoiceNotes() {
 
     // Load sessions for selected client
     const loadSessionsForClient = async (clientId: string, sessionIdToInclude?: string) => {
-        console.log('[Voice Notes] ========== Loading sessions for client ==========');
-        console.log('[Voice Notes] Client ID:', clientId);
-        console.log('[Voice Notes] Session ID to include:', sessionIdToInclude);
         setIsLoadingSessions(true);
         setAvailableSessions([]);
         setSelectedSessionId("");
@@ -195,12 +192,9 @@ export function VoiceNotes() {
         try {
             const client = clients.find(c => c.id === clientId);
             const clientName = client?.name;
-            console.log('[Voice Notes] Client name:', clientName);
-            
             const response = await fetch('/api/appointments');
             if (response.ok) {
                 const appointments = await response.json();
-                console.log('[Voice Notes] Total appointments:', appointments.length);
                 const now = new Date();
                 
                 // Filter to past sessions and today's sessions for this client
@@ -240,16 +234,6 @@ export function VoiceNotes() {
                             apt.clientId === clientId ||
                             apt.client_id === clientId;
                         
-                        console.log('[Voice Notes] Session check:', {
-                            id: apt.id,
-                            client: apt.clientName,
-                            date: dateStr,
-                            time: timeStr,
-                            aptDateTime: aptDateTime.toISOString(),
-                            isFromTodayOrEarlier,
-                            matchesClient
-                        });
-                        
                         return isFromTodayOrEarlier && matchesClient;
                     })
                     .map((apt: any) => ({
@@ -265,16 +249,12 @@ export function VoiceNotes() {
                         return dateB.getTime() - dateA.getTime();
                     });
                 
-                console.log('[Voice Notes] Available sessions for client:', pastSessions.length);
                 
                 // If a specific sessionId is provided and not in past sessions, add it
                 let sessionsToShow = [...pastSessions];
                 if (sessionIdToInclude) {
                     const sessionExists = sessionsToShow.some(s => s.id === sessionIdToInclude);
                     if (!sessionExists) {
-                        console.log('[Voice Notes] Target session not in past sessions, searching all appointments...');
-                        console.log('[Voice Notes] Looking for sessionId:', sessionIdToInclude);
-                        console.log('[Voice Notes] Client name:', clientName, 'Client ID:', clientId);
                         
                         // Find the session in all appointments - try multiple matching strategies
                         let targetSession = appointments.find((apt: any) => 
@@ -287,7 +267,6 @@ export function VoiceNotes() {
                         
                         // If not found, try matching by ID only (in case client matching fails)
                         if (!targetSession) {
-                            console.log('[Voice Notes] Not found with client match, trying ID-only match...');
                             targetSession = appointments.find((apt: any) => apt.id === sessionIdToInclude);
                         }
                         
@@ -296,7 +275,6 @@ export function VoiceNotes() {
                             const parts = sessionIdToInclude.split('-');
                             // Try matching with just the UUID part (last part after last dash)
                             const uuidPart = parts[parts.length - 1];
-                            console.log('[Voice Notes] Trying UUID part match:', uuidPart);
                             targetSession = appointments.find((apt: any) => 
                                 apt.id === uuidPart || 
                                 apt.id.endsWith(uuidPart) ||
@@ -305,7 +283,6 @@ export function VoiceNotes() {
                         }
                         
                         if (targetSession) {
-                            console.log('[Voice Notes] ✅ Found target session:', targetSession.id, targetSession.date);
                             // Verify it matches the client
                             const matchesClient = 
                                 targetSession.clientName === clientName ||
@@ -328,17 +305,14 @@ export function VoiceNotes() {
                             }
                         } else {
                             console.error('[Voice Notes] ❌ Target session not found in appointments list');
-                            console.log('[Voice Notes] Available appointment IDs:', appointments.slice(0, 5).map((a: any) => a.id));
                         }
                     } else {
-                        console.log('[Voice Notes] ✅ Target session already in past sessions list');
                     }
                 }
                 
                 // Sort by date (newest first)
                 sessionsToShow.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
                 
-                console.log('[Voice Notes] ✅ Found', sessionsToShow.length, 'sessions');
                 setAvailableSessions(sessionsToShow);
             }
         } catch (error) {
@@ -359,7 +333,6 @@ export function VoiceNotes() {
             rec.onresult = (ev: any) => {
                 // Don't update transcript if recording has been stopped
                 if (isRecordingStoppedRef.current) {
-                    console.log("Speech recognition result received but recording is stopped, ignoring");
                     return;
                 }
                 
@@ -384,11 +357,6 @@ export function VoiceNotes() {
                 // Update display state with final + interim
                 const displayText = completeFinalTranscript.trim() + (latestInterim ? " " + latestInterim + "..." : "");
                 setTranscript(displayText);
-                
-                console.log("Speech recognition - Final results:", completeFinalTranscript.trim(), "Length:", transcriptRef.current.length);
-                if (latestInterim) {
-                    console.log("Interim result:", latestInterim);
-                }
             };
             rec.onerror = (ev: any) => {
                 // Treat "no-speech" as a benign warning instead of an error
@@ -402,7 +370,6 @@ export function VoiceNotes() {
                 setIsRecording(false);
             };
             rec.onend = () => {
-                console.log("Speech recognition ended");
                 // If recording is still active and hasn't been stopped, restart recognition to keep it continuous
                 if (isRecording && !isRecordingStoppedRef.current && recognitionRef.current) {
                     try {
@@ -413,7 +380,7 @@ export function VoiceNotes() {
                 }
             };
             rec.onstart = () => {
-                console.log("Speech recognition started");
+                // Speech recognition started
             };
             recognitionRef.current = rec;
         } else {
@@ -525,6 +492,7 @@ export function VoiceNotes() {
         }
 
         try {
+            // Get stream with audio constraints (no sample rate constraint - browser defaults to 48kHz)
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: true,
@@ -532,7 +500,29 @@ export function VoiceNotes() {
                     autoGainControl: true
                 } 
             });
+            
             streamRef.current = stream; // Store stream for cleanup
+            
+            // Log actual audio track settings to see sample rate
+            try {
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    const audioTrack = audioTracks[0];
+                    if (audioTrack && typeof audioTrack.getSettings === 'function') {
+                        const settings = audioTrack.getSettings();
+                        console.log("[Voice Notes] Audio track settings:", {
+                            sampleRate: settings.sampleRate,
+                            channelCount: settings.channelCount,
+                            echoCancellation: settings.echoCancellation,
+                            noiseSuppression: settings.noiseSuppression,
+                            autoGainControl: settings.autoGainControl
+                        });
+                        console.log("[Voice Notes] Actual sample rate being used:", settings.sampleRate || "unknown (browser default)");
+                    }
+                }
+            } catch (error) {
+                console.error("[Voice Notes] Error getting audio track settings:", error);
+            }
             
             // Determine the best MIME type for this browser
             let mimeType = "audio/webm";
@@ -549,8 +539,6 @@ export function VoiceNotes() {
             }
             
             options.mimeType = mimeType;
-            console.log("Using MediaRecorder with MIME type:", mimeType);
-            console.log("Browser:", navigator.userAgent);
             
             const mr = new MediaRecorder(stream, options);
             mediaRecorderRef.current = mr;
@@ -561,19 +549,16 @@ export function VoiceNotes() {
             mr.ondataavailable = (e) => {
                 if (e.data.size > 0) {
                     audioChunksRef.current.push(e.data);
-                    console.log("Audio chunk received:", e.data.size, "bytes, Total chunks:", audioChunksRef.current.length);
                 }
             };
             mr.onstop = () => {
                 stream.getTracks().forEach((t) => t.stop());
-                console.log("MediaRecorder stopped. Total audio chunks:", audioChunksRef.current.length);
             };
             mr.onerror = (e: any) => {
                 console.error("MediaRecorder error:", e);
                 setError("Error during recording: " + (e.error?.message || "Unknown error"));
             };
             mr.start(1000); // Collect data every second
-            console.log("MediaRecorder started with MIME type:", mr.mimeType);
         } catch (e: any) {
             console.error("Audio error:", e);
             let errorMessage = "Could not access microphone.";
@@ -600,15 +585,11 @@ export function VoiceNotes() {
         if (recognitionRef.current) {
             try {
                 recognitionRef.current.start();
-                console.log("Speech recognition started successfully");
             } catch (e: any) {
-                console.error("Failed to start speech recognition:", e);
                 // If it's already running, that's okay
-                if (e.message && e.message.includes("already started")) {
-                    console.log("Speech recognition already running, continuing...");
-                } else {
+                if (!e.message || !e.message.includes("already started")) {
+                    console.error("Failed to start speech recognition:", e);
                     setError("Could not start speech recognition. Audio will be recorded but not transcribed.");
-                    console.warn("Continuing with audio recording only");
                 }
             }
         } else {
@@ -670,16 +651,9 @@ export function VoiceNotes() {
                 currentTranscript = transcript.replace(/\s*\.\.\.\s*$/, "").trim();
             }
             
-            console.log("Stopping recording with transcript:", currentTranscript);
-            console.log("Transcript length:", currentTranscript.length);
-            console.log("Transcript state:", transcript);
-            console.log("Transcript ref:", transcriptRef.current);
-            console.log("Audio blob type:", mimeType, "Size:", blob.size, "bytes");
-            console.log("Browser:", navigator.userAgent);
-            
             // If no transcript and we have audio, always use OpenAI fallback
             if (!currentTranscript && blob.size > 0) {
-                console.log("No transcript from WebKit Speech Recognition, will use OpenAI Whisper fallback");
+                console.log("[Voice Notes] No transcript from WebKit Speech Recognition, will use OpenAI Whisper fallback");
             }
             
             // Pass the transcript to processTranscript
@@ -873,7 +847,6 @@ export function VoiceNotes() {
         //   without rewriting the content, so it reads more like real-world writing.
         const formatNaturalTranscript = (raw: string): string => {
             if (!raw) return raw;
-            console.log("[Transcript Formatter] raw transcript:", raw);
 
             // Improve readability without breaking URLs or abbreviations:
             // - Only insert breaks after sentence-ending punctuation
@@ -884,7 +857,6 @@ export function VoiceNotes() {
                 .replace(/([.!?])\s+(?=[A-Z"“])/g, "$1\n\n")
                 .trim();
 
-            console.log("[Transcript Formatter] formatted transcript:", formatted);
             return formatted;
         };
 
@@ -1332,7 +1304,6 @@ export function VoiceNotes() {
                             <Select 
                                 value={selectedClientId} 
                                 onValueChange={async (value) => {
-                                    console.log('[Voice Notes] Client selected:', value);
                                     setSelectedClientId(value);
                                     // Load sessions for this client
                                     await loadSessionsForClient(value);
@@ -1378,7 +1349,6 @@ export function VoiceNotes() {
                                     <Select 
                                         value={selectedSessionId || ""} 
                                         onValueChange={(value) => {
-                                            console.log('[Voice Notes] Session selected:', value);
                                             setSelectedSessionId(value);
                                         }}
                                     >
