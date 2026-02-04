@@ -1260,7 +1260,7 @@ function PaymentsContent() {
                         <DialogDescription>
                             {selectedAppointment && (() => {
                                 const client = clients.find((c: any) => c.name === selectedAppointment.clientName);
-                                const clientId = client?.id || selectedAppointment.clientId;
+                                const clientId = client?.id;
                                 const linkHref = clientId 
                                     ? `/clients?highlight=${clientId}` 
                                     : `/clients?client=${encodeURIComponent(selectedAppointment.clientName)}`;
@@ -1400,7 +1400,7 @@ function PaymentsContent() {
                                                         <div>
                                                             {(() => {
                                                                 const client = clients.find((c: any) => c.name === apt.clientName);
-                                                                const clientId = client?.id || apt.clientId;
+                                                                const clientId = client?.id;
                                                                 const linkHref = clientId 
                                                                     ? `/clients?highlight=${clientId}` 
                                                                     : `/clients?client=${encodeURIComponent(apt.clientName)}`;
@@ -1583,7 +1583,7 @@ function PaymentsContent() {
                                                         <div>
                                                             {(() => {
                                                                 const client = clients.find((c: any) => c.name === apt.clientName);
-                                                                const clientId = client?.id || apt.clientId;
+                                                                const clientId = client?.id;
                                                                 const linkHref = clientId 
                                                                     ? `/clients?highlight=${clientId}` 
                                                                     : `/clients?client=${encodeURIComponent(apt.clientName)}`;
