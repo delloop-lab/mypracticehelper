@@ -10,6 +10,8 @@ import { motion, AnimatePresence } from "framer-motion";
 const CURRENT_VERSION = APP_VERSION;
 const REMIND_LATER_KEY = "version-update-remind-later";
 const REMIND_LATER_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const REFRESH_DISMISS_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+const REFRESH_DISMISS_KEY = "version-update-refresh-dismissed";
 
 /**
  * Compares two version strings (e.g., "1.2.3" vs "1.3.0")
@@ -43,6 +45,21 @@ export function VersionUpdateModal() {
         if (hasChecked) return;
 
         const checkForUpdate = async () => {
+            // Check if user clicked "Refresh Now" recently (5 minute cooldown)
+            const refreshDismissTimestamp = localStorage.getItem(REFRESH_DISMISS_KEY);
+            if (refreshDismissTimestamp) {
+                const timestamp = parseInt(refreshDismissTimestamp, 10);
+                const now = Date.now();
+                const timeSinceRefresh = now - timestamp;
+                
+                // If less than 5 minutes have passed, don't show modal
+                if (timeSinceRefresh < REFRESH_DISMISS_DURATION) {
+                    setIsChecking(false);
+                    setHasChecked(true);
+                    return;
+                }
+            }
+
             // Check if user chose "remind me later" recently
             const remindLaterTimestamp = localStorage.getItem(REMIND_LATER_KEY);
             if (remindLaterTimestamp) {
@@ -89,9 +106,19 @@ export function VersionUpdateModal() {
                 // Compare versions
                 const comparison = compareVersions(latest, CURRENT_VERSION);
                 
+                console.log('[Version Update] Version comparison:', {
+                    current: CURRENT_VERSION,
+                    latest: latest,
+                    comparison: comparison,
+                    shouldShow: comparison > 0
+                });
+                
                 if (comparison > 0) {
                     // Latest version is newer than current
+                    console.log('[Version Update] Showing update modal');
                     setIsOpen(true);
+                } else {
+                    console.log('[Version Update] No update available or versions match');
                 }
             } catch (error) {
                 console.error('[Version Update] Error checking for updates:', error);
@@ -107,11 +134,33 @@ export function VersionUpdateModal() {
         return () => clearTimeout(timer);
     }, [hasChecked]);
 
-    const handleRefresh = () => {
+    const handleRefresh = async () => {
+        // Store timestamp to prevent immediate re-showing (5 minute cooldown)
+        localStorage.setItem(REFRESH_DISMISS_KEY, Date.now().toString());
         // Dismiss modal immediately
         setIsOpen(false);
-        // Reload the page to get the latest version
-        window.location.reload();
+        
+        // Clear service workers and caches to ensure fresh content
+        try {
+            // Unregister service workers if they exist
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map(reg => reg.unregister()));
+            }
+            
+            // Clear all caches if Cache API is available
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map(name => caches.delete(name)));
+            }
+        } catch (error) {
+            console.error('[Version Update] Error clearing cache:', error);
+            // Continue with refresh even if cache clearing fails
+        }
+        
+        // Force a hard refresh by navigating to the same URL
+        // This bypasses browser cache and gets the latest version
+        window.location.href = window.location.href.split('#')[0];
     };
 
     const handleRemindLater = () => {
