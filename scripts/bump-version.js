@@ -55,6 +55,15 @@ if (fs.existsSync(versionTsPath)) {
     console.log(`✅ Updated src/lib/version.ts to ${newVersion}`);
 }
 
+// Also update version.json file
+const versionJsonPath = path.join(__dirname, '..', 'public', 'version.json');
+if (fs.existsSync(versionJsonPath)) {
+    const versionJson = JSON.parse(fs.readFileSync(versionJsonPath, 'utf8'));
+    versionJson.latest = newVersion;
+    fs.writeFileSync(versionJsonPath, JSON.stringify(versionJson, null, 2) + '\n');
+    console.log(`✅ Updated public/version.json to ${newVersion}`);
+}
+
 console.log(`✅ Version bumped from ${oldVersion} to ${newVersion}`);
 console.log(`📦 New version: ${newVersion}`);
 

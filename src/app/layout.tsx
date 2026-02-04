@@ -3,6 +3,7 @@ import { Outfit, Inter } from "next/font/google";
 import "./globals.css";
 import { ConditionalLayout } from "@/components/conditional-layout";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
+import { VersionUpdateModal } from "@/components/version-update-modal";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -59,6 +60,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <PWAInstallPrompt />
+        <VersionUpdateModal />
         <ConditionalLayout>{children}</ConditionalLayout>
       </body>
     </html>
