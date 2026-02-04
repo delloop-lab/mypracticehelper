@@ -19,6 +19,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import NextLink from "next/link";
 
 interface Client {
     id: string;
@@ -1271,7 +1272,13 @@ export function EmailTab() {
                                     <div className="flex items-center gap-3 flex-1 min-w-0">
                                         <User className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                                         <div className="min-w-0 flex-1">
-                                            <div className="font-medium">{client.name || 'Unnamed Client'}</div>
+                                            <NextLink
+                                                href={`/clients?highlight=${client.id}`}
+                                                className="font-medium hover:underline text-primary transition-colors"
+                                                aria-label={`View ${client.name || 'Unnamed Client'} details`}
+                                            >
+                                                {client.name || 'Unnamed Client'}
+                                            </NextLink>
                                             {client.firstName && client.lastName && (
                                                 <div className="text-sm text-muted-foreground">
                                                     {client.firstName} {client.lastName}

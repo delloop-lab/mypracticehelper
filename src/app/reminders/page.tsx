@@ -13,7 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { FileText, Calendar, Search, AlertCircle, Clock, ClipboardCheck, CheckCircle2, X, ChevronDown, Landmark, Mic, Plus, Loader2 } from "lucide-react";
+import { FileText, Calendar, Search, AlertCircle, Clock, ClipboardCheck, CheckCircle2, X, ChevronDown, Landmark, Mic, Plus, Loader2, Mail } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
@@ -45,6 +45,7 @@ interface SessionNote {
 interface Client {
     id: string;
     name: string;
+    email?: string;
     newClientFormSigned?: boolean;
 }
 
@@ -69,6 +70,7 @@ export default function RemindersPage() {
     const [clients, setClients] = useState<Client[]>([]);
     const [reminders, setReminders] = useState<Appointment[]>([]);
     const [unsignedFormClients, setUnsignedFormClients] = useState<Client[]>([]);
+    const [clientsWithoutEmail, setClientsWithoutEmail] = useState<Client[]>([]);
     const [unpaidSessions, setUnpaidSessions] = useState<Appointment[]>([]);
     const [adminReminders, setAdminReminders] = useState<AdminReminder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -78,6 +80,7 @@ export default function RemindersPage() {
     const formsSectionRef = useRef<HTMLDivElement>(null);
     const sessionNotesSectionRef = useRef<HTMLDivElement>(null);
     const unpaidSessionsSectionRef = useRef<HTMLDivElement>(null);
+    const clientsWithoutEmailSectionRef = useRef<HTMLDivElement>(null);
 
     const handleDismissReminder = async (reminderId: string, e: React.MouseEvent) => {
         e.stopPropagation(); // Prevent card click
@@ -323,6 +326,12 @@ export default function RemindersPage() {
             );
             setUnsignedFormClients(clientsWithoutSignedForms);
 
+            // Calculate clients without email addresses
+            const clientsWithoutEmails = clientsData.filter((c: Client) => 
+                !c.email || c.email.trim() === ''
+            );
+            setClientsWithoutEmail(clientsWithoutEmails);
+
             // Calculate unpaid past sessions (reusing 'now' from above)
             const pastUnpaidSessions = appointmentsData.filter((apt: Appointment) => {
                 // Extract date part (YYYY-MM-DD) from date string (handles both date-only and ISO timestamp formats)
@@ -396,6 +405,13 @@ export default function RemindersPage() {
             return (a.name || '').localeCompare(b.name || '');
         });
     }, [unsignedFormClients]);
+
+    // Sort clients without email (alphabetically)
+    const sortedClientsWithoutEmail = useMemo(() => {
+        return [...clientsWithoutEmail].sort((a, b) => {
+            return (a.name || '').localeCompare(b.name || '');
+        });
+    }, [clientsWithoutEmail]);
 
     const formatDate = (dateString: string): string => {
         const date = new Date(dateString);
@@ -479,7 +495,7 @@ export default function RemindersPage() {
 
             <div className="space-y-6">
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <Card 
                         className={`${
                             reminders.length === 0 
@@ -613,6 +629,44 @@ export default function RemindersPage() {
                         </CardHeader>
                     </Card>
 
+                    <Card 
+                        className={`${
+                            clientsWithoutEmail.length === 0 
+                                ? "border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900"
+                                : "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900"
+                        } ${clientsWithoutEmail.length > 0 ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+                        onClick={() => {
+                            if (clientsWithoutEmail.length > 0 && clientsWithoutEmailSectionRef.current) {
+                                clientsWithoutEmailSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                // Highlight the section briefly
+                                clientsWithoutEmailSectionRef.current.classList.add('ring-2', 'ring-red-500', 'ring-offset-2');
+                                setTimeout(() => {
+                                    clientsWithoutEmailSectionRef.current?.classList.remove('ring-2', 'ring-red-500', 'ring-offset-2');
+                                }, 2000);
+                            }
+                        }}
+                    >
+                        <CardHeader>
+                            <CardTitle className={`flex items-center gap-2 ${
+                                clientsWithoutEmail.length === 0
+                                    ? "text-green-800 dark:text-green-200"
+                                    : "text-red-800 dark:text-red-200"
+                            }`}>
+                                <Mail className="h-5 w-5" />
+                                {clientsWithoutEmail.length} Client{clientsWithoutEmail.length !== 1 ? 's' : ''} Without Email
+                            </CardTitle>
+                            <CardDescription className={
+                                clientsWithoutEmail.length === 0
+                                    ? "text-green-700 dark:text-green-300"
+                                    : "text-red-700 dark:text-red-300"
+                            }>
+                                {clientsWithoutEmail.length === 0
+                                    ? "Great! All clients have email addresses."
+                                    : "These clients need email addresses configured."}
+                            </CardDescription>
+                        </CardHeader>
+                    </Card>
+
                     {(() => {
                         // Count clients not seen recently reminders
                         const clientsNotSeenReminders = adminReminders.filter(reminder => {
@@ -689,7 +743,7 @@ export default function RemindersPage() {
                                                         <h3 className="text-base sm:text-lg font-semibold">
                                                             {reminder.clientId ? (
                                                                 <Link
-                                                                    href={`/clients`}
+                                                                    href={`/clients?highlight=${reminder.clientId}`}
                                                                     className="hover:underline text-primary"
                                                                 >
                                                                     {reminder.clientName}
@@ -873,6 +927,66 @@ export default function RemindersPage() {
                                                             <span className="sm:hidden">Paid</span>
                                                         </>
                                                     )}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Clients Without Email Section */}
+                {clientsWithoutEmail.length > 0 && (
+                    <div ref={clientsWithoutEmailSectionRef} className="space-y-4">
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-semibold flex items-center gap-2">
+                            <Mail className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+                            Clients Without Email Addresses ({clientsWithoutEmail.length})
+                        </h2>
+                        <div className="space-y-3">
+                            {sortedClientsWithoutEmail.map((client) => (
+                                <Card 
+                                    key={client.id} 
+                                    className="border-blue-200 dark:border-blue-900 hover:shadow-md transition-shadow"
+                                >
+                                    <CardContent className="p-4">
+                                        <div className="flex items-start justify-between gap-3 sm:gap-4">
+                                            <div className="flex-1">
+                                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
+                                                    <h3 className="text-sm sm:text-base font-semibold">
+                                                        {client.id ? (
+                                                            <Link
+                                                                href={`/clients?highlight=${client.id}`}
+                                                                className="hover:underline text-primary transition-colors"
+                                                                aria-label={`View ${client.name} details`}
+                                                            >
+                                                                {client.name}
+                                                            </Link>
+                                                        ) : (
+                                                            client.name
+                                                        )}
+                                                    </h3>
+                                                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200 w-fit">
+                                                        No Email
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs sm:text-sm text-muted-foreground">
+                                                    Email address is required for sending communications.
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <Button
+                                                    onClick={() => {
+                                                        if (client.id) {
+                                                            router.push(`/clients?highlight=${client.id}`);
+                                                        }
+                                                    }}
+                                                    className="shrink-0 bg-blue-500 hover:bg-blue-600 text-white text-xs sm:text-sm"
+                                                    size="sm"
+                                                >
+                                                    <span className="hidden sm:inline">Add Email</span>
+                                                    <span className="sm:hidden">Email</span>
                                                 </Button>
                                             </div>
                                         </div>

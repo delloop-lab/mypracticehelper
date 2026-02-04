@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar, Users, Mic, FileText, Landmark } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { RemindersModal } from "@/components/reminders-modal";
 import { startOfYear, endOfYear, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth } from "date-fns";
 
@@ -42,6 +43,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
         recordings: 0
     });
     const [upcomingSessions, setUpcomingSessions] = useState<any[]>([]);
+    const [clients, setClients] = useState<any[]>([]);
     const [revenuePeriod, setRevenuePeriod] = useState<"today" | "week" | "month" | "year" | "custom">("week");
     const [customDateFrom, setCustomDateFrom] = useState<string>("");
     const [customDateTo, setCustomDateTo] = useState<string>("");
@@ -75,7 +77,8 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
 
                 // Load clients
                 const clientRes = await fetch('/api/clients', { cache: 'no-store' });
-                const clients = clientRes.ok ? await clientRes.json() : [];
+                const clientsData = clientRes.ok ? await clientRes.json() : [];
+                setClients(clientsData);
 
                 // Load recordings
                 const recRes = await fetch('/api/recordings', { cache: 'no-store' });
@@ -201,7 +204,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 setReminders(missingNotes);
 
                 // Calculate clients with unsigned forms
-                const clientsWithoutSignedForms = clients.filter((c: any) => 
+                const clientsWithoutSignedForms = clientsData.filter((c: any) => 
                     !c.newClientFormSigned
                 );
                 setUnsignedFormClients(clientsWithoutSignedForms);
@@ -290,7 +293,7 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
 
                 setStats({
                     todaySessions: todayApts.length,
-                    activeClients: clients.length,
+                    activeClients: clientsData.length,
                     revenue,
                     recordings: recordings.length
                 });
@@ -791,25 +794,42 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                                 <p className="text-sm">No upcoming sessions scheduled</p>
                             </div>
                         ) : (
-                            upcomingSessions.map((session, i) => (
-                                <div
-                                    key={i}
-                                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted cursor-pointer transition-colors"
-                                    onClick={() => onNavigate("schedule")}
-                                >
-                                    <div>
-                                        <p className="font-medium">{session.clientName}</p>
-                                        <p className="text-sm text-muted-foreground">{session.type}</p>
-                                        {session.fee && (
-                                            <p className="text-xs text-muted-foreground">€{session.fee} - {session.paymentStatus || "unpaid"}</p>
-                                        )}
+                            upcomingSessions.map((session, i) => {
+                                const client = clients.find((c: any) => c.name === session.clientName);
+                                const clientId = client?.id || session.clientId;
+                                const linkHref = clientId 
+                                    ? `/clients?highlight=${clientId}` 
+                                    : `/clients?client=${encodeURIComponent(session.clientName)}`;
+                                
+                                return (
+                                    <div
+                                        key={i}
+                                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                                    >
+                                        <div>
+                                            {session.clientName ? (
+                                                <Link
+                                                    href={linkHref}
+                                                    className="font-medium hover:underline text-primary transition-colors"
+                                                    aria-label={`View ${session.clientName} details`}
+                                                >
+                                                    {session.clientName}
+                                                </Link>
+                                            ) : (
+                                                <p className="font-medium">{session.clientName}</p>
+                                            )}
+                                            <p className="text-sm text-muted-foreground">{session.type}</p>
+                                            {session.fee && (
+                                                <p className="text-xs text-muted-foreground">€{session.fee} - {session.paymentStatus || "unpaid"}</p>
+                                            )}
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-sm font-medium">{new Date(session.date).toLocaleDateString()}</p>
+                                            <p className="text-xs text-muted-foreground">{session.time}</p>
+                                        </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-sm font-medium">{new Date(session.date).toLocaleDateString()}</p>
-                                        <p className="text-xs text-muted-foreground">{session.time}</p>
-                                    </div>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </div>

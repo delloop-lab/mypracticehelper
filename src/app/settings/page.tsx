@@ -113,6 +113,12 @@ export default function SettingsPage() {
                         t.condition_type === 'session_notes' || 
                         t.title?.toLowerCase().includes('session') && t.title?.toLowerCase().includes('note')
                     );
+                    const hasClientsWithoutEmail = data.some((t: any) => 
+                        t.condition_type === 'client_field' && 
+                        t.condition_config?.field === 'email' && 
+                        t.condition_config?.operator === 'is_empty' ||
+                        t.title?.toLowerCase().includes('email') && t.title?.toLowerCase().includes('without')
+                    );
                     
                     // Create default templates if they don't exist
                     const templatesToCreate = [];
@@ -132,6 +138,16 @@ export default function SettingsPage() {
                             description: "Remind user about past sessions that need clinical documentation",
                             conditionType: 'session_notes',
                             conditionConfig: { checkPastSessions: true, requireNotes: true },
+                            frequency: 'daily',
+                            isEnabled: true
+                        });
+                    }
+                    if (!hasClientsWithoutEmail) {
+                        templatesToCreate.push({
+                            title: "Clients Without Email Address",
+                            description: "Remind user about clients who don't have email addresses configured",
+                            conditionType: 'client_field',
+                            conditionConfig: { field: 'email', operator: 'is_empty' },
                             frequency: 'daily',
                             isEnabled: true
                         });
@@ -473,15 +489,17 @@ export default function SettingsPage() {
             </div>
 
             <Tabs defaultValue="profile" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-7 max-w-5xl">
-                    <TabsTrigger value="profile">Profile</TabsTrigger>
-                    <TabsTrigger value="general">General</TabsTrigger>
-                    <TabsTrigger value="appointments">Appointments</TabsTrigger>
-                    <TabsTrigger value="defaults">Defaults</TabsTrigger>
-                    <TabsTrigger value="reminders">Reminders</TabsTrigger>
-                    <TabsTrigger value="email">Email</TabsTrigger>
-                    <TabsTrigger value="backup">Backup & Data</TabsTrigger>
-                </TabsList>
+                <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+                    <TabsList className="grid w-full grid-cols-7 max-w-5xl min-w-[600px] sm:min-w-0">
+                        <TabsTrigger value="profile" className="text-xs sm:text-sm whitespace-nowrap">Profile</TabsTrigger>
+                        <TabsTrigger value="general" className="text-xs sm:text-sm whitespace-nowrap">General</TabsTrigger>
+                        <TabsTrigger value="appointments" className="text-xs sm:text-sm whitespace-nowrap">Appointments</TabsTrigger>
+                        <TabsTrigger value="defaults" className="text-xs sm:text-sm whitespace-nowrap">Defaults</TabsTrigger>
+                        <TabsTrigger value="reminders" className="text-xs sm:text-sm whitespace-nowrap">Reminders</TabsTrigger>
+                        <TabsTrigger value="email" className="text-xs sm:text-sm whitespace-nowrap">Email</TabsTrigger>
+                        <TabsTrigger value="backup" className="text-xs sm:text-sm whitespace-nowrap">Backup & Data</TabsTrigger>
+                    </TabsList>
+                </div>
 
                 {/* Profile Tab */}
                 <TabsContent value="profile" className="space-y-4">

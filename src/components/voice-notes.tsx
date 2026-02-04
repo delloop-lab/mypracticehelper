@@ -76,10 +76,19 @@ export function VoiceNotes() {
                         // Try to find by ID first
                         const clientById = data.find((c: Client) => c.id === clientIdParam);
                         if (clientById) {
-                            console.log('[Voice Notes] Auto-selecting client by ID:', clientById.name);
+                            console.log('[Voice Notes] Auto-selecting client by ID:', clientById.name, 'ID:', clientById.id);
                             setSelectedClientId(clientById.id);
+                            // Get date parameter to find specific session
+                            const dateParam = searchParams.get('date');
+                            console.log('[Voice Notes] Calling loadSessionsForClient with:', {
+                                clientId: clientById.id,
+                                clientName: clientById.name,
+                                dateParam,
+                                sessionIdParam
+                            });
                             // Load sessions for this client, including the target session if provided
-                            loadSessionsForClient(clientById.id, sessionIdParam || undefined).then(() => {
+                            // Pass client name directly to avoid timing issues
+                            loadSessionsForClient(clientById.id, sessionIdParam || undefined, dateParam || undefined, clientById.name).then(() => {
                                 if (sessionIdParam) {
                                     console.log('[Voice Notes] Auto-selecting session by ID:', sessionIdParam);
                                     // Set the sessionId - even if not in the list, allow it to be set
@@ -92,7 +101,7 @@ export function VoiceNotes() {
                                                 console.log('[Voice Notes] Session not in list, adding manually');
                                                 return [...prev, {
                                                     id: sessionIdParam,
-                                                    date: new Date().toISOString(),
+                                                    date: dateParam ? new Date(dateParam).toISOString() : new Date().toISOString(),
                                                     type: 'Session'
                                                 }];
                                             }
@@ -110,8 +119,11 @@ export function VoiceNotes() {
                         if (clientByName) {
                             console.log('[Voice Notes] Auto-selecting client by name:', clientByName.name);
                             setSelectedClientId(clientByName.id);
+                            // Get date parameter to find specific session
+                            const dateParam = searchParams.get('date');
                             // Load sessions for this client, including the target session if provided
-                            loadSessionsForClient(clientByName.id, sessionIdParam || undefined).then(() => {
+                            // Pass client name directly to avoid timing issues
+                            loadSessionsForClient(clientByName.id, sessionIdParam || undefined, dateParam || undefined, clientByName.name).then(() => {
                                 if (sessionIdParam) {
                                     console.log('[Voice Notes] Auto-selecting session by ID:', sessionIdParam);
                                     // Set the sessionId - even if not in the list, allow it to be set
@@ -124,7 +136,7 @@ export function VoiceNotes() {
                                                 console.log('[Voice Notes] Session not in list, adding manually');
                                                 return [...prev, {
                                                     id: sessionIdParam,
-                                                    date: new Date().toISOString(),
+                                                    date: dateParam ? new Date(dateParam).toISOString() : new Date().toISOString(),
                                                     type: 'Session'
                                                 }];
                                             }
@@ -184,20 +196,75 @@ export function VoiceNotes() {
     }, []);
 
     // Load sessions for selected client
-    const loadSessionsForClient = async (clientId: string, sessionIdToInclude?: string) => {
+    const loadSessionsForClient = async (clientId: string, sessionIdToInclude?: string, targetDate?: string, clientNameOverride?: string) => {
         setIsLoadingSessions(true);
         setAvailableSessions([]);
         setSelectedSessionId("");
         
         try {
-            const client = clients.find(c => c.id === clientId);
-            const clientName = client?.name;
+            // Use provided client name, or look it up from clients array
+            // If still not found, wait a bit for clients to load (race condition fix)
+            let client = clients.find(c => c.id === clientId);
+            let clientName = clientNameOverride || client?.name;
+            
+            // If client name still not found, wait a moment and retry (handles race condition)
+            if (!clientName && clients.length > 0) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                client = clients.find(c => c.id === clientId);
+                clientName = clientNameOverride || client?.name;
+            }
+            
+            console.log('[Voice Notes] Loading sessions for client:', { clientId, clientName, targetDate, sessionIdToInclude, clientNameOverride, clientsLength: clients.length });
+            
+            if (!clientName && !clientId) {
+                console.error('[Voice Notes] Cannot load sessions: no client name or ID');
+                setIsLoadingSessions(false);
+                return;
+            }
+            
             const response = await fetch('/api/appointments');
             if (response.ok) {
                 const appointments = await response.json();
+                console.log('[Voice Notes] Total appointments loaded:', appointments.length);
+                
+                // Debug: Log ALL appointments to see their client fields
+                console.log('[Voice Notes] Sample appointments (first 5):', appointments.slice(0, 5).map((apt: any) => ({
+                    id: apt.id,
+                    clientName: apt.clientName,
+                    clientId: apt.clientId,
+                    client_id: apt.client_id,
+                    date: apt.date
+                })));
+                
+                // Debug: Log appointments for this client
+                const matchingAppointments = appointments.filter((apt: any) => 
+                    apt.clientId === clientId || 
+                    apt.client_id === clientId ||
+                    (clientName && (apt.clientName === clientName || apt.clientName?.toLowerCase() === clientName?.toLowerCase()))
+                );
+                console.log('[Voice Notes] Appointments matching client:', matchingAppointments.length, matchingAppointments.map((apt: any) => ({
+                    id: apt.id,
+                    clientName: apt.clientName,
+                    clientId: apt.clientId || apt.client_id,
+                    date: apt.date
+                })));
+                
                 const now = new Date();
                 
+                // Parse target date if provided
+                let targetDateOnly: Date | null = null;
+                if (targetDate) {
+                    try {
+                        const [year, month, day] = targetDate.split('-').map(Number);
+                        targetDateOnly = new Date(year, month - 1, day, 0, 0, 0);
+                        console.log('[Voice Notes] Target date parsed:', targetDate, '->', targetDateOnly.toISOString());
+                    } catch (e) {
+                        console.warn('[Voice Notes] Invalid target date:', targetDate);
+                    }
+                }
+                
                 // Filter to past sessions and today's sessions for this client
+                // If targetDate is provided, also include sessions matching that date (even if slightly in future)
                 const pastSessions = appointments
                     .filter((apt: any) => {
                         // Parse date and time properly
@@ -228,13 +295,35 @@ export function VoiceNotes() {
                         const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
                         const isFromTodayOrEarlier = aptDateOnly <= todayDateOnly;
                         
-                        const matchesClient = 
-                            apt.clientName === clientName ||
-                            apt.clientName?.toLowerCase() === clientName?.toLowerCase() ||
-                            apt.clientId === clientId ||
-                            apt.client_id === clientId;
+                        // If targetDate is provided, also include sessions matching that exact date
+                        const matchesTargetDate = targetDateOnly ? aptDateOnly.getTime() === targetDateOnly.getTime() : false;
                         
-                        return isFromTodayOrEarlier && matchesClient;
+                        // Match by clientId first (most reliable), then by name
+                        const matchesClient = 
+                            apt.clientId === clientId ||
+                            apt.client_id === clientId ||
+                            (clientName && apt.clientName === clientName) ||
+                            (clientName && apt.clientName?.toLowerCase() === clientName?.toLowerCase());
+                        
+                        const shouldInclude = (isFromTodayOrEarlier || matchesTargetDate) && matchesClient;
+                        
+                        // Log all appointments for this client to debug
+                        if (apt.clientId === clientId || apt.client_id === clientId || 
+                            (clientName && (apt.clientName === clientName || apt.clientName?.toLowerCase() === clientName?.toLowerCase()))) {
+                            console.log('[Voice Notes] Session match check:', {
+                                aptId: apt.id,
+                                aptClientName: apt.clientName,
+                                aptClientId: apt.clientId || apt.client_id,
+                                expectedClientId: clientId,
+                                expectedClientName: clientName,
+                                aptDate: dateStr,
+                                matchesClient,
+                                isFromTodayOrEarlier,
+                                matchesTargetDate,
+                                shouldInclude
+                            });
+                        }
+                        return shouldInclude;
                     })
                     .map((apt: any) => ({
                         id: apt.id,
@@ -249,6 +338,7 @@ export function VoiceNotes() {
                         return dateB.getTime() - dateA.getTime();
                     });
                 
+                console.log('[Voice Notes] Found past sessions:', pastSessions.length, pastSessions);
                 
                 // If a specific sessionId is provided and not in past sessions, add it
                 let sessionsToShow = [...pastSessions];
@@ -313,7 +403,37 @@ export function VoiceNotes() {
                 // Sort by date (newest first)
                 sessionsToShow.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
                 
+                console.log('[Voice Notes] Setting available sessions:', sessionsToShow.length, sessionsToShow);
                 setAvailableSessions(sessionsToShow);
+                
+                // If targetDate is provided and no sessionId, try to auto-select matching session
+                if (targetDate && !sessionIdToInclude && sessionsToShow.length > 0) {
+                    console.log('[Voice Notes] Looking for sessions matching target date:', targetDate);
+                    // Find sessions matching the target date
+                    const matchingSessions = sessionsToShow.filter((s: any) => {
+                        const sessionDateStr = s.date.split('T')[0];
+                        const matches = sessionDateStr === targetDate;
+                        console.log('[Voice Notes] Comparing session date:', sessionDateStr, 'with target:', targetDate, 'matches:', matches);
+                        return matches;
+                    });
+                    
+                    console.log('[Voice Notes] Found matching sessions:', matchingSessions.length, matchingSessions);
+                    
+                    // Auto-select if exactly one session matches the date
+                    if (matchingSessions.length === 1) {
+                        console.log('[Voice Notes] Auto-selecting session matching date:', matchingSessions[0].id);
+                        setSelectedSessionId(matchingSessions[0].id);
+                    } else if (matchingSessions.length > 1) {
+                        // Multiple sessions on same date - select the most recent one
+                        const mostRecent = matchingSessions.sort((a: any, b: any) => 
+                            new Date(b.date).getTime() - new Date(a.date).getTime()
+                        )[0];
+                        console.log('[Voice Notes] Multiple sessions on date, selecting most recent:', mostRecent.id);
+                        setSelectedSessionId(mostRecent.id);
+                    } else {
+                        console.warn('[Voice Notes] No sessions found matching target date:', targetDate);
+                    }
+                }
             }
         } catch (error) {
             console.error('[Voice Notes] Error loading sessions:', error);
@@ -1306,7 +1426,8 @@ export function VoiceNotes() {
                                 onValueChange={async (value) => {
                                     setSelectedClientId(value);
                                     // Load sessions for this client
-                                    await loadSessionsForClient(value);
+                                    const selectedClient = clients.find(c => c.id === value);
+                                    await loadSessionsForClient(value, undefined, undefined, selectedClient?.name);
                                 }}
                             >
                                 <SelectTrigger id="pre-record-client">
@@ -1549,7 +1670,8 @@ export function VoiceNotes() {
                                     setSelectedSessionId(""); // Clear session when client changes
                                     // Load sessions for this client
                                     if (value) {
-                                        await loadSessionsForClient(value);
+                                        const selectedClient = clients.find(c => c.id === value);
+                                        await loadSessionsForClient(value, undefined, undefined, selectedClient?.name);
                                     } else {
                                         setAvailableSessions([]);
                                     }

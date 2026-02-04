@@ -11,6 +11,7 @@ import { File, Calendar, Search, Filter, Trash2, ExternalLink, FileText, Upload,
 import { motion, AnimatePresence } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import Link from "next/link";
 
 interface ClientDocument {
     id: string;
@@ -708,7 +709,34 @@ function DocumentsContent() {
                                                     </CardTitle>
                                                     <CardDescription className="flex items-center gap-4 mt-2">
                                                         <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />{formatDate(doc.uploadedDate)}</span>
-                                                        <span className="text-sm">{doc.isUserDocument ? "Company Document" : `Client: ${doc.clientName || "Unassigned"}`}</span>
+                                                        <span className="text-sm">
+                                                            {doc.isUserDocument ? (
+                                                                "Company Document"
+                                                            ) : doc.clientName ? (
+                                                                (() => {
+                                                                    const client = clients.find((c: any) => c.name === doc.clientName);
+                                                                    const clientId = client?.id;
+                                                                    const linkHref = clientId
+                                                                        ? `/clients?highlight=${clientId}`
+                                                                        : `/clients?client=${encodeURIComponent(doc.clientName)}`;
+
+                                                                    return (
+                                                                        <>
+                                                                            Client:{' '}
+                                                                            <Link
+                                                                                href={linkHref}
+                                                                                className="hover:underline text-primary transition-colors"
+                                                                                aria-label={`View ${doc.clientName} details`}
+                                                                            >
+                                                                                {doc.clientName}
+                                                                            </Link>
+                                                                        </>
+                                                                    );
+                                                                })()
+                                                            ) : (
+                                                                "Unassigned"
+                                                            )}
+                                                        </span>
                                                         <span className="text-sm">Size: {doc.size}</span>
                                                         <span className="text-sm uppercase">{doc.type}</span>
                                                     </CardDescription>

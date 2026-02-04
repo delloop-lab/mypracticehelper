@@ -519,19 +519,26 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
     const timeToMinutes = (timeStr: string): number => {
         if (!timeStr) return 0;
         
-        // Handle 24-hour format (HH:MM or HH:MM:SS)
-        if (timeStr.includes(':') && !timeStr.match(/\s*(AM|PM)/i)) {
-            const [hours, minutes] = timeStr.split(':').map(Number);
+        // Normalize the time string - trim whitespace
+        const normalized = timeStr.trim();
+        
+        // Handle 24-hour format (HH:MM or HH:MM:SS) - no AM/PM indicator
+        if (normalized.includes(':') && !normalized.match(/\b(AM|PM)\b/i)) {
+            const parts = normalized.split(':');
+            const hours = parseInt(parts[0] || '0', 10);
+            const minutes = parseInt(parts[1] || '0', 10);
             return (hours || 0) * 60 + (minutes || 0);
         }
         
-        // Handle 12-hour format (H:MM AM/PM)
-        const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        // Handle 12-hour format - be more flexible with spacing
+        // Match patterns like: "04:00 PM", "4:00PM", "11:30 am", "11:30am", etc.
+        const match = normalized.match(/(\d+):(\d+)\s*(AM|PM)/i);
         if (match) {
             let hours = parseInt(match[1], 10);
             const minutes = parseInt(match[2], 10);
             const period = match[3].toUpperCase();
             
+            // Convert to 24-hour format
             if (period === 'PM' && hours !== 12) {
                 hours += 12;
             } else if (period === 'AM' && hours === 12) {
@@ -541,6 +548,18 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             return hours * 60 + minutes;
         }
         
+        // If no match, try to parse as 24-hour format anyway (fallback)
+        if (normalized.includes(':')) {
+            const parts = normalized.split(':');
+            const hours = parseInt(parts[0] || '0', 10);
+            const minutes = parseInt(parts[1] || '0', 10);
+            // If hours > 12, assume it's already 24-hour format
+            if (hours <= 23 && minutes <= 59) {
+                return hours * 60 + minutes;
+            }
+        }
+        
+        console.warn('[timeToMinutes] Could not parse time:', timeStr);
         return 0;
     };
 
@@ -637,6 +656,18 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             }
             return false;
         }).sort((a, b) => {
+            // Use full date/time for accurate chronological sorting
+            try {
+                const dateA = new Date(a.date);
+                const dateB = new Date(b.date);
+                // If dates are valid, use them for sorting
+                if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+                    return dateA.getTime() - dateB.getTime();
+                }
+            } catch (e) {
+                // Fall back to date string comparison and time parsing if date parsing fails
+            }
+            // Fallback: Sort by date string first, then by time
             if (a.date !== b.date) return a.date.localeCompare(b.date);
             // Sort by time using minutes since midnight for proper AM/PM sorting
             const minutesA = timeToMinutes(a.time || '');
@@ -1003,9 +1034,21 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                     return aptDateStr === singleDayView;
                                 })
                                 .sort((a, b) => {
-                                    const timeA = a.time || '';
-                                    const timeB = b.time || '';
-                                    return timeA.localeCompare(timeB);
+                                    // Use full date/time for accurate chronological sorting
+                                    try {
+                                        const dateA = new Date(a.date);
+                                        const dateB = new Date(b.date);
+                                        // If dates are valid, use them for sorting
+                                        if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+                                            return dateA.getTime() - dateB.getTime();
+                                        }
+                                    } catch (e) {
+                                        // Fall back to time parsing if date parsing fails
+                                    }
+                                    // Fallback: Convert times to minutes since midnight for proper AM/PM sorting
+                                    const minutesA = timeToMinutes(a.time || '');
+                                    const minutesB = timeToMinutes(b.time || '');
+                                    return minutesA - minutesB;
                                 });
                             
                             if (dayApps.length === 0) {
@@ -1051,7 +1094,26 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2 mb-0.5">
-                                                                <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                                {(() => {
+                                                                    const client = clients.find(c => c.name === appointment.clientName);
+                                                                    const clientId = client?.id;
+                                                                    const linkHref = clientId 
+                                                                        ? `/clients?highlight=${clientId}` 
+                                                                        : `/clients?client=${encodeURIComponent(appointment.clientName)}`;
+                                                                    
+                                                                    return clientId || appointment.clientName ? (
+                                                                        <Link
+                                                                            href={linkHref}
+                                                                            className="font-semibold text-sm leading-tight hover:underline text-primary transition-colors"
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            aria-label={`View ${appointment.clientName} details`}
+                                                                        >
+                                                                            {appointment.clientName}
+                                                                        </Link>
+                                                                    ) : (
+                                                                        <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                                    );
+                                                                })()}
                                                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium leading-tight whitespace-nowrap">
                                                                     {appointment.type}
                                                                 </span>
@@ -1071,17 +1133,17 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
 
             {viewMode === 'calendar' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                    <Card className="lg:col-span-3 h-[800px] flex flex-col overflow-hidden relative">
+                    <Card className="lg:col-span-4 flex flex-col overflow-hidden relative">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 flex-shrink-0">
                             <div className="flex items-center gap-4">
-                                <h2 className="text-2xl font-bold">{format(currentMonth, 'MMMM yyyy')}</h2>
+                                <h2 className="text-xl sm:text-2xl font-bold">{format(currentMonth, 'MMMM yyyy')}</h2>
                                 <div className="flex items-center gap-1">
                                     <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
                                         <ChevronLeft className="h-4 w-4" />
                                     </Button>
                                     <Button
                                         variant="outline"
-                                        className="px-4"
+                                        className="px-2 sm:px-4 text-xs sm:text-sm"
                                         onClick={() => setCurrentMonth(new Date())}
                                     >
                                         Today
@@ -1092,24 +1154,25 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                 </div>
                             </div>
                         </CardHeader>
-                        <CardContent className="flex-1 p-0 overflow-hidden">
-                        <div className="h-full flex flex-col overflow-hidden">
-                            <div className="grid grid-cols-7 border-b flex-shrink-0 bg-background sticky top-0 z-10">
-                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                                    <div key={day} className="p-4 text-center font-semibold text-sm text-muted-foreground">
-                                        {day}
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex-1 overflow-hidden">
-                            {(() => {
-                                const daysInView = eachDayOfInterval({
-                                    start: startOfWeek(startOfMonth(currentMonth)),
-                                    end: endOfWeek(endOfMonth(currentMonth))
-                                });
-                                const numberOfWeeks = Math.ceil(daysInView.length / 7);
-                                return (
-                                    <div className="grid grid-cols-7 h-full" style={{ gridTemplateRows: `repeat(${numberOfWeeks}, 1fr)` }}>
+                        <CardContent className="p-0 overflow-hidden">
+                        <div className="flex flex-col overflow-hidden">
+                            <div className="overflow-x-auto overflow-y-auto">
+                                {(() => {
+                                    const daysInView = eachDayOfInterval({
+                                        start: startOfWeek(startOfMonth(currentMonth)),
+                                        end: endOfWeek(endOfMonth(currentMonth))
+                                    });
+                                    const numberOfWeeks = Math.ceil(daysInView.length / 7);
+                                    return (
+                                        <div className="min-w-[560px]">
+                                            <div className="grid grid-cols-7 border-b flex-shrink-0 bg-background sticky top-0 z-10">
+                                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                                                    <div key={day} className="p-2 sm:p-4 text-center font-semibold text-xs sm:text-sm text-muted-foreground">
+                                                        {day}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="grid grid-cols-7" style={{ gridTemplateRows: `repeat(${numberOfWeeks}, minmax(100px, auto))` }}>
                                         {daysInView.map((day, dayIdx) => {
                                     const dayStr = format(day, 'yyyy-MM-dd');
                                     const dayAppointments = appointments.filter(apt => {
@@ -1118,8 +1181,18 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         const aptDateStr = apt.date.split('T')[0];
                                         return aptDateStr === dayStr;
                                     }).sort((a, b) => {
-                                        // Sort by time to ensure consistent display order
-                                        // Convert times to minutes since midnight for proper AM/PM sorting
+                                        // Sort by full date/time for accurate chronological order
+                                        try {
+                                            const dateA = new Date(a.date);
+                                            const dateB = new Date(b.date);
+                                            // If dates are valid, use them for sorting
+                                            if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+                                                return dateA.getTime() - dateB.getTime();
+                                            }
+                                        } catch (e) {
+                                            // Fall back to time string parsing if date parsing fails
+                                        }
+                                        // Fallback: Convert times to minutes since midnight for proper AM/PM sorting
                                         const minutesA = timeToMinutes(a.time || '');
                                         const minutesB = timeToMinutes(b.time || '');
                                         return minutesA - minutesB;
@@ -1141,7 +1214,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         <div
                                             key={day.toString()}
                                             className={cn(
-                                                "border-b border-r p-1.5 transition-colors relative group overflow-hidden flex flex-col",
+                                                "border-b border-r p-2 sm:p-1.5 transition-colors relative group overflow-hidden flex flex-col min-w-[80px]",
                                                 !isSameMonth(day, currentMonth) && "bg-muted/20 text-muted-foreground",
                                                 isToday(day) && !isBlockedDay && "bg-primary/5",
                                                 hasAppointments && !isBlockedDay && "bg-muted/30",
@@ -1164,20 +1237,54 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         >
                                             <div className="flex justify-between items-start mb-1 flex-shrink-0">
                                                 <span className={cn(
-                                                    "text-sm font-medium h-7 w-7 flex items-center justify-center rounded-full",
+                                                    "text-xs sm:text-sm font-medium h-6 w-6 sm:h-7 sm:w-7 flex items-center justify-center rounded-full",
                                                     isToday(day) && "bg-primary text-primary-foreground"
                                                 )}>
                                                     {format(day, 'd')}
                                                 </span>
                                             </div>
-                                            <div className="space-y-0.5 overflow-y-auto flex-1 mt-1 min-h-0">
-                                                {dayAppointments.length > 5 ? (
-                                                    <div 
-                                                        className="text-[10px] font-semibold text-center py-1 px-1 rounded bg-primary/20 text-primary border border-primary/30"
-                                                        title={`${dayAppointments.length} appointments - Click day to view all`}
-                                                    >
-                                                        {dayAppointments.length} sessions
-                                                    </div>
+                                            <div className="space-y-1 overflow-y-auto flex-1 mt-1 min-h-0">
+                                                {dayAppointments.length > 4 ? (
+                                                    <>
+                                                        {/* Show first 4 appointments */}
+                                                        {dayAppointments.slice(0, 4).map((apt, idx) => {
+                                                            // Format time properly - handle both HH:MM and other formats
+                                                            const displayTime = apt.time && apt.time.length > 0 
+                                                                ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
+                                                                : '--:--';
+                                                            const initials = getInitials(apt.clientName);
+                                                            return (
+                                                                <div
+                                                                    key={`${apt.id}-${apt.clientName}-${apt.time}-${idx}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleViewAppointment(apt);
+                                                                    }}
+                                                                    className={cn(
+                                                                        "px-1.5 py-1.5 sm:px-1 sm:py-1 rounded text-[11px] sm:text-[9px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
+                                                                        getAppointmentTypeColor(apt.type).bg,
+                                                                        getAppointmentTypeColor(apt.type).text,
+                                                                        getAppointmentTypeColor(apt.type).border
+                                                                    )}
+                                                                    title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
+                                                                >
+                                                                    <div className="font-bold text-[12px] sm:text-[10px] leading-tight flex items-center gap-1">
+                                                                        <span>{displayTime}</span>
+                                                                        <span className="font-semibold">{initials}</span>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {/* Show count for remaining appointments */}
+                                                        {dayAppointments.length > 4 && (
+                                                            <div 
+                                                                className="text-[10px] sm:text-[10px] font-semibold text-center py-1.5 px-1 rounded bg-primary/20 text-primary border border-primary/30"
+                                                                title={`${dayAppointments.length - 4} more appointments - Click day to view all`}
+                                                            >
+                                                                +{dayAppointments.length - 4} more
+                                                            </div>
+                                                        )}
+                                                    </>
                                                 ) : (
                                                     dayAppointments.map((apt, idx) => {
                                                         // Format time properly - handle both HH:MM and other formats
@@ -1193,15 +1300,14 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                     handleViewAppointment(apt);
                                                                 }}
                                                                 className={cn(
-                                                                    "px-1 py-0.5 rounded text-[9px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
-                                                                    idx < dayAppointments.length - 1 && "mb-0.5",
+                                                                    "px-1.5 py-1.5 sm:px-1 sm:py-1 rounded text-[11px] sm:text-[9px] font-medium border shadow-sm cursor-pointer hover:opacity-90 hover:shadow-md transition-all leading-tight",
                                                                     getAppointmentTypeColor(apt.type).bg,
                                                                     getAppointmentTypeColor(apt.type).text,
                                                                     getAppointmentTypeColor(apt.type).border
                                                                 )}
                                                                 title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
                                                             >
-                                                                <div className="font-bold text-[10px] leading-tight flex items-center gap-1">
+                                                                <div className="font-bold text-[12px] sm:text-[10px] leading-tight flex items-center gap-1">
                                                                     <span>{displayTime}</span>
                                                                     <span className="font-semibold">{initials}</span>
                                                                 </div>
@@ -1213,9 +1319,10 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         </div>
                                     );
                                 })}
-                                    </div>
-                                );
-                            })()}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         </div>
                     </CardContent>
@@ -1238,8 +1345,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     </div>
                 </Card>
                 
-                {/* Side panel showing appointments for selected date */}
-                <Card className="lg:col-span-1 h-[800px] flex flex-col">
+                {/* Side panel showing appointments for selected date - TEMPORARILY COMMENTED OUT */}
+                {/* <Card className="lg:col-span-1 h-[800px] flex flex-col">
                     <CardHeader>
                         <CardTitle className="text-lg">
                             {format(new Date(selectedDate), 'EEEE, MMMM d')}
@@ -1280,6 +1387,18 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                             ) : (
                                 <div className="space-y-1.5">
                                     {[...selectedDateAppointments].sort((a, b) => {
+                                        // Parse full date/time from appointment date field for accurate sorting
+                                        try {
+                                            const dateA = new Date(a.date);
+                                            const dateB = new Date(b.date);
+                                            // If dates are valid, use them for sorting
+                                            if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+                                                return dateA.getTime() - dateB.getTime();
+                                            }
+                                        } catch (e) {
+                                            // Fall back to time string parsing if date parsing fails
+                                        }
+                                        // Fallback: parse time strings
                                         const minutesA = timeToMinutes(a.time || '');
                                         const minutesB = timeToMinutes(b.time || '');
                                         return minutesA - minutesB;
@@ -1291,7 +1410,26 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         >
                                             <CardContent className="p-3">
                                                 <div className="space-y-1.5">
-                                                    <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                    {(() => {
+                                                        const client = clients.find(c => c.name === appointment.clientName);
+                                                        const clientId = client?.id;
+                                                        const linkHref = clientId 
+                                                            ? `/clients?highlight=${clientId}` 
+                                                            : `/clients?client=${encodeURIComponent(appointment.clientName)}`;
+                                                        
+                                                        return clientId || appointment.clientName ? (
+                                                            <Link
+                                                                href={linkHref}
+                                                                className="font-semibold text-sm leading-tight hover:underline text-primary transition-colors"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                aria-label={`View ${appointment.clientName} details`}
+                                                            >
+                                                                {appointment.clientName}
+                                                            </Link>
+                                                        ) : (
+                                                            <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                        );
+                                                    })()}
                                                     <div className="flex items-start gap-2">
                                                         <span className={cn(
                                                             "text-[10px] px-2 py-0.5 rounded leading-tight whitespace-nowrap inline-block",
@@ -1341,93 +1479,95 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                             );
                         })()}
                     </CardContent>
-                </Card>
+                </Card> */}
             </div>
             ) : (
-                <div className="grid gap-6 md:grid-cols-3">
-                    <Card className="md:col-span-1 h-fit">
-                        <CardHeader>
-                            <CardTitle className="text-lg">View Options</CardTitle>
+                <div className="space-y-6">
+                    <Card className="h-fit !py-3 md:!py-4 !gap-0">
+                        <CardHeader className="pb-0.5 md:pb-1 px-4 md:px-6 pt-0">
+                            <CardTitle className="text-base md:text-lg mb-0">View Options</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Date Range</Label>
-                                <Select value={viewRange} onValueChange={(v: any) => setViewRange(v)}>
-                                    <SelectTrigger>
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="today">Selected Date</SelectItem>
-                                        <SelectItem value="7days">Next 7 Days</SelectItem>
-                                        <SelectItem value="30days">Next 30 Days</SelectItem>
-                                        <SelectItem value="all">All Upcoming</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                        <CardContent className="pt-0 pb-0 px-4 md:px-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4">
+                                <div className="space-y-1 md:space-y-2">
+                                    <Label className="text-xs md:text-sm">Date Range</Label>
+                                    <Select value={viewRange} onValueChange={(v: any) => setViewRange(v)}>
+                                        <SelectTrigger className="h-9 md:h-10">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="today">Selected Date</SelectItem>
+                                            <SelectItem value="7days">Next 7 Days</SelectItem>
+                                            <SelectItem value="30days">Next 30 Days</SelectItem>
+                                            <SelectItem value="all">All Upcoming</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                            <div className="flex flex-col space-y-2">
-                                <Label>Select Date</Label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button
-                                            variant={"outline"}
-                                            className={cn(
-                                                "w-full justify-start text-left font-normal",
-                                                !selectedDate && "text-muted-foreground"
-                                            )}
-                                        >
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {selectedDate ? format(new Date(selectedDate), "PPP") : <span>Pick a date</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <Calendar
-                                            mode="single"
-                                            selected={new Date(selectedDate)}
-                                            onSelect={handleDateSelect}
-                                            initialFocus
-                                            modifiers={{
-                                                consultation: getAppointmentDatesByType("Initial Consultation"),
-                                                therapy: getAppointmentDatesByType("Therapy Session"),
-                                                discovery: getAppointmentDatesByType("Discovery Session"),
-                                                couples: getAppointmentDatesByType("Couples Therapy Session"),
-                                            }}
-                                            modifiersStyles={{
-                                                consultation: { color: '#3b82f6', fontWeight: 'bold', textDecoration: 'underline' }, // Blue
-                                                therapy: { color: '#22c55e', fontWeight: 'bold', textDecoration: 'underline' }, // Green
-                                                discovery: { color: '#a855f7', fontWeight: 'bold', textDecoration: 'underline' }, // Purple
-                                                couples: { color: '#ec4899', fontWeight: 'bold', textDecoration: 'underline' }, // Pink
-                                            }}
-                                        />
-                                    </PopoverContent>
-                                </Popover>
-                            </div>
+                                <div className="flex flex-col space-y-1 md:space-y-2">
+                                    <Label className="text-xs md:text-sm">Select Date</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant={"outline"}
+                                                className={cn(
+                                                    "w-full justify-start text-left font-normal h-9 md:h-10 text-sm",
+                                                    !selectedDate && "text-muted-foreground"
+                                                )}
+                                            >
+                                                <CalendarIcon className="mr-2 h-3 w-3 md:h-4 md:w-4" />
+                                                <span className="truncate">{selectedDate ? format(new Date(selectedDate), "PPP") : "Pick a date"}</span>
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start">
+                                            <Calendar
+                                                mode="single"
+                                                selected={new Date(selectedDate)}
+                                                onSelect={handleDateSelect}
+                                                initialFocus
+                                                modifiers={{
+                                                    consultation: getAppointmentDatesByType("Initial Consultation"),
+                                                    therapy: getAppointmentDatesByType("Therapy Session"),
+                                                    discovery: getAppointmentDatesByType("Discovery Session"),
+                                                    couples: getAppointmentDatesByType("Couples Therapy Session"),
+                                                }}
+                                                modifiersStyles={{
+                                                    consultation: { color: '#3b82f6', fontWeight: 'bold', textDecoration: 'underline' }, // Blue
+                                                    therapy: { color: '#22c55e', fontWeight: 'bold', textDecoration: 'underline' }, // Green
+                                                    discovery: { color: '#a855f7', fontWeight: 'bold', textDecoration: 'underline' }, // Purple
+                                                    couples: { color: '#ec4899', fontWeight: 'bold', textDecoration: 'underline' }, // Pink
+                                                }}
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
 
-                            <div className="space-y-2">
-                                <Label>Calendar Legend</Label>
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                        <span>Initial Consultation</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                                        <span>Therapy Session</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                                        <span>Discovery Session</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-pink-500"></div>
-                                        <span>Couples Therapy</span>
+                                <div className="space-y-1 md:space-y-2 hidden sm:block">
+                                    <Label className="text-xs md:text-sm">Calendar Legend</Label>
+                                    <div className="grid grid-cols-2 gap-1.5 md:gap-2 text-xs">
+                                        <div className="flex items-center gap-1.5 md:gap-2">
+                                            <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-blue-500 flex-shrink-0"></div>
+                                            <span className="text-xs">Initial Consultation</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 md:gap-2">
+                                            <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-green-500 flex-shrink-0"></div>
+                                            <span className="text-xs">Therapy Session</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 md:gap-2">
+                                            <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-purple-500 flex-shrink-0"></div>
+                                            <span className="text-xs">Discovery Session</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 md:gap-2">
+                                            <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-pink-500 flex-shrink-0"></div>
+                                            <span className="text-xs">Couples Therapy</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card className="md:col-span-2">
+                    <Card>
                         <CardHeader>
                             <CardTitle className="text-lg">
                                 {viewRange === "today" ? "Daily Schedule" : "Upcoming Appointments"}
@@ -1475,9 +1615,31 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                             </div>
                                                             <div className="flex-1 min-w-0">
                                                                 <div className="flex items-center gap-2">
-                                                                    <h4 className={`font-semibold text-lg ${pastDue ? 'text-red-700 dark:text-red-300' : ''}`}>
-                                                                        {appointment.clientName}
-                                                                    </h4>
+                                                                    {(() => {
+                                                                        const client = clients.find(c => c.name === appointment.clientName);
+                                                                        const clientId = client?.id;
+                                                                        const linkHref = clientId 
+                                                                            ? `/clients?highlight=${clientId}` 
+                                                                            : `/clients?client=${encodeURIComponent(appointment.clientName)}`;
+                                                                        
+                                                                        return clientId || appointment.clientName ? (
+                                                                            <Link
+                                                                                href={linkHref}
+                                                                                className={`font-semibold text-lg hover:underline transition-colors ${
+                                                                                    pastDue 
+                                                                                        ? 'text-red-700 dark:text-red-300 hover:text-red-800 dark:hover:text-red-200' 
+                                                                                        : 'text-primary'
+                                                                                }`}
+                                                                                aria-label={`View ${appointment.clientName} details`}
+                                                                            >
+                                                                                {appointment.clientName}
+                                                                            </Link>
+                                                                        ) : (
+                                                                            <h4 className={`font-semibold text-lg ${pastDue ? 'text-red-700 dark:text-red-300' : ''}`}>
+                                                                                {appointment.clientName}
+                                                                            </h4>
+                                                                        );
+                                                                    })()}
                                                                     {pastDue && (
                                                                         <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-red-500 text-white rounded-full">
                                                                             <AlertCircle className="h-3 w-3" />

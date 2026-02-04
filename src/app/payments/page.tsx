@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -63,6 +64,7 @@ function PaymentsContent() {
     const [selectedWeekSessions, setSelectedWeekSessions] = useState<Appointment[]>([]);
     const [isWeekSessionsDialogOpen, setIsWeekSessionsDialogOpen] = useState(false);
     const [selectedWeekLabel, setSelectedWeekLabel] = useState<string>("");
+    const [clients, setClients] = useState<any[]>([]);
 
     // Check for showUnpaid query param to auto-open unpaid report
     useEffect(() => {
@@ -74,6 +76,7 @@ function PaymentsContent() {
     useEffect(() => {
         loadData();
         loadExchangeRates();
+        loadClients();
         
         // Reload data when page comes into focus (useful after deletions elsewhere)
         const handleFocus = () => {
@@ -82,6 +85,18 @@ function PaymentsContent() {
         window.addEventListener('focus', handleFocus);
         return () => window.removeEventListener('focus', handleFocus);
     }, []);
+
+    const loadClients = async () => {
+        try {
+            const response = await fetch('/api/clients', { cache: 'no-store' });
+            if (response.ok) {
+                const data = await response.json();
+                setClients(data);
+            }
+        } catch (error) {
+            console.error('Error loading clients:', error);
+        }
+    };
 
     const loadExchangeRates = async () => {
         setIsLoadingRates(true);
@@ -1243,19 +1258,37 @@ function PaymentsContent() {
                     <DialogHeader>
                         <DialogTitle>Update Payment Status</DialogTitle>
                         <DialogDescription>
-                            {selectedAppointment && (
-                                <>
-                                    {selectedAppointment.clientName} - {new Date(selectedAppointment.date).toLocaleDateString()} at {selectedAppointment.time}
-                                    {selectedAppointment.paymentMethod && getAppointmentFee(selectedAppointment) > 0 && (
-                                        <span className="text-muted-foreground"> • {selectedAppointment.paymentMethod}</span>
-                                    )}
-                                    <br />
-                                    <span className="font-semibold">
-                                        {getCurrencySymbol(getAppointmentCurrency(selectedAppointment))}
-                                        {getAppointmentFee(selectedAppointment).toFixed(2)}
-                                    </span>
-                                </>
-                            )}
+                            {selectedAppointment && (() => {
+                                const client = clients.find((c: any) => c.name === selectedAppointment.clientName);
+                                const clientId = client?.id || selectedAppointment.clientId;
+                                const linkHref = clientId 
+                                    ? `/clients?highlight=${clientId}` 
+                                    : `/clients?client=${encodeURIComponent(selectedAppointment.clientName)}`;
+                                
+                                return (
+                                    <>
+                                        {selectedAppointment.clientName ? (
+                                            <Link
+                                                href={linkHref}
+                                                className="hover:underline text-primary transition-colors"
+                                                aria-label={`View ${selectedAppointment.clientName} details`}
+                                            >
+                                                {selectedAppointment.clientName}
+                                            </Link>
+                                        ) : (
+                                            <span>{selectedAppointment.clientName}</span>
+                                        )} - {new Date(selectedAppointment.date).toLocaleDateString()} at {selectedAppointment.time}
+                                        {selectedAppointment.paymentMethod && getAppointmentFee(selectedAppointment) > 0 && (
+                                            <span className="text-muted-foreground"> • {selectedAppointment.paymentMethod}</span>
+                                        )}
+                                        <br />
+                                        <span className="font-semibold">
+                                            {getCurrencySymbol(getAppointmentCurrency(selectedAppointment))}
+                                            {getAppointmentFee(selectedAppointment).toFixed(2)}
+                                        </span>
+                                    </>
+                                );
+                            })()}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -1365,7 +1398,26 @@ function PaymentsContent() {
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-3">
                                                         <div>
-                                                            <p className="font-semibold">{apt.clientName}</p>
+                                                            {(() => {
+                                                                const client = clients.find((c: any) => c.name === apt.clientName);
+                                                                const clientId = client?.id || apt.clientId;
+                                                                const linkHref = clientId 
+                                                                    ? `/clients?highlight=${clientId}` 
+                                                                    : `/clients?client=${encodeURIComponent(apt.clientName)}`;
+                                                                
+                                                                return apt.clientName ? (
+                                                                    <Link
+                                                                        href={linkHref}
+                                                                        className="font-semibold hover:underline text-primary transition-colors"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        aria-label={`View ${apt.clientName} details`}
+                                                                    >
+                                                                        {apt.clientName}
+                                                                    </Link>
+                                                                ) : (
+                                                                    <p className="font-semibold">{apt.clientName}</p>
+                                                                );
+                                                            })()}
                                                             <p className="text-sm text-muted-foreground">
                                                                 {new Date(apt.date).toLocaleDateString()} at {apt.time}
                                                             </p>
@@ -1529,9 +1581,28 @@ function PaymentsContent() {
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-3">
                                                         <div>
-                                                            <p className="font-semibold">
-                                                                {apt.clientName}
-                                                            </p>
+                                                            {(() => {
+                                                                const client = clients.find((c: any) => c.name === apt.clientName);
+                                                                const clientId = client?.id || apt.clientId;
+                                                                const linkHref = clientId 
+                                                                    ? `/clients?highlight=${clientId}` 
+                                                                    : `/clients?client=${encodeURIComponent(apt.clientName)}`;
+                                                                
+                                                                return apt.clientName ? (
+                                                                    <Link
+                                                                        href={linkHref}
+                                                                        className="font-semibold hover:underline text-primary transition-colors"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        aria-label={`View ${apt.clientName} details`}
+                                                                    >
+                                                                        {apt.clientName}
+                                                                    </Link>
+                                                                ) : (
+                                                                    <p className="font-semibold">
+                                                                        {apt.clientName}
+                                                                    </p>
+                                                                );
+                                                            })()}
                                                             <p className="text-sm text-muted-foreground">
                                                                 {new Date(apt.date).toLocaleDateString()} at {apt.time}
                                                             </p>

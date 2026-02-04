@@ -8,6 +8,7 @@ import { User, Archive, RotateCcw, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { GDPRDeleteDialog } from "@/components/ui/gdpr-delete-dialog";
+import Link from "next/link";
 
 interface Client {
     id: string;
@@ -169,7 +170,13 @@ export default function ArchivedClientsPage() {
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <User className="h-4 w-4 text-muted-foreground" />
-                                                <h3 className="font-semibold text-sm">{getClientName(client)}</h3>
+                                                <Link
+                                                    href={`/clients?highlight=${client.id}`}
+                                                    className="font-semibold text-sm hover:underline text-primary transition-colors"
+                                                    aria-label={`View ${getClientName(client)} details`}
+                                                >
+                                                    {getClientName(client)}
+                                                </Link>
                                             </div>
                                             {client.email && (
                                                 <p className="text-xs text-muted-foreground">{client.email}</p>

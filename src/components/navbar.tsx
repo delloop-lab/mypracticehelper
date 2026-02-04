@@ -348,7 +348,7 @@ export function Navbar() {
               className="text-xs sm:text-sm"
             >
               <span className="hidden sm:inline">Log out</span>
-              <span className="sm:hidden">Exit</span>
+              <span className="sm:hidden">Log out</span>
             </Button>
           </nav>
         </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, Suspense, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import mammoth from "mammoth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle, Globe, Sparkles, Loader2, X, Play, Pause, Save, Clock } from "lucide-react";
+import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle, Globe, Sparkles, Loader2, X, Play, Pause, Save, Clock, ArrowLeft } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { motion } from "framer-motion";
@@ -99,9 +100,7 @@ interface ClientsPageProps {
 }
 
 function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
-    console.log('[Clients Page] 🎬 RENDER START - ClientsPageContent function called');
     const searchParams = useSearchParams();
-    console.log('[Clients Page] 🎬 useSearchParams resolved');
     const router = useRouter();
     const [clients, setClients] = useState<Client[]>([]);
     const [recordings, setRecordings] = useState<any[]>([]);
@@ -608,6 +607,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [sessionDialogTab, setSessionDialogTab] = useState<"notes" | "attachments">("notes");
     const [sessionNotes, setSessionNotes] = useState<any[]>([]);
     const [isLoadingSessionNotes, setIsLoadingSessionNotes] = useState(false);
+    const isHandlingBackRef = useRef(false);
     
     // Session note counts for displaying indicators on session cards
     const [sessionNoteCounts, setSessionNoteCounts] = useState<Record<string, { recordings: number; written: number; admin: number }>>({});
@@ -618,6 +618,12 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [aiAssessmentResult, setAiAssessmentResult] = useState<string | null>(null);
     const [aiAssessmentDialogOpen, setAiAssessmentDialogOpen] = useState(false);
     const [currentNoteForAssessment, setCurrentNoteForAssessment] = useState<any>(null);
+
+    // Document Preview State
+    const [documentPreviewOpen, setDocumentPreviewOpen] = useState(false);
+    const [documentPreviewContent, setDocumentPreviewContent] = useState<string>("");
+    const [documentPreviewName, setDocumentPreviewName] = useState<string>("");
+    const [isLoadingPreview, setIsLoadingPreview] = useState(false);
     const [notificationModal, setNotificationModal] = useState<{ open: boolean; type: 'success' | 'error'; message: string }>({ open: false, type: 'success', message: '' });
     const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
     const [deleteTranscriptConfirmation, setDeleteTranscriptConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
@@ -706,22 +712,76 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    // Handle highlight and session query parameters (from session-notes page)
+    // SIMPLE: Process once when both params exist AND data is loaded
+    const hasProcessedParamsRef = useRef<string>('');
+    
+    // Extract values from searchParams - these are primitives so they'll only trigger useEffect when they actually change
+    const highlightClientId = searchParams.get('highlight') || '';
+    const sessionId = searchParams.get('session') || '';
+
     const handleOpenSession = async (session: Appointment, tab: "notes" | "attachments") => {
         setActiveSession(session);
         setSessionDialogTab(tab);
+        // Load session note counts to ensure recordings count is available for summary cards
+        // Use editingClient if available, otherwise find client by session's clientName
+        const clientForCounts = editingClient || clients.find(c => c.name === session.clientName);
+        if (clientForCounts) {
+            loadSessionNoteCounts(clientForCounts.name);
+        }
         if (tab === "notes") {
             await loadSessionNotes(session.id);
         }
     };
 
-    // Handle highlight and session query parameters (from session-notes page)
-    // SIMPLE: Process once when both params exist AND data is loaded
-    const hasProcessedParamsRef = useRef<string>('');
+    const handleBackToSessions = () => {
+        if (isHandlingBackRef.current) return;
+        
+        const targetClient =
+            editingClient ||
+            (activeSession ? clients.find(c => c.name === activeSession.clientName) : null);
+
+        if (!targetClient) {
+            setActiveSession(null);
+            return;
+        }
+
+        // Set flag FIRST to prevent dialog close handlers from interfering
+        isHandlingBackRef.current = true;
+
+        // Mark current paramKey as processed to prevent useEffect from reopening session
+        if (highlightClientId && sessionId) {
+            const currentParamKey = `${highlightClientId}-${sessionId}`;
+            hasProcessedParamsRef.current = currentParamKey;
+        }
+
+        // Ensure client dialog stays open FIRST, before closing session dialog
+        const actualSessions = getClientAppointments(targetClient.name).length;
+        const nextApt = getNextAppointment(targetClient.name);
+        setEditingClient(targetClient);
+        setFormData({
+            ...targetClient,
+            sessions: actualSessions,
+            nextAppointment: nextApt ? new Date(nextApt.date).toISOString().slice(0, 16) : ''
+        });
+        setIsAddDialogOpen(true);
+        setClientDialogTab('sessions');
+        
+        // Now close session dialog
+        setActiveSession(null);
+        
+        // Load session note counts
+        loadSessionNoteCounts(targetClient.name);
+
+        // Reset flag after a delay to allow state updates to complete
+        // This prevents the useEffect from reopening the session dialog
+        setTimeout(() => {
+            isHandlingBackRef.current = false;
+        }, 500);
+    };
     
     useEffect(() => {
-        const highlightClientId = searchParams.get('highlight');
-        const sessionId = searchParams.get('session');
-        const paramKey = highlightClientId ? `${highlightClientId}-${sessionId || ''}` : '';
+        const paramKey = highlightClientId ? `${highlightClientId}-${sessionId}` : '';
         
         // Reset when params cleared
         if (!highlightClientId) {
@@ -731,6 +791,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         
         // Skip if already processed this exact param combo
         if (hasProcessedParamsRef.current === paramKey) {
+            return;
+        }
+        
+        // Skip if we're currently handling back navigation
+        if (isHandlingBackRef.current) {
             return;
         }
         
@@ -753,9 +818,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         setEditingClient(client);
         setFormData(client);
         setIsAddDialogOpen(true);
+        setClientDialogTab('sessions');
+        loadSessionNoteCounts(client.name);
         
-        // Handle session
-        if (sessionId && appointments.length > 0) {
+        // Handle session - but skip if we're currently handling back navigation or if session dialog is closed
+        if (sessionId && appointments.length > 0 && !isHandlingBackRef.current && !activeSession) {
             const session = appointments.find(apt => apt.id === sessionId);
             if (session) {
                 setTimeout(() => handleOpenSession(session, "notes"), 500);
@@ -765,7 +832,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         // DON'T clear URL - prevents infinite loop
         // URL stays as /clients?highlight=...&session=... but that's fine
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchParams, clients.length, appointments.length]); // Depend on lengths, not arrays
+    }, [highlightClientId, sessionId, clients.length, appointments.length, activeSession]); // Use extracted values, not searchParams object
+
+    useEffect(() => {
+        if (isAddDialogOpen && editingClient && clientDialogTab === 'sessions') {
+            loadSessionNoteCounts(editingClient.name);
+        }
+    }, [isAddDialogOpen, editingClient, clientDialogTab]);
 
     const loadSessionNotes = async (sessionId: string) => {
         setIsLoadingSessionNotes(true);
@@ -797,6 +870,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     return;
                 }
 
+                // Calculate session date outside filter so it's accessible everywhere
+                const sessionClientId = editingClient?.id;
+                const sessionDate = new Date(session.date).toISOString().split('T')[0];
+
                 // Filter notes for this specific session
                 const notesForSession = allNotes.filter((note: any) => {
                     // For session notes: match by session_id first
@@ -806,8 +883,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     
                     // Also match by client ID and date for session notes
                     const noteClientId = note.clientId || note.client_id;
-                    const sessionClientId = editingClient?.id;
-                    const sessionDate = new Date(session.date).toISOString().split('T')[0];
                     const noteDate = note.sessionDate ? new Date(note.sessionDate).toISOString().split('T')[0] : null;
                     
                     // Match session notes by client ID and date
@@ -825,54 +900,140 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         }
                     }
                     
-                    // For recordings: ONLY match by session_id - recordings must be explicitly linked to a session
+                    // For recordings: match by session_id first, then fallback to client ID and date
                     if (note.source === 'recording') {
-                        // Only show recording if it's explicitly linked to THIS session
+                        // Primary: Show recording if it's explicitly linked to THIS session
                         if (note.sessionId === sessionId || note.session_id === sessionId) {
                             console.log('[Load Session Notes] Recording matched by session_id:', note.id);
                             return true;
                         }
                         
-                        // Don't show recordings that aren't linked to this specific session
-                        // (They will appear in the Recordings page instead)
+                        // Fallback: Match recordings by client ID and date if sessionId is not set
+                        // This handles cases where recordings weren't properly linked to sessions
+                        const recordingClientId = note.clientId || note.client_id;
+                        const recordingClientName = note.clientName;
+                        const recordingDate = note.date || note.created_at || note.createdDate;
+                        
+                        // Match by client ID and date
+                        if (recordingClientId && sessionClientId && recordingClientId === sessionClientId) {
+                            if (recordingDate) {
+                                const recordingDateStr = new Date(recordingDate).toISOString().split('T')[0];
+                                console.log('[Load Session Notes] Checking recording date match:', {
+                                    recordingId: note.id,
+                                    recordingDate: recordingDateStr,
+                                    sessionDate: sessionDate,
+                                    match: recordingDateStr === sessionDate
+                                });
+                                if (recordingDateStr === sessionDate) {
+                                    console.log('[Load Session Notes] Recording matched by client ID and date (fallback):', note.id);
+                                    return true;
+                                }
+                            } else {
+                                console.log('[Load Session Notes] Recording has no date:', note.id);
+                            }
+                        } else {
+                            console.log('[Load Session Notes] Recording client ID mismatch:', {
+                                recordingId: note.id,
+                                recordingClientId: recordingClientId,
+                                sessionClientId: sessionClientId,
+                                match: recordingClientId === sessionClientId
+                            });
+                        }
+                        
+                        // Fallback: Match by client name and date
+                        if (recordingClientName && session.clientName && 
+                            recordingClientName.toLowerCase() === session.clientName.toLowerCase()) {
+                            if (recordingDate) {
+                                const recordingDateStr = new Date(recordingDate).toISOString().split('T')[0];
+                                if (recordingDateStr === sessionDate) {
+                                    console.log('[Load Session Notes] Recording matched by client name and date (fallback):', note.id);
+                                    return true;
+                                }
+                            }
+                        } else {
+                            console.log('[Load Session Notes] Recording client name mismatch:', {
+                                recordingId: note.id,
+                                recordingClientName: recordingClientName,
+                                sessionClientName: session.clientName
+                            });
+                        }
+                        
+                        // Don't show recordings that don't match this session
                         return false;
                     }
                     
                     return false;
                 });
                 
-                console.log(`[Load Session Notes] Session ID: ${sessionId}, Client: ${session.clientName}, Client ID: ${editingClient?.id}`);
+                console.log(`[Load Session Notes] Session ID: ${sessionId}, Client: ${session.clientName}, Client ID: ${editingClient?.id}, Date: ${sessionDate}`);
                 console.log(`[Load Session Notes] Total notes available: ${allNotes.length}`);
+                
+                // Log all recordings for debugging
+                const allRecordings = allNotes.filter((n: any) => n.source === 'recording');
+                console.log(`[Load Session Notes] Total recordings available: ${allRecordings.length}`);
+                allRecordings.forEach((rec: any) => {
+                    console.log(`[Load Session Notes] Recording:`, {
+                        id: rec.id,
+                        sessionId: rec.sessionId || rec.session_id,
+                        clientId: rec.clientId || rec.client_id,
+                        clientName: rec.clientName,
+                        date: rec.date || rec.created_at || rec.createdDate,
+                        hasTranscript: !!(rec.transcript && rec.transcript.trim())
+                    });
+                });
+                
                 console.log(`[Load Session Notes] Notes for this client:`, allNotes.filter((n: any) => {
                     const noteClientId = n.clientId || n.client_id;
                     return noteClientId === editingClient?.id || n.clientName?.toLowerCase() === session.clientName?.toLowerCase();
                 }));
                 console.log(`[Load Session Notes] Found ${notesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
-                console.log(`[Load Session Notes] Matched notes:`, notesForSession);
+                console.log(`[Load Session Notes] Matched notes:`, notesForSession.map((n: any) => ({
+                    id: n.id,
+                    source: n.source,
+                    sessionId: n.sessionId || n.session_id,
+                    hasTranscript: !!(n.transcript && n.transcript.trim()),
+                    hasContent: !!(n.content && n.content.trim())
+                })));
                 
                 // Deduplicate notes by content and timestamp to prevent showing the same voice note twice
                 // This can happen if the same recording exists in both recordings and session_notes tables
                 const seenContentKeys = new Set<string>();
                 const deduplicatedNotes = notesForSession.filter((note: any) => {
-                    // Filter out empty notes - MUST have content OR transcript to be displayable
-                    // Audio alone is not enough because the player UI is inside the transcript block
+                    // Filter out empty notes - MUST have content OR transcript OR audioURL to be displayable
+                    // For recordings, audioURL is sufficient (transcript can be added later)
                     const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
                     const hasTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
+                    const hasAudio = note.audioURL && typeof note.audioURL === 'string' && note.audioURL.trim() !== '';
                     
-                    // If note has no displayable content, exclude it
-                    if (!hasContent && !hasTranscript) {
-                        console.log('[Load Session Notes] Filtering out empty/deleted note:', note.id, note.source, { content: note.content, transcript: note.transcript });
-                        return false;
+                    // For recordings, allow them through if they have audioURL (even without transcript yet)
+                    // For other notes, require content or transcript
+                    if (note.source === 'recording') {
+                        if (!hasContent && !hasTranscript && !hasAudio) {
+                            console.log('[Load Session Notes] Filtering out recording with no content/transcript/audio:', note.id);
+                            return false;
+                        }
+                    } else {
+                        // Non-recording notes must have content or transcript
+                        if (!hasContent && !hasTranscript) {
+                            console.log('[Load Session Notes] Filtering out empty/deleted note:', note.id, note.source, { content: note.content, transcript: note.transcript });
+                            return false;
+                        }
                     }
                     
-                    // Create a key from content + creation timestamp (rounded to the minute to handle slight differences)
+                    // For recordings, include the ID in the deduplication key to avoid false duplicates
+                    // (Two different recordings might have similar transcripts)
+                    // For other notes, use content + timestamp
                     const content = (note.content || note.transcript || '').trim().substring(0, 200);
                     const timestamp = note.createdDate || note.created_at || '';
                     const dateKey = timestamp ? new Date(timestamp).toISOString().substring(0, 16) : ''; // Round to minute
-                    const key = `${content}-${dateKey}`;
+                    
+                    // Include note ID for recordings to prevent false duplicates
+                    const key = note.source === 'recording' && note.id 
+                        ? `${note.source}-${note.id}-${content}-${dateKey}`
+                        : `${content}-${dateKey}`;
                     
                     if (seenContentKeys.has(key)) {
-                        console.log('[Load Session Notes] Removing duplicate note:', note.id);
+                        console.log('[Load Session Notes] Removing duplicate note:', note.id, note.source);
                         return false;
                     }
                     seenContentKeys.add(key);
@@ -899,28 +1060,34 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     // Load note counts for all sessions of a client (for displaying indicators on session cards)
     const loadSessionNoteCounts = async (clientName: string) => {
         try {
-            const response = await fetch('/api/session-notes');
-            if (response.ok) {
-                const allNotes = await response.json();
-                
+            const [notesResponse, recordingsResponse] = await Promise.all([
+                fetch('/api/session-notes'),
+                fetch('/api/recordings'),
+            ]);
+
+            if (notesResponse.ok) {
+                const allNotes = await notesResponse.json();
+
                 // Filter notes for this client
-                const clientNotes = allNotes.filter((note: any) => 
+                const clientNotes = allNotes.filter((note: any) =>
                     note.clientName?.toLowerCase() === clientName.toLowerCase()
                 );
-                
+
                 // Group counts by session ID
                 const counts: Record<string, { recordings: number; written: number; admin: number }> = {};
-                
+                const recordingIdsFromNotes = new Set<string>();
+
                 clientNotes.forEach((note: any) => {
                     const sessionId = note.sessionId || note.session_id;
                     if (!sessionId) return;
-                    
+
                     if (!counts[sessionId]) {
                         counts[sessionId] = { recordings: 0, written: 0, admin: 0 };
                     }
-                    
+
                     // Check note type
                     if (note.source === 'recording') {
+                        if (note.id) recordingIdsFromNotes.add(note.id);
                         counts[sessionId].recordings++;
                     } else if (note.source === 'written_session_note' || (note.id && note.id.startsWith('written-'))) {
                         counts[sessionId].written++;
@@ -928,11 +1095,97 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         counts[sessionId].admin++;
                     }
                 });
-                
+
+                // Add recordings linked to sessions (if not already counted via session notes)
+                if (recordingsResponse.ok) {
+                    const allRecordings = await recordingsResponse.json();
+                    const client = clients.find(c => c.name === clientName);
+                    const normalizedClientName = clientName.trim().toLowerCase();
+
+                    allRecordings.forEach((recording: any) => {
+                        const sessionId = recording.sessionId || recording.session_id;
+                        if (!sessionId) return;
+
+                        const matchesClientId = client && (recording.client_id === client.id || recording.clientId === client.id);
+                        const matchesClientName = recording.clientName?.trim().toLowerCase() === normalizedClientName;
+                        if (!matchesClientId && !matchesClientName) return;
+
+                        if (!counts[sessionId]) {
+                            counts[sessionId] = { recordings: 0, written: 0, admin: 0 };
+                        }
+
+                        if (!recording.id || !recordingIdsFromNotes.has(recording.id)) {
+                            counts[sessionId].recordings++;
+                        }
+                    });
+                }
+
                 setSessionNoteCounts(counts);
             }
         } catch (error) {
             console.error('Error loading session note counts:', error);
+        }
+    };
+
+    const handleViewAttachment = async (doc: ClientDocument) => {
+        if (!doc.url) {
+            alert('No URL available for this attachment');
+            return;
+        }
+
+        // Get file extension to determine file type
+        const fileExtension = doc.name.split('.').pop()?.toLowerCase() || '';
+        const officeTypes = ['odt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'ods', 'odp'];
+        const imageTypes = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+        const pdfType = 'pdf';
+
+        // Build full URL
+        const fullUrl = doc.url.startsWith('http') ? doc.url : `${window.location.origin}${doc.url}`;
+
+        // For .docx files, use mammoth.js to convert to HTML and display in preview dialog
+        if (fileExtension === 'docx') {
+            setIsLoadingPreview(true);
+            setDocumentPreviewName(doc.name);
+            setDocumentPreviewOpen(true);
+            setDocumentPreviewContent(""); // Clear previous content
+            
+            try {
+                // Fetch the document as an ArrayBuffer
+                const response = await fetch(fullUrl);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch document: ${response.statusText}`);
+                }
+                const arrayBuffer = await response.arrayBuffer();
+                
+                // Convert docx to HTML using mammoth
+                const result = await mammoth.convertToHtml({ arrayBuffer });
+                
+                // Set the HTML content for preview
+                setDocumentPreviewContent(result.value || '<p>Document converted successfully but content is empty.</p>');
+                
+                // Log any warnings (like unsupported features)
+                if (result.messages.length > 0) {
+                    console.log('Document conversion warnings:', result.messages);
+                }
+            } catch (error: any) {
+                console.error('Error converting document:', error);
+                setDocumentPreviewContent(`<div class="p-4 text-red-600"><p><strong>Error loading document:</strong></p><p>${error?.message || 'Unknown error occurred'}</p><p class="mt-2 text-sm">Please try downloading the file instead.</p></div>`);
+            } finally {
+                setIsLoadingPreview(false);
+            }
+        } else if (fileExtension === pdfType) {
+            // PDFs can be viewed directly
+            window.open(fullUrl, '_blank', 'noopener,noreferrer');
+        } else if (imageTypes.includes(fileExtension)) {
+            // Images can be viewed directly
+            window.open(fullUrl, '_blank', 'noopener,noreferrer');
+        } else if (officeTypes.includes(fileExtension)) {
+            // Other Office files - try to open directly or show message
+            // For .doc, .xls, .ppt (older formats), we can't easily preview them
+            window.open(fullUrl, '_blank', 'noopener,noreferrer');
+        } else {
+            // For other file types, try to open directly
+            window.open(fullUrl, '_blank', 'noopener,noreferrer');
         }
     };
 
@@ -1729,11 +1982,18 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
         try {
             // Update the note with the AI assessment as content
+            // IMPORTANT: Preserve all original note properties (spread operator) and explicitly preserve
+            // audioURL and other recording-related fields that might be needed for playback icons
             const updatedNote = {
                 ...currentNoteForAssessment,
                 content: aiAssessmentResult,
                 // Keep the transcript separate
-                transcript: currentNoteForAssessment.transcript || null
+                transcript: currentNoteForAssessment.transcript || null,
+                // Explicitly preserve audioURL to ensure playback icons remain visible
+                audioURL: currentNoteForAssessment.audioURL || null,
+                // Preserve the note ID and source to maintain proper identification
+                id: currentNoteForAssessment.id || null,
+                source: currentNoteForAssessment.source || null
             };
 
             // Save via session notes API
@@ -2303,6 +2563,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     if (open) {
                         setIsAddDialogOpen(true);
                     } else {
+                        // Don't close if we're currently handling back navigation from session dialog
+                        if (isHandlingBackRef.current) {
+                            return;
+                        }
                         handleDialogClose();
                     }
                 }}>
@@ -2316,9 +2580,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     {editingClient ? "Client Details" : "Add New Client"}
                                 </DialogTitle>
                                 <DialogDescription className="text-sm sm:text-base mt-1">
-                                    {editingClient
-                                        ? `Manage information and sessions for ${editingClient.name}`
-                                        : "Enter client information to add them to your practice"}
+                                    {editingClient ? (
+                                        <>
+                                            Manage information and sessions for{' '}
+                                            <span className="font-bold text-lg sm:text-xl text-primary">
+                                                {editingClient.firstName ? `${editingClient.firstName} ${editingClient.lastName}` : editingClient.name}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        "Enter client information to add them to your practice"
+                                    )}
                                 </DialogDescription>
                             </DialogHeader>
                         </div>
@@ -2677,21 +2948,32 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         <div className="space-y-2">
                                                             {formData.documents.map((doc, index) => (
                                                                 <div key={index} className="flex items-center justify-between p-2 border rounded-md bg-muted/50 text-sm">
-                                                                    <div className="flex items-center gap-2 overflow-hidden">
+                                                                    <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
                                                                         <File className="h-3 w-3 flex-shrink-0 text-blue-500" />
-                                                                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="hover:underline truncate">
-                                                                            {doc.name}
-                                                                        </a>
+                                                                        <span className="truncate flex-1">{doc.name}</span>
                                                                     </div>
-                                                                    <Button
-                                                                        type="button"
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-6 w-6 text-red-500 hover:text-red-600"
-                                                                        onClick={() => handleRemoveDocumentClick(index)}
-                                                                    >
-                                                                        <Trash2 className="h-3 w-3" />
-                                                                    </Button>
+                                                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6"
+                                                                            onClick={() => window.open(doc.url, '_blank', 'noopener,noreferrer')}
+                                                                            title="Open document"
+                                                                        >
+                                                                            <ExternalLink className="h-3 w-3" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-6 w-6 text-red-500 hover:text-red-600"
+                                                                            onClick={() => handleRemoveDocumentClick(index)}
+                                                                            title="Delete document"
+                                                                        >
+                                                                            <Trash2 className="h-3 w-3" />
+                                                                        </Button>
+                                                                    </div>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -3055,16 +3337,82 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     </DialogContent>
                 </Dialog>
 
+                {/* Document Preview Dialog */}
+                <Dialog open={documentPreviewOpen} onOpenChange={setDocumentPreviewOpen}>
+                    <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <File className="h-5 w-5 text-blue-500" />
+                                {documentPreviewName}
+                            </DialogTitle>
+                            <DialogDescription>
+                                Document preview
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex-1 overflow-y-auto py-4 min-h-0">
+                            {isLoadingPreview ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                                    <span className="ml-2 text-muted-foreground">Loading document...</span>
+                                </div>
+                            ) : (
+                                <div 
+                                    className="p-4 bg-card rounded-lg border text-sm [&_p]:mb-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-4 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-3 [&_h3]:text-lg [&_h3]:font-bold [&_h3]:mb-2 [&_ul]:list-disc [&_ul]:ml-6 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:ml-6 [&_ol]:mb-3 [&_li]:mb-1 [&_table]:border-collapse [&_table]:w-full [&_table]:mb-3 [&_td]:border [&_td]:p-2 [&_th]:border [&_th]:p-2 [&_th]:font-bold [&_strong]:font-bold [&_em]:italic"
+                                    dangerouslySetInnerHTML={{ __html: documentPreviewContent }}
+                                />
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setDocumentPreviewOpen(false);
+                                    setDocumentPreviewContent("");
+                                    setDocumentPreviewName("");
+                                }}
+                            >
+                                Close
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
                 {/* Session Details Dialog */}
-                <Dialog open={!!activeSession} onOpenChange={(open) => !open && setActiveSession(null)}>
-                    <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] sm:w-full max-h-[90vh] sm:max-h-[90vh] h-[90vh] sm:h-auto flex flex-col p-0 m-4 sm:m-0">
-                        <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
-                            <DialogHeader>
-                                <DialogTitle className="text-base sm:text-lg">Session Details</DialogTitle>
-                                <DialogDescription className="text-xs sm:text-sm">
-                                    {activeSession && `${new Date(activeSession.date).toLocaleDateString()} - ${activeSession.type}`}
-                                </DialogDescription>
-                            </DialogHeader>
+                <Dialog open={!!activeSession} onOpenChange={(open) => {
+                    if (!open && !isHandlingBackRef.current) {
+                        handleBackToSessions();
+                    }
+                }}>
+                <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 w-screen h-[100dvh] max-w-none max-h-none rounded-none overflow-y-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:w-full sm:h-auto sm:max-w-2xl sm:max-h-[90vh] sm:rounded-lg flex flex-col p-0 m-0 sm:m-0">
+                        <div className="sticky top-0 z-10 bg-background border-b">
+                            <div className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+                                <DialogHeader>
+                                    <DialogTitle className="text-base sm:text-lg">Session Details</DialogTitle>
+                                    <DialogDescription className="text-xs sm:text-sm">
+                                        {activeSession && `${new Date(activeSession.date).toLocaleDateString()} - ${activeSession.type}`}
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="flex items-center justify-between mt-3">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleBackToSessions}
+                                        className="h-8 px-3 text-xs font-medium"
+                                    >
+                                        <ArrowLeft className="h-4 w-4 mr-1" />
+                                        Back to Sessions
+                                    </Button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={handleBackToSessions}
+                                        className="h-8 w-8"
+                                        aria-label="Close session details"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
 
                         {activeSession && (
@@ -3082,29 +3430,36 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 </div>
 
                                 <TabsContent value="notes" className="flex flex-col flex-1 min-h-0 mt-0 px-4 sm:px-6">
-                                    <div className="py-4 pb-2 border-b border-border flex gap-2">
+                                    <div className="py-4 pb-2 border-b border-border flex flex-wrap gap-2">
                                         <Button 
                                             variant="outline" 
+                                            size="sm"
+                                            className="text-xs sm:text-sm flex-1 sm:flex-initial whitespace-nowrap"
                                             onClick={() => {
                                                 setAdminNoteContent("");
                                                 setIsAdminNoteDialogOpen(true);
                                             }}
                                         >
-                                            <Plus className="mr-2 h-4 w-4" />
-                                            Admin Note
+                                            <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                                            <span className="truncate">Admin Note</span>
                                         </Button>
                                         <Button 
                                             variant="outline" 
+                                            size="sm"
+                                            className="text-xs sm:text-sm flex-1 sm:flex-initial whitespace-nowrap"
                                             onClick={() => {
                                                 setWrittenNoteContent("");
                                                 setIsWrittenNoteDialogOpen(true);
                                             }}
                                         >
-                                            <Plus className="mr-2 h-4 w-4" />
-                                            Write Session Note
+                                            <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                                            <span className="truncate sm:hidden">Write Note</span>
+                                            <span className="hidden sm:inline">Write Session Note</span>
                                         </Button>
                                         <Button 
                                             variant="outline" 
+                                            size="sm"
+                                            className="text-xs sm:text-sm flex-1 sm:flex-initial whitespace-nowrap"
                                             onClick={() => {
                                                 if (activeSession && editingClient) {
                                                     const params = new URLSearchParams({
@@ -3117,28 +3472,32 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 }
                                             }}
                                         >
-                                            <Plus className="mr-2 h-4 w-4" />
-                                            Record Session Note
+                                            <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                                            <span className="truncate sm:hidden">Record Note</span>
+                                            <span className="hidden sm:inline">Record Session Note</span>
                                         </Button>
                                     </div>
-                                    <div className="py-4 space-y-4 flex-1 overflow-y-auto pr-1 sm:pr-2">
+                                    <div className="py-4 space-y-4 flex-1 min-h-0 flex flex-col pr-1 sm:pr-2">
                                     {/* Session Content Summary Cards */}
-                                    {!isLoadingSessionNotes && sessionNotes.length > 0 && (() => {
+                                    {!isLoadingSessionNotes && (() => {
                                         const adminNotes = sessionNotes.filter((n: any) => n.source === 'admin' || (n.id && n.id.startsWith('admin-')));
                                         const writtenNotes = sessionNotes.filter((n: any) => n.source === 'written_session_note' || (n.id && n.id.startsWith('written-')));
+                                        // Use sessionNoteCounts for recordings count (more reliable than filtering sessionNotes)
+                                        // This matches what's shown on the session card
+                                        const recordingsCount = activeSession?.id ? (sessionNoteCounts[activeSession.id]?.recordings || 0) : 0;
                                         const recordedNotes = sessionNotes.filter((n: any) => n.source === 'recording');
                                         const hasAttachments = activeSession?.attachments && activeSession.attachments.length > 0;
                                         
                                         return (
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                                                {/* Recorded Notes */}
-                                                {recordedNotes.length > 0 && (
+                                                {/* Recorded Notes - Use count from sessionNoteCounts if available, otherwise use filtered count */}
+                                                {(recordingsCount > 0 || recordedNotes.length > 0) && (
                                                     <div className="border-2 border-purple-300 dark:border-purple-700 rounded-lg p-3 bg-purple-50 dark:bg-purple-950/30">
                                                         <div className="flex items-center gap-2">
                                                             <Mic className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                                                             <div>
                                                                 <p className="text-xs font-semibold text-purple-800 dark:text-purple-200">
-                                                                    {recordedNotes.length} Recording{recordedNotes.length !== 1 ? 's' : ''}
+                                                                    {recordingsCount > 0 ? recordingsCount : recordedNotes.length} Recording{(recordingsCount > 0 ? recordingsCount : recordedNotes.length) !== 1 ? 's' : ''}
                                                                 </p>
                                                             </div>
                                                         </div>
@@ -3225,7 +3584,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     {isLoadingSessionNotes ? (
                                         <p className="text-muted-foreground text-center py-8">Loading session notes...</p>
                                     ) : sessionNotes.length > 0 ? (
-                                        <div className="space-y-6">
+                                        <div className="space-y-6 flex flex-col flex-1 min-h-0 sm:block sm:flex-none sm:min-h-0 relative">
                                             <TooltipProvider>
                                             {sessionNotes.filter((note: any) => {
                                                 // Filter out notes that have been deleted or are empty
@@ -3254,7 +3613,12 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                 note.content !== note.transcript;
                                                 
                                                 return (
-                                                <div key={note.id || index} className="border-2 border-border rounded-lg p-5 bg-card shadow-sm hover:shadow-md transition-shadow space-y-4">
+                                                <div
+                                                    key={note.id || index}
+                                                    className={`relative z-10 border-2 border-border rounded-lg p-5 bg-card shadow-sm hover:shadow-md transition-shadow space-y-4 flex flex-col ${
+                                                        hasAIClinicalAssessment ? "" : "sm:flex-1 sm:min-h-0"
+                                                    } sm:block sm:flex-none sm:min-h-0`}
+                                                >
                                                     <div className="flex items-center justify-between pb-2 border-b border-border">
                                                         <div className="text-sm font-medium text-foreground">
                                                             {note.createdDate || note.created_at 
@@ -3340,9 +3704,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     
                                                     {/* Show transcript FIRST - for live recordings this is the only content, for uploaded it's the original */}
                                                     {note.transcript && (
-                                                        <div>
-                                                            <div className="flex items-center justify-between mb-3">
-                                                                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                                        <div
+                                                            className={`flex flex-col ${
+                                                                hasAIClinicalAssessment ? "" : "sm:flex-1 sm:min-h-0"
+                                                            } sm:block sm:flex-none sm:min-h-0`}
+                                                        >
+                                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                                                                <p className="text-sm font-semibold text-foreground flex items-center gap-2 flex-shrink-0">
                                                                     <span className="text-base">📝</span>
                                                                     {/* Only show "Client's Words" for uploaded recordings (source === 'recording' with AI content) */}
                                                                     {/* Manual AI assessments of therapist's words should still show "Therapist's Words" */}
@@ -3350,7 +3718,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                         ? "Original Transcript (Client's Words):" 
                                                                         : "Original Transcript (Therapist's Words):"}
                                                                 </p>
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex items-center gap-2.5 sm:gap-2 flex-wrap min-w-0 overflow-visible">
                                                                     {/* Play button for audio recordings */}
                                                                     {note.audioURL && (
                                                                         <Tooltip>
@@ -3362,7 +3730,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                         e.stopPropagation();
                                                                                         handlePlayAudio(note);
                                                                                     }}
-                                                                                    className="h-7 w-7 p-0"
+                                                                                    className="h-8 w-8 sm:h-7 sm:w-7 p-0 flex-shrink-0"
                                                                                 >
                                                                                     {playingAudioId === note.id ? (
                                                                                         <Pause className="h-4 w-4 text-primary" />
@@ -3387,7 +3755,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                         e.stopPropagation();
                                                                                         handleEditTranscript(note);
                                                                                     }}
-                                                                                    className="h-7 w-7 p-0"
+                                                                                    className="h-8 w-8 sm:h-7 sm:w-7 p-0 flex-shrink-0"
                                                                                 >
                                                                                     <Edit className="h-4 w-4 text-primary" />
                                                                                 </Button>
@@ -3408,7 +3776,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                         e.stopPropagation();
                                                                                         handleDeleteTranscript(note);
                                                                                     }}
-                                                                                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                                                                                    className="h-8 w-8 sm:h-7 sm:w-7 p-0 text-red-500 hover:text-red-700 flex-shrink-0"
                                                                                 >
                                                                                     <Trash2 className="h-4 w-4" />
                                                                                 </Button>
@@ -3430,7 +3798,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                             e.stopPropagation();
                                                                                             handleSaveTranscript(note);
                                                                                         }}
-                                                                                        className="h-7 w-7 p-0 text-green-500 hover:text-green-700"
+                                                                                        className="h-8 w-8 sm:h-7 sm:w-7 p-0 text-green-500 hover:text-green-700 flex-shrink-0"
                                                                                     >
                                                                                         <Save className="h-4 w-4" />
                                                                                     </Button>
@@ -3448,7 +3816,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                             e.stopPropagation();
                                                                                             handleCancelEditTranscript();
                                                                                         }}
-                                                                                        className="h-7 w-7 p-0"
+                                                                                        className="h-8 w-8 sm:h-7 sm:w-7 p-0 flex-shrink-0"
                                                                                     >
                                                                                         <X className="h-4 w-4" />
                                                                                     </Button>
@@ -3475,7 +3843,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                     note
                                                                                 );
                                                                             }}
-                                                                            className="text-xs h-7 px-2"
+                                                                            className="text-xs h-8 sm:h-7 px-2 sm:px-2 flex-shrink-0"
                                                                         >
                                                                             {isProcessingAI ? (
                                                                                 <>
@@ -3503,12 +3871,18 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                         }
                                                                     }}
                                                                     defaultValue={note.transcript || ''}
-                                                                    className="min-h-[200px] font-mono text-xs"
+                                                                    className={`h-full sm:min-h-[200px] font-mono text-xs ${
+                                                                        hasAIClinicalAssessment ? "" : "flex-1 min-h-0"
+                                                                    }`}
                                                                     placeholder="Edit transcript..."
                                                                     autoFocus
                                                                 />
                                                             ) : (
-                                                                <div className="whitespace-pre-wrap text-sm bg-muted/30 p-4 rounded-md border border-border text-foreground leading-relaxed font-mono text-xs">
+                                                                <div
+                                                                    className={`whitespace-pre-wrap text-sm bg-muted/30 p-4 rounded-md border border-border text-foreground leading-relaxed font-mono text-xs ${
+                                                                        hasAIClinicalAssessment ? "" : "flex-1 min-h-0"
+                                                                    }`}
+                                                                >
                                                                     {note.transcript}
                                                                 </div>
                                                             )}
@@ -3602,21 +3976,40 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                             <div className="space-y-2 mt-2">
                                                 {activeSession.attachments.map((doc, index) => (
                                                     <div key={index} className="flex items-center justify-between p-2 border rounded-md bg-muted/50">
-                                                        <div className="flex items-center gap-2 overflow-hidden">
+                                                        <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
                                                             <File className="h-4 w-4 flex-shrink-0" />
-                                                            <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-sm hover:underline truncate">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleViewAttachment(doc)}
+                                                                className="text-sm hover:underline truncate text-left"
+                                                                title="Click to view attachment"
+                                                            >
                                                                 {doc.name}
-                                                            </a>
+                                                            </button>
                                                         </div>
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6 text-red-500"
-                                                            onClick={() => handleRemoveSessionDocumentClick(index)}
-                                                        >
-                                                            <Trash2 className="h-3 w-3" />
-                                                        </Button>
+                                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-7 px-2 text-xs"
+                                                                onClick={() => handleViewAttachment(doc)}
+                                                                title="View attachment"
+                                                            >
+                                                                <ExternalLink className="h-3 w-3 mr-1" />
+                                                                View
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-red-500"
+                                                                onClick={() => handleRemoveSessionDocumentClick(index)}
+                                                                title="Delete attachment"
+                                                            >
+                                                                <Trash2 className="h-3 w-3" />
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -3632,7 +4025,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                 {/* Admin Note Dialog */}
                 <Dialog open={isAdminNoteDialogOpen} onOpenChange={setIsAdminNoteDialogOpen}>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto z-[100]">
                         <DialogHeader>
                             <DialogTitle>Admin Note</DialogTitle>
                             <DialogDescription>
@@ -3681,7 +4074,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                 {/* Written Session Note Dialog */}
                 <Dialog open={isWrittenNoteDialogOpen} onOpenChange={setIsWrittenNoteDialogOpen}>
-                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto z-[100]">
                         <DialogHeader>
                             <DialogTitle>Write Session Note</DialogTitle>
                             <DialogDescription>
@@ -4138,15 +4531,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             >
                                 <Card
                                     className={`hover:shadow-md transition-all hover:border-primary/50 group relative ${
-                                        isSelectionMode ? '' : 'cursor-pointer'
+                                        isSelectionMode ? 'cursor-pointer' : ''
                                     } ${selectedClientIds.has(client.id) ? 'border-primary border-2' : ''} ${
                                         isClientInactive(client.name) && activeTab !== 'archived' ? 'opacity-50' : ''
                                     }`}
                                     onClick={() => {
                                         if (isSelectionMode) {
                                             toggleClientSelection(client.id);
-                                        } else {
-                                            handleEdit(client);
                                         }
                                     }}
                                 >
@@ -4207,9 +4598,20 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     <CardContent className={`px-3 py-1 ${isSelectionMode ? 'pl-10' : ''}`}>
                                         <div className="overflow-hidden min-w-0">
                                             <div className="flex items-baseline gap-1.5">
-                                                <p className="font-medium truncate text-sm leading-none flex-1">
-                                                    {client.firstName ? `${client.firstName} ${client.lastName}` : client.name}
-                                                </p>
+                                                {isSelectionMode ? (
+                                                    <p className="font-medium truncate text-sm leading-none flex-1">
+                                                        {client.firstName ? `${client.firstName} ${client.lastName}` : client.name}
+                                                    </p>
+                                                ) : (
+                                                    <Link
+                                                        href={`/clients?highlight=${client.id}`}
+                                                        className="font-medium truncate text-sm leading-none flex-1 hover:underline text-primary transition-colors"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        aria-label={`View ${client.firstName ? `${client.firstName} ${client.lastName}` : client.name} details`}
+                                                    >
+                                                        {client.firstName ? `${client.firstName} ${client.lastName}` : client.name}
+                                                    </Link>
+                                                )}
                                             </div>
                                             {client.preferredName && (
                                                 <p className="text-[10px] text-muted-foreground truncate mt-0.5">
