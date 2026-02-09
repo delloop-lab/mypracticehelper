@@ -1,0 +1,13 @@
+{
+  "name": "screenshot-capture",
+  "version": "1.0.0",
+  "description": "Automated screenshot capture for help documentation",
+  "main": "capture-screenshots.js",
+  "scripts": {
+    "capture": "node capture-screenshots.js",
+    "capture:headless": "headless=true node capture-screenshots.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.0.0"
+  }
+}

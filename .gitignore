@@ -37,3 +37,19 @@ next-env.d.ts
 .backups/
 
 .vercel
+
+# help system and screenshots (temporary - not ready for GitHub)
+help-content.json
+help-preview.html
+help-standalone.html
+help-screenshots/
+scripts/capture-screenshots.js
+scripts/generate-standalone-help.js
+SCREENSHOT_CHECKLIST.md
+SCREENSHOT_SETUP.md
+run-screenshots.bat
+check-install-status.bat
+install-puppeteer.bat
+reinstall-puppeteer.bat
+run-screenshots-with-login.bat
+view-help-preview.bat

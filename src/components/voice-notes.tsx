@@ -791,9 +791,25 @@ export function VoiceNotes() {
             return;
         }
 
-        const allowed = ["audio/mp3", "audio/webm", "audio/m4u", "audio/wav", "audio/m4a", "audio/x-m4a", "audio/mp4", "audio/mpeg"];
-        if (!allowed.includes(file.type)) {
-            setError("Unsupported audio file type");
+        const allowed = ["audio/mp3", "audio/webm", "video/webm", "audio/m4u", "audio/wav", "audio/m4a", "audio/x-m4a", "audio/mp4", "audio/mpeg", "video/mp4"];
+        const fileExtension = file.name.split('.').pop()?.toLowerCase();
+        const isAllowedType = allowed.includes(file.type) || 
+            (fileExtension === 'webm' && (file.type.startsWith('audio/') || file.type.startsWith('video/'))) ||
+            (fileExtension === 'mp3' && file.type.startsWith('audio/')) ||
+            (fileExtension === 'wav' && file.type.startsWith('audio/')) ||
+            (fileExtension === 'm4a' && (file.type.startsWith('audio/') || file.type === 'audio/x-m4a')) ||
+            (fileExtension === 'mp4' && (file.type.startsWith('audio/') || file.type.startsWith('video/'))) ||
+            (fileExtension === 'ogg' && file.type.startsWith('audio/')) ||
+            (fileExtension === 'aac' && file.type.startsWith('audio/'));
+        
+        if (!isAllowedType) {
+            console.warn('[Voice Notes] File type check failed:', { 
+                fileName: file.name, 
+                fileType: file.type, 
+                fileExtension,
+                allowedTypes: allowed 
+            });
+            setError(`Unsupported audio file type: ${file.type || 'unknown'}. Supported: .mp3, .webm, .wav, .m4a, .mp4, .ogg, .aac`);
             return;
         }
 
@@ -1136,17 +1152,19 @@ export function VoiceNotes() {
         const notes: NoteSection[] = isUploadedFile ? [{ title: "AI Clinical Assessment", content: structuredText }] : [];
         setStructuredNotes(notes);
 
+        // Stop the spinner now that transcription is complete
+        // Saving will happen in the background
+        setIsProcessing(false);
+
         try {
             // Save the raw-but-formatted transcript, and keep AI Clinical Assessment separately
             // Include client information and session ID if available
             const sessionId = selectedSessionId || undefined;
             await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId);
             window.dispatchEvent(new Event("recordings-updated"));
-            setIsProcessing(false);
         } catch (err: any) {
             console.error("Failed to save recording:", err);
             setError(err?.message || "Failed to save recording. Please try again.");
-            setIsProcessing(false);
         }
     };
 
@@ -1811,7 +1829,7 @@ export function VoiceNotes() {
                 >
                     <input
                         type="file"
-                        accept="audio/*,.mp3,.wav,.m4a,.webm,.mp4,.mpeg,.ogg,.aac"
+                        accept="audio/*,video/webm,.mp3,.wav,.m4a,.webm,.mp4,.mpeg,.ogg,.aac"
                         onChange={handleFileUpload}
                         disabled={!selectedClientId || !selectedSessionId}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"

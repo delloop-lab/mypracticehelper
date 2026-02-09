@@ -1081,13 +1081,34 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     const sessionId = note.sessionId || note.session_id;
                     if (!sessionId) return;
 
+                    // Skip soft-deleted notes (content, transcript, and audio_url are all null/empty)
+                    const hasContent = note.content && note.content.trim().length > 0;
+                    const hasTranscript = note.transcript && note.transcript.trim().length > 0;
+                    const hasAudio = note.audioURL || note.audio_url;
+                    
+                    // Only count notes that have actual content
+                    if (!hasContent && !hasTranscript && !hasAudio) {
+                        return; // Skip empty/soft-deleted notes
+                    }
+
                     if (!counts[sessionId]) {
                         counts[sessionId] = { recordings: 0, written: 0, admin: 0 };
                     }
 
                     // Check note type
                     if (note.source === 'recording') {
-                        if (note.id) recordingIdsFromNotes.add(note.id);
+                        // Store both the note ID (recording-{id}) and the actual recording ID for deduplication
+                        if (note.id) {
+                            recordingIdsFromNotes.add(note.id);
+                            // Also add the actual recording ID if available (for deduplication)
+                            if (note.recordingId) {
+                                recordingIdsFromNotes.add(note.recordingId);
+                            } else if (note.id.startsWith('recording-')) {
+                                // Extract numeric ID from "recording-{id}" format
+                                const numericId = note.id.replace('recording-', '');
+                                recordingIdsFromNotes.add(numericId);
+                            }
+                        }
                         counts[sessionId].recordings++;
                     } else if (note.source === 'written_session_note' || (note.id && note.id.startsWith('written-'))) {
                         counts[sessionId].written++;
@@ -1114,7 +1135,13 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             counts[sessionId] = { recordings: 0, written: 0, admin: 0 };
                         }
 
-                        if (!recording.id || !recordingIdsFromNotes.has(recording.id)) {
+                        // Check if this recording was already counted via session notes
+                        // Check both the recording ID and the "recording-{id}" format
+                        const recordingId = recording.id?.toString() || '';
+                        const recordingNoteId = `recording-${recordingId}`;
+                        const alreadyCounted = recordingIdsFromNotes.has(recordingId) || recordingIdsFromNotes.has(recordingNoteId);
+                        
+                        if (!alreadyCounted) {
                             counts[sessionId].recordings++;
                         }
                     });
@@ -1199,14 +1226,30 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         setAppointments(updatedAppointments);
 
         try {
-            await fetch('/api/appointments', {
+            const response = await fetch('/api/appointments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updatedAppointments),
             });
-            setActiveSession(null);
+            
+            if (response.ok) {
+                // Reload appointments from server to ensure we have the latest data
+                const data = await response.json();
+                if (data && Array.isArray(data)) {
+                    setAppointments(data);
+                } else {
+                    // Fallback: force reload appointments
+                    await loadAppointments(true);
+                }
+                setActiveSession(null);
+                setNotificationModal({ open: true, type: 'success', message: 'Attachments saved successfully' });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to save attachments: ${errorData.error || 'Please try again'}` });
+            }
         } catch (error) {
             console.error('Error saving session:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error saving attachments. Please try again.' });
         }
     };
 
@@ -1257,6 +1300,12 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     attachments: prev.attachments?.filter((_, i) => i !== deleteSessionDocConfirm.index) || []
                 };
             });
+            // Also update the appointments array immediately so the icon updates
+            setAppointments(prev => prev.map(apt => 
+                apt.id === activeSession?.id 
+                    ? { ...apt, attachments: apt.attachments?.filter((_, i) => i !== deleteSessionDocConfirm.index) || [] }
+                    : apt
+            ));
             setDeleteSessionDocConfirm({ isOpen: false, index: null });
         }
     };
@@ -1292,8 +1341,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     // Note: Sessions count is now user-editable and won't be auto-updated from appointments
     // Users can manually set the total number of sessions if needed
 
-    const loadAppointments = async () => {
-        if (appointments.length > 0) return;
+    const loadAppointments = async (force = false) => {
+        if (!force && appointments.length > 0) return;
         
         try {
             const controller = new AbortController();
@@ -2142,6 +2191,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             if (response.ok) {
                 if (activeSession) {
                     await loadSessionNotes(activeSession.id);
+                }
+                // Refresh session note counts to update icons
+                if (editingClient) {
+                    await loadSessionNoteCounts(editingClient.name);
                 }
                 const isAdminNote = note.source === 'admin' || (note.id && note.id.startsWith('admin-'));
                 const noteType = isAdminNote ? 'Admin note' : 'Session note';
@@ -4184,6 +4237,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     onConfirm={confirmRemoveDocument}
                     title="Delete Document"
                     description="Are you sure you want to remove this document from the client record? This action cannot be undone."
+                    requireConfirmation={false}
+                    confirmButtonText="Delete"
+                />
+
+                {/* Delete Session Attachment Confirmation Dialog */}
+                <DeleteConfirmationDialog
+                    open={deleteSessionDocConfirm.isOpen}
+                    onOpenChange={(open) => setDeleteSessionDocConfirm({ isOpen: open, index: open ? deleteSessionDocConfirm.index : null })}
+                    onConfirm={confirmRemoveSessionDocument}
+                    title="Delete Attachment"
+                    description={`Are you sure you want to delete this attachment from the session? This will remove it from the session but you'll need to click "Save Attachments" to save the change.`}
                     requireConfirmation={false}
                     confirmButtonText="Delete"
                 />

@@ -22,7 +22,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File, Mic, Play, MapPin, Loader2 } from "lucide-react";
+import { FileText, Calendar, Search, Filter, Trash2, Edit, Plus, Upload, File, Mic, Play, MapPin, Loader2, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
@@ -483,6 +483,59 @@ function SessionNotesContent() {
 
     const toggleAudioPlayback = (noteId: string) => {
         setPlayingId(prev => (prev === noteId ? null : noteId));
+    };
+
+    const handleDownloadAudio = async (note: SessionNote) => {
+        if (!note.audioURL) {
+            console.warn('[Session Notes] No audioURL for note:', note.id);
+            return;
+        }
+        
+        try {
+            console.log('[Session Notes] Downloading audio for note:', note.id, 'URL:', note.audioURL);
+            
+            // Convert relative URL to absolute if needed
+            const audioUrl = note.audioURL.startsWith('http') 
+                ? note.audioURL 
+                : `${window.location.origin}${note.audioURL}`;
+            
+            console.log('[Session Notes] Fetching audio from:', audioUrl);
+            
+            // Fetch the audio file as a blob
+            const response = await fetch(audioUrl);
+            if (!response.ok) {
+                console.error('[Session Notes] Failed to fetch audio:', response.status, response.statusText);
+                alert('Failed to download audio file. Please try again.');
+                return;
+            }
+            
+            const blob = await response.blob();
+            console.log('[Session Notes] Audio blob size:', blob.size, 'bytes');
+            
+            // Create object URL from blob
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // Create download link
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            const fileName = note.clientName && note.sessionDate
+                ? `${note.clientName}-${new Date(note.sessionDate).toISOString().split('T')[0]}.webm`
+                : `recording-${note.id}.webm`;
+            a.download = fileName;
+            console.log('[Session Notes] Downloading as:', fileName);
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Clean up blob URL after a short delay
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+            
+            console.log('[Session Notes] Download initiated successfully');
+        } catch (error) {
+            console.error('[Session Notes] Error downloading audio:', error);
+            alert('Failed to download audio file. Please try again.');
+        }
     };
 
     useEffect(() => {
@@ -1058,25 +1111,36 @@ function SessionNotesContent() {
                                                                     <Trash2 className="h-4 w-4" />
                                                                 </Button>
                                                                 {note.source === 'recording' && note.audioURL && (
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        onClick={() => toggleAudioPlayback(note.id)}
-                                                                        aria-pressed={playingId === note.id}
-                                                                        title={playingId === note.id ? "Stop recording" : "Play recording"}
-                                                                        className={
-                                                                            playingId === note.id
-                                                                                ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
-                                                                                : "text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/20"
-                                                                        }
-                                                                        disabled={loadingAudioIds.has(note.id)}
-                                                                    >
-                                                                        {loadingAudioIds.has(note.id) ? (
-                                                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                                                        ) : (
-                                                                            <Play className="h-4 w-4" style={playingId === note.id ? { fill: 'currentColor' } : {}} />
-                                                                        )}
-                                                                    </Button>
+                                                                    <>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            onClick={() => toggleAudioPlayback(note.id)}
+                                                                            aria-pressed={playingId === note.id}
+                                                                            title={playingId === note.id ? "Stop recording" : "Play recording"}
+                                                                            className={
+                                                                                playingId === note.id
+                                                                                    ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                                                                                    : "text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950/20"
+                                                                            }
+                                                                            disabled={loadingAudioIds.has(note.id)}
+                                                                        >
+                                                                            {loadingAudioIds.has(note.id) ? (
+                                                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                                            ) : (
+                                                                                <Play className="h-4 w-4" style={playingId === note.id ? { fill: 'currentColor' } : {}} />
+                                                                            )}
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            onClick={() => handleDownloadAudio(note)}
+                                                                            title="Download audio file"
+                                                                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/20"
+                                                                        >
+                                                                            <Download className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </>
                                                                 )}
                                                             </div>
                                                         </div>
