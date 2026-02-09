@@ -28,7 +28,7 @@ echo.
 echo Email: %LOGIN_EMAIL%
 echo Password: ********
 echo.
-echo These will be used when you run: npm run screenshots
+echo Configuration saved for future use
 echo.
 echo Note: You may need to close and reopen your terminal for changes to take effect.
 echo.
