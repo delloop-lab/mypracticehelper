@@ -612,13 +612,15 @@ export function VoiceNotes() {
         }
 
         try {
-            // Get stream with audio constraints (no sample rate constraint - browser defaults to 48kHz)
+            // Get stream with audio-only constraints (explicitly disable video)
+            // Browser will still choose its preferred audio settings (commonly 48kHz)
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true
-                } 
+                },
+                video: false
             });
             
             streamRef.current = stream; // Store stream for cleanup
