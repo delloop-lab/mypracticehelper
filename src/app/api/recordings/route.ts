@@ -5,13 +5,16 @@ import { checkAuthentication } from '@/lib/auth';
 
 export async function GET(request: Request) {
     try {
-        // Check authentication (handles both new and fallback methods)
         const { userId, isFallback, userEmail } = await checkAuthentication(request);
-        
-        // If fallback auth, show legacy recordings (recordings without user_id)
+        const { searchParams } = new URL(request.url);
+        const unallocatedOnly = searchParams.get('unallocated') === 'true';
+
         if (isFallback && userEmail === 'claire@claireschillaci.com') {
             const recordings = await getRecordings(null);
-            return NextResponse.json(recordings);
+            const filtered = unallocatedOnly
+                ? recordings.filter((r: any) => !(r.client_id ?? r.clientId) && !(r.session_id ?? r.sessionId))
+                : recordings;
+            return NextResponse.json(filtered);
         }
         
         if (!userId) {
@@ -40,14 +43,15 @@ export async function GET(request: Request) {
             .is('user_id', null)
             .order('created_at', { ascending: false });
         
-        // Combine both sets and remove duplicates
         const allRecordings = [...(userRecordings || []), ...(legacyRecordings || [])];
         const uniqueRecordings = Array.from(
             new Map(allRecordings.map(r => [r.id, r])).values()
         );
-        
-        // Use the existing mapping logic from getRecordings
-        const mappedRecordings = uniqueRecordings.map((recording: any) => {
+        const toMap = unallocatedOnly
+            ? uniqueRecordings.filter((r: any) => !r.session_id && !r.client_id)
+            : uniqueRecordings;
+
+        const mappedRecordings = toMap.map((recording: any) => {
             let notes: any[] = [];
             let transcriptText: string = recording.transcript || '';
 
@@ -79,7 +83,9 @@ export async function GET(request: Request) {
                 clientId: recording.client_id || recording.clientId,
                 client_id: recording.client_id,
                 session_id: recording.session_id || null,
-                sessionId: recording.session_id || null
+                sessionId: recording.session_id || null,
+                flagged: recording.flagged ?? false,
+                flaggedAt: recording.flagged_at || null
             };
         });
         
@@ -195,6 +201,65 @@ export async function PUT(request: Request) {
 
     } catch (error) {
         return NextResponse.json({ error: 'Failed to update recordings' }, { status: 500 });
+    }
+}
+
+export async function PATCH(request: Request) {
+    try {
+        const { userId, isFallback } = await checkAuthentication(request);
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        if (isFallback) {
+            return NextResponse.json({
+                error: 'Please run the migration script to assign your data to your user account before making changes.',
+            }, { status: 403 });
+        }
+
+        const body = await request.json();
+        const { id } = body;
+        if (!id) {
+            return NextResponse.json({ error: 'Recording id is required' }, { status: 400 });
+        }
+
+        const { data: recording, error: fetchError } = await supabase
+            .from('recordings')
+            .select('id, user_id')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !recording) {
+            return NextResponse.json({ error: 'Recording not found' }, { status: 404 });
+        }
+        if (recording.user_id !== userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+        }
+
+        const updates: Record<string, unknown> = {};
+        if (body.client_id !== undefined) updates.client_id = body.client_id;
+        if (body.session_id !== undefined) updates.session_id = body.session_id;
+        if (body.flagged !== undefined) {
+            updates.flagged = Boolean(body.flagged);
+            updates.flagged_at = body.flagged ? new Date().toISOString() : null;
+        }
+        if (Object.keys(updates).length === 0) {
+            return NextResponse.json({ error: 'No valid updates provided' }, { status: 400 });
+        }
+
+        const { error } = await supabase
+            .from('recordings')
+            .update(updates)
+            .eq('id', id)
+            .eq('user_id', userId);
+
+        if (error) {
+            console.error('[Recordings PATCH] Error:', error);
+            return NextResponse.json({ error: 'Failed to update recording' }, { status: 500 });
+        }
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error('[Recordings PATCH] Error:', error);
+        return NextResponse.json({ error: 'Failed to update recording' }, { status: 500 });
     }
 }
 

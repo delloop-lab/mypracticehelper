@@ -54,7 +54,10 @@ export function VoiceNotes() {
     const audioChunksRef = useRef<Blob[]>([]);
     const transcriptRef = useRef<string>("");
     const streamRef = useRef<MediaStream | null>(null);
-    const isRecordingStoppedRef = useRef<boolean>(false);
+    // Plan 1+3: Use ref for restart decision - avoids stale isRecording closure in onend.
+    const isActivelyRecordingRef = useRef<boolean>(false);
+    // Plan 3: Resolve when recognition fires onend during stop flow - capture final results ASAP.
+    const onEndResolveRef = useRef<(() => void) | null>(null);
 
     // Load clients on mount
     useEffect(() => {
@@ -442,7 +445,8 @@ export function VoiceNotes() {
         }
     };
 
-    // Initialize SpeechRecognition (WebKit only - works in Chrome/Edge)
+    // Plan 1: SpeechRecognition instance created once on mount. Start/stop are imperative in startRecording/stopRecording.
+    // No [isRecording] dependency - avoids teardown/recreate on toggle and timing races with final results.
     useEffect(() => {
         if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
             const SpeechRecognition = (window as any).webkitSpeechRecognition;
@@ -450,57 +454,51 @@ export function VoiceNotes() {
             rec.continuous = true;
             rec.interimResults = true;
             rec.lang = "en-US";
+            // Plan 1A+3B: Never block onresult - final results often arrive during/after stop(). Blocking drops them.
             rec.onresult = (ev: any) => {
-                // Don't update transcript if recording has been stopped
-                if (isRecordingStoppedRef.current) {
-                    return;
-                }
-                
                 // Build complete transcript from ALL results (not just new ones)
-                // This ensures we capture everything even if recognition restarts
                 let completeFinalTranscript = "";
                 let latestInterim = "";
-                
+
                 for (let i = 0; i < ev.results.length; i++) {
                     const transcript = ev.results[i][0].transcript;
                     if (ev.results[i].isFinal) {
                         completeFinalTranscript += transcript + " ";
                     } else {
-                        // Only keep the latest interim result
                         latestInterim = transcript;
                     }
                 }
-                
-                // Update the ref with all final results (this is what we'll save)
+
+                // Plan 4: transcriptRef is sole source of truth for persistence. Always update.
                 transcriptRef.current = completeFinalTranscript.trim();
-                
-                // Update display state with final + interim
+
+                // UI only - never used for saving (Plan 4)
                 const displayText = completeFinalTranscript.trim() + (latestInterim ? " " + latestInterim + "..." : "");
                 setTranscript(displayText);
             };
             rec.onerror = (ev: any) => {
-                // Treat "no-speech" as a benign warning instead of an error
                 if (ev.error === "no-speech") {
                     console.warn("No speech detected - this is normal if you haven't spoken yet");
                     return;
                 }
-
                 console.error("Speech recognition error:", ev.error);
                 setError(`Recognition error: ${ev.error}`);
                 setIsRecording(false);
+                isActivelyRecordingRef.current = false;
             };
+            // Plan 1: Use ref not state - isRecording would be stale closure. Restart only when actively recording.
             rec.onend = () => {
-                // If recording is still active and hasn't been stopped, restart recognition to keep it continuous
-                if (isRecording && !isRecordingStoppedRef.current && recognitionRef.current) {
+                if (isActivelyRecordingRef.current && recognitionRef.current) {
                     try {
                         recognitionRef.current.start();
                     } catch (e) {
                         console.error("Failed to restart recognition:", e);
                     }
+                } else if (onEndResolveRef.current) {
+                    // Plan 3A: We requested stop - recognition has ended. Resolve so stopRecording can capture final transcript.
+                    onEndResolveRef.current();
+                    onEndResolveRef.current = null;
                 }
-            };
-            rec.onstart = () => {
-                // Speech recognition started
             };
             recognitionRef.current = rec;
         } else {
@@ -511,7 +509,7 @@ export function VoiceNotes() {
                 recognitionRef.current.stop();
             }
         };
-    }, [isRecording]);
+    }, []);
 
     // Cleanup MediaRecorder and stream on unmount
     useEffect(() => {
@@ -578,7 +576,8 @@ export function VoiceNotes() {
         setIsUploadedFile(false);
         setSaveStatus("idle");
         audioChunksRef.current = [];
-        isRecordingStoppedRef.current = false; // Reset stop flag when starting new recording
+        onEndResolveRef.current = null;
+        isActivelyRecordingRef.current = true; // Plan 1: Used by onend for restart vs stop flow
 
         // Check if getUserMedia is available
         if (typeof window === "undefined") {
@@ -721,19 +720,16 @@ export function VoiceNotes() {
     };
 
     const stopRecording = () => {
-        // Mark recording as stopped to prevent further transcript updates
-        isRecordingStoppedRef.current = true;
-        
-        // Stop the timer first
+        // Plan 3B: Signal stop so onend won't restart. Don't block onresult - let final results arrive.
+        isActivelyRecordingRef.current = false;
+
         if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
         }
-        
-        // Stop media recorder
+
         mediaRecorderRef.current?.stop();
-        
-        // Stop speech recognition and wait a bit for final results
+
         if (recognitionRef.current) {
             try {
                 recognitionRef.current.stop();
@@ -741,12 +737,18 @@ export function VoiceNotes() {
                 console.warn("Error stopping recognition:", e);
             }
         }
-        
+
         setIsRecording(false);
 
-        // Wait a bit longer to ensure final transcript is captured
-        setTimeout(() => {
-            // Determine the best MIME type based on browser support
+        // Plan 3A: Wait for recognition onend (final results flushed) or 1.5s fallback. Capture ASAP, not arbitrary delay.
+        const onEndPromise = new Promise<void>((resolve) => {
+            onEndResolveRef.current = resolve;
+        });
+        const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+
+        Promise.race([onEndPromise, timeoutPromise]).then(() => {
+            onEndResolveRef.current = null;
+
             let mimeType = "audio/webm";
             if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
                 mimeType = "audio/webm;codecs=opus";
@@ -757,30 +759,22 @@ export function VoiceNotes() {
             } else if (MediaRecorder.isTypeSupported("audio/m4a")) {
                 mimeType = "audio/m4a";
             }
-            
+
             const blob = new Blob(audioChunksRef.current, { type: mimeType });
             const url = URL.createObjectURL(blob);
             setAudioBlob(blob);
             setAudioURL(url);
-            setIsUploadedFile(false); // Reset flag when recording is made
-            
-            // Get the final transcript - use transcriptRef which has final results only
-            let currentTranscript = transcriptRef.current.trim();
-            
-            // If transcriptRef is empty, try to get from state (might have interim results)
-            if (!currentTranscript && transcript) {
-                // Remove interim markers (...)
-                currentTranscript = transcript.replace(/\s*\.\.\.\s*$/, "").trim();
-            }
-            
-            // If no transcript and we have audio, always use OpenAI fallback
+            setIsUploadedFile(false);
+
+            // Plan 2A+4: transcriptRef is sole source of truth. No fallback to state - avoids stale closure.
+            const currentTranscript = transcriptRef.current.trim();
+
             if (!currentTranscript && blob.size > 0) {
                 console.log("[Voice Notes] No transcript from WebKit Speech Recognition, will use OpenAI Whisper fallback");
             }
-            
-            // Pass the transcript to processTranscript
+
             processTranscript(currentTranscript, blob);
-        }, 1500); // Increased timeout to 1.5 seconds to allow final results to be captured
+        });
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -819,13 +813,13 @@ export function VoiceNotes() {
         const url = URL.createObjectURL(blob);
         setAudioBlob(blob);
         setAudioURL(url);
-        setIsUploadedFile(true); // Mark as uploaded file
+        setIsUploadedFile(true);
 
-        // Calculate duration from audio file BEFORE processing
+        // Pass 6: Await duration from blob's object URL (local, not state). State updates async - never rely on it.
         let durationInSeconds = 0;
         try {
             const audio = new Audio(url);
-            await new Promise((resolve, reject) => {
+            await new Promise<void>((resolve) => {
                 audio.onloadedmetadata = () => {
                     durationInSeconds = Math.floor(audio.duration);
                     console.log('[Voice Notes] Uploaded file duration:', durationInSeconds, 'seconds');
@@ -844,32 +838,25 @@ export function VoiceNotes() {
             });
         } catch (err) {
             console.warn('[Voice Notes] Could not calculate audio duration:', err);
-            // Continue without duration
         }
 
-        // Set duration before processing so it's available in processTranscript
         setRecordingTime(durationInSeconds);
-        
-        // Store duration in a way that processTranscript can access it
-        // We'll pass it through a closure or use the state
-        // For now, ensure it's set before processing
-        if (durationInSeconds > 0) {
-            console.log('[Voice Notes] Duration set before processing:', durationInSeconds);
-        }
 
-        // For uploaded files, use special marker so processTranscript knows to use STT
-        // Note: duration will be recalculated in processTranscript if still 0
-        processTranscript("__FILE_UPLOAD__", blob);
+        // For uploaded files, use special marker; duration passed explicitly (Pass 6).
+        // Pass 6: Pass duration explicitly - do not rely on recordingTime state which updates async.
+        processTranscript("__FILE_UPLOAD__", blob, { duration: durationInSeconds });
     };
 
-    const processTranscript = async (text: string, blob: Blob) => {
+    const processTranscript = async (text: string, blob: Blob, options?: { duration?: number }) => {
         setIsProcessing(true);
 
+        // Pass 5: Empty transcripts are never allowed. We always save real transcript or "No transcript captured".
         // Determine base transcript text:
         // - For uploaded files ("__FILE_UPLOAD__"), call backend STT
         // - For live recordings, use provided transcript
         let baseText = text;
 
+        // Pass 5: Empty transcripts never allowed - always run transcription, fallback to Whisper if needed.
         if (text === "__FILE_UPLOAD__") {
             try {
                 const formData = new FormData();
@@ -894,8 +881,7 @@ export function VoiceNotes() {
             }
         }
 
-        // Handle cases where we still have no transcript text
-        // For manual recordings with empty transcript, fall back to OpenAI Whisper API
+        // Pass 5: For live recordings with empty transcriptRef, run Whisper fallback. Never save empty.
         if (!baseText && text !== "__FILE_UPLOAD__") {
             console.log("Manual recording has no transcript, falling back to OpenAI Whisper API...");
             console.log("Blob details - Type:", blob.type, "Size:", blob.size, "bytes");
@@ -945,36 +931,53 @@ export function VoiceNotes() {
             }
         }
 
+        // Pass 5: File upload transcription failed - run Whisper fallback before giving up.
+        if (!baseText && text === "__FILE_UPLOAD__" && blob.size > 0) {
+            console.log("[Voice Notes] File upload transcription failed, falling back to Whisper...");
+            try {
+                const formData = new FormData();
+                const audioFile = new File([blob], `upload-${Date.now()}.${blob.type.includes('webm') ? 'webm' : blob.type.includes('mp4') ? 'm4a' : 'wav'}`, {
+                    type: blob.type || 'audio/webm'
+                });
+                formData.append("file", audioFile);
+                const response = await fetch("/api/audio/transcribe-upload", { method: "POST", body: formData });
+                if (response.ok) {
+                    const data = await response.json();
+                    baseText = (data.transcript as string) || "";
+                }
+            } catch (err) {
+                console.error("[Voice Notes] Whisper fallback for upload failed:", err);
+            }
+        }
+
+        // Pass 5: Never save with empty transcript - use placeholder so session notes show recording.
         let formattedText: string;
         if (!baseText) {
-            // If this was a file upload, treat it as a hard error instead of saving a useless recording
-            if (text === "__FILE_UPLOAD__") {
-                setIsProcessing(false);
-                setError("Could not generate a transcript from the uploaded audio file. Please try again or record directly.");
-            } else {
-                formattedText = "No transcript captured";
-                setIsProcessing(false);
-                
-                // Get client info for metadata even if no transcript
-                let clientNameForSave: string | undefined = undefined;
-                let clientIdForSave: string | undefined = undefined;
-                if (selectedClientId) {
-                    const selectedClient = clients.find(c => c.id === selectedClientId);
-                    if (selectedClient) {
-                        clientNameForSave = selectedClient.name;
-                        clientIdForSave = selectedClient.id;
-                    }
+            formattedText = "No transcript captured";
+            setIsProcessing(false);
+
+            let clientNameForSave: string | undefined = undefined;
+            let clientIdForSave: string | undefined = undefined;
+            if (selectedClientId) {
+                const selectedClient = clients.find(c => c.id === selectedClientId);
+                if (selectedClient) {
+                    clientNameForSave = selectedClient.name;
+                    clientIdForSave = selectedClient.id;
                 }
-                
-                const notes: NoteSection[] = [{ title: "Session Notes", content: formattedText }];
-                setStructuredNotes(notes);
-                try {
-                    await saveRecording(formattedText, blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined);
-                    window.dispatchEvent(new Event("recordings-updated"));
-                } catch (err: any) {
-                    console.error("Failed to save recording:", err);
-                    setError(err?.message || "Failed to save recording. Please try again.");
+            }
+
+            const notes: NoteSection[] = [{ title: "Session Notes", content: formattedText }];
+            setStructuredNotes(notes);
+            try {
+                const durationForSave = options?.duration ?? recordingTime;
+                await saveRecording(formattedText, blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined, durationForSave);
+                window.dispatchEvent(new Event("recordings-updated"));
+                if (text === "__FILE_UPLOAD__") {
+                    setError("Could not generate a transcript. Recording saved with placeholder for later migration.");
                 }
+            } catch (err: any) {
+                console.error("Failed to save recording:", err);
+                setError(err?.message || "Failed to save recording. Please try again.");
             }
             return;
         }
@@ -1012,77 +1015,35 @@ export function VoiceNotes() {
         let therapistName: string | undefined = undefined;
         const sessionDate = new Date().toISOString();
         
-        // For uploaded files, calculate duration from blob if not already set
-        let duration = recordingTime;
-        if (text === "__FILE_UPLOAD__" && duration === 0) {
-            // Try to get duration from audioURL if available
-            if (audioURL) {
-                try {
-                    const audio = new Audio(audioURL);
-                    await new Promise<void>((resolve) => {
-                        let resolved = false;
-                        const finish = () => {
-                            if (!resolved) {
-                                resolved = true;
-                                resolve();
-                            }
-                        };
-                        audio.onloadedmetadata = () => {
-                            if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-                                duration = Math.floor(audio.duration);
-                                console.log('[Voice Notes] Calculated duration in processTranscript:', duration, 'seconds');
-                                setRecordingTime(duration);
-                            }
-                            finish();
-                        };
-                        audio.onerror = () => {
-                            console.warn('[Voice Notes] Audio metadata load error');
-                            finish();
-                        };
-                        // Try to load
-                        audio.load();
-                        // Timeout after 3 seconds
-                        setTimeout(() => {
-                            if (duration === 0) {
-                                console.warn('[Voice Notes] Duration calculation timeout, using 0');
-                            }
-                            finish();
-                        }, 3000);
-                    });
-                } catch (err) {
-                    console.warn('[Voice Notes] Could not calculate duration in processTranscript:', err);
-                }
+        // Pass 6: Use options.duration when provided (from handleFileUpload). Do not rely on recordingTime or audioURL
+        // state - they update asynchronously and would be stale/wrong for file uploads.
+        let duration: number;
+        if (text === "__FILE_UPLOAD__" && options?.duration !== undefined) {
+            duration = options.duration;
+            console.log('[Voice Notes] Using passed duration for upload:', duration, 'seconds');
+        } else if (text === "__FILE_UPLOAD__") {
+            duration = 0;
+            try {
+                const tempUrl = URL.createObjectURL(blob);
+                const audio = new Audio(tempUrl);
+                await new Promise<void>((resolve) => {
+                    audio.onloadedmetadata = () => {
+                        if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+                            duration = Math.floor(audio.duration);
+                            console.log('[Voice Notes] Calculated duration from blob:', duration, 'seconds');
+                        }
+                        URL.revokeObjectURL(tempUrl);
+                        resolve();
+                    };
+                    audio.onerror = () => { URL.revokeObjectURL(tempUrl); resolve(); };
+                    audio.load();
+                    setTimeout(() => { URL.revokeObjectURL(tempUrl); resolve(); }, 3000);
+                });
+            } catch (err) {
+                console.warn('[Voice Notes] Could not calculate duration from blob:', err);
             }
-            // Also try to get duration from the blob directly if audioURL method failed
-            if (duration === 0 && blob) {
-                try {
-                    // Create a temporary URL for the blob
-                    const tempUrl = URL.createObjectURL(blob);
-                    const audio = new Audio(tempUrl);
-                    await new Promise<void>((resolve) => {
-                        audio.onloadedmetadata = () => {
-                            if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-                                duration = Math.floor(audio.duration);
-                                console.log('[Voice Notes] Calculated duration from blob:', duration, 'seconds');
-                                setRecordingTime(duration);
-                            }
-                            URL.revokeObjectURL(tempUrl);
-                            resolve();
-                        };
-                        audio.onerror = () => {
-                            URL.revokeObjectURL(tempUrl);
-                            resolve();
-                        };
-                        audio.load();
-                        setTimeout(() => {
-                            URL.revokeObjectURL(tempUrl);
-                            resolve();
-                        }, 3000);
-                    });
-                } catch (err) {
-                    console.warn('[Voice Notes] Could not calculate duration from blob:', err);
-                }
-            }
+        } else {
+            duration = recordingTime;
         }
         console.log('[Voice Notes] Final duration for AI processing:', duration, 'seconds');
 
@@ -1162,7 +1123,7 @@ export function VoiceNotes() {
             // Save the raw-but-formatted transcript, and keep AI Clinical Assessment separately
             // Include client information and session ID if available
             const sessionId = selectedSessionId || undefined;
-            await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId);
+            await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId, duration);
             window.dispatchEvent(new Event("recordings-updated"));
         } catch (err: any) {
             console.error("Failed to save recording:", err);
@@ -1205,7 +1166,7 @@ export function VoiceNotes() {
         return formatted;
     };
 
-    const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[], clientId?: string, clientName?: string, sessionId?: string) => {
+    const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[], clientId?: string, clientName?: string, sessionId?: string, durationOverride?: number) => {
         const recordingId = Date.now().toString();
         const fileName = `${recordingId}.webm`;
         const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
@@ -1249,7 +1210,7 @@ export function VoiceNotes() {
         const meta: any = {
             id: recordingId,
             date: new Date().toISOString(),
-            duration: recordingTime,
+            duration: durationOverride ?? recordingTime,
             transcript,
             notes,
             audioURL: `/api/audio/${fileName}`,

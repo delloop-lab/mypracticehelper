@@ -912,7 +912,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         // This handles cases where recordings weren't properly linked to sessions
                         const recordingClientId = note.clientId || note.client_id;
                         const recordingClientName = note.clientName;
-                        const recordingDate = note.date || note.created_at || note.createdDate;
+                        // Prefer sessionDate (how /api/session-notes groups recordings under a session),
+                        // then fall back to raw creation dates
+                        const recordingDate = note.sessionDate || note.date || note.created_at || note.createdDate;
                         
                         // Match by client ID and date
                         if (recordingClientId && sessionClientId && recordingClientId === sessionClientId) {
@@ -964,6 +966,32 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     
                     return false;
                 });
+
+                // Fallback: also include any recording notes that match this client + session date
+                // but weren't caught by the above logic (e.g. slight metadata mismatches).
+                const notesForSessionIds = new Set(notesForSession.map((n: any) => n.id));
+                const extraRecordingNotes = allNotes.filter((note: any) => {
+                    if (note.source !== 'recording') return false;
+                    if (!note.id || notesForSessionIds.has(note.id)) return false;
+
+                    const recordingClientId = note.clientId || note.client_id;
+                    const recordingClientName = note.clientName;
+                    const recordingSessionDate = note.sessionDate
+                        ? new Date(note.sessionDate).toISOString().split('T')[0]
+                        : null;
+
+                    const matchesClient =
+                        (recordingClientId && sessionClientId && recordingClientId === sessionClientId) ||
+                        (recordingClientName && session.clientName &&
+                         recordingClientName.toLowerCase() === session.clientName.toLowerCase());
+
+                    return !!(matchesClient && recordingSessionDate === sessionDate);
+                });
+
+                const allNotesForSession = [
+                    ...notesForSession,
+                    ...extraRecordingNotes,
+                ];
                 
                 console.log(`[Load Session Notes] Session ID: ${sessionId}, Client: ${session.clientName}, Client ID: ${editingClient?.id}, Date: ${sessionDate}`);
                 console.log(`[Load Session Notes] Total notes available: ${allNotes.length}`);
@@ -986,8 +1014,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     const noteClientId = n.clientId || n.client_id;
                     return noteClientId === editingClient?.id || n.clientName?.toLowerCase() === session.clientName?.toLowerCase();
                 }));
-                console.log(`[Load Session Notes] Found ${notesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
-                console.log(`[Load Session Notes] Matched notes:`, notesForSession.map((n: any) => ({
+                console.log(`[Load Session Notes] Found ${allNotesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
+                console.log(`[Load Session Notes] Matched notes:`, allNotesForSession.map((n: any) => ({
                     id: n.id,
                     source: n.source,
                     sessionId: n.sessionId || n.session_id,
@@ -998,7 +1026,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 // Deduplicate notes by content and timestamp to prevent showing the same voice note twice
                 // This can happen if the same recording exists in both recordings and session_notes tables
                 const seenContentKeys = new Set<string>();
-                const deduplicatedNotes = notesForSession.filter((note: any) => {
+                const deduplicatedNotes = allNotesForSession.filter((note: any) => {
                     // Filter out empty notes - MUST have content OR transcript OR audioURL to be displayable
                     // For recordings, audioURL is sufficient (transcript can be added later)
                     const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
@@ -1040,8 +1068,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     return true;
                 });
                 
-                if (deduplicatedNotes.length !== notesForSession.length) {
-                    console.log(`[Load Session Notes] Removed ${notesForSession.length - deduplicatedNotes.length} duplicate notes`);
+                if (deduplicatedNotes.length !== allNotesForSession.length) {
+                    console.log(`[Load Session Notes] Removed ${allNotesForSession.length - deduplicatedNotes.length} duplicate notes`);
                 }
                 
                 setSessionNotes(deduplicatedNotes);

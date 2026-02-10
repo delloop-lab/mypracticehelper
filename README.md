@@ -81,6 +81,10 @@ Run the SQL schema in your Supabase project (found in the deployment workflow) t
 - payments
 - reminders
 
+## Key Documentation
+
+- **[Recordings: Data Integrity Rules](RECORDINGS_DATA_INTEGRITY.md)** — Must-read for anyone working on audio recordings.
+
 ## Security & Compliance
 
 - HIPAA-compliant data handling

@@ -22,7 +22,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Play, Pause, Download, Trash2, FileAudio, Calendar, Clock, Search, Filter, User, SortAsc, SortDesc, Edit, Mic, List, Upload } from "lucide-react";
+import { Play, Pause, Download, Trash2, FileAudio, Calendar, Clock, Search, Filter, User, SortAsc, SortDesc, Edit, Mic, List, Upload, Flag, RefreshCw, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceNotes } from "@/components/voice-notes";
@@ -48,6 +48,8 @@ interface Recording {
     session_id?: string;
     sessionId?: string;
     notes?: NoteSection[];
+    flagged?: boolean;
+    flaggedAt?: string | null;
 }
 
 type SortOption = 'date-desc' | 'date-asc' | 'client-asc' | 'client-desc' | 'duration-desc' | 'duration-asc';
@@ -72,6 +74,9 @@ function RecordingsContent() {
 
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
     const [calculatedDurations, setCalculatedDurations] = useState<Record<string, number>>({});
+    const [unallocatedRecordings, setUnallocatedRecordings] = useState<Recording[]>([]);
+    const [editingFromUnallocated, setEditingFromUnallocated] = useState(false);
+    const [retryingId, setRetryingId] = useState<string | null>(null);
 
     useEffect(() => {
         const clientParam = searchParams.get('client');
@@ -102,21 +107,19 @@ function RecordingsContent() {
     }, [activeTab]);
 
     useEffect(() => {
-        // Load immediately on mount
         loadRecordings();
         loadClients();
+        loadUnallocatedRecordings();
 
-        // Reload when window gains focus
         const handleFocus = () => {
             loadRecordings();
             loadClients();
+            loadUnallocatedRecordings();
         };
 
-        // Reload when recordings are updated (e.g. from VoiceNotes component)
         const handleUpdate = () => {
             loadRecordings();
-            // Optionally switch to history tab to show new recording
-            // setActiveTab("history"); 
+            loadUnallocatedRecordings();
         };
 
         window.addEventListener('focus', handleFocus);
@@ -127,6 +130,18 @@ function RecordingsContent() {
             window.removeEventListener('recordings-updated', handleUpdate);
         };
     }, []);
+
+    const loadUnallocatedRecordings = async () => {
+        try {
+            const response = await fetch('/api/recordings?unallocated=true', { credentials: 'include' });
+            if (response.ok) {
+                const data = await response.json();
+                setUnallocatedRecordings(data);
+            }
+        } catch (error) {
+            console.error('[Recordings] Error loading unallocated:', error);
+        }
+    };
 
     const loadClients = async () => {
         try {
@@ -357,14 +372,13 @@ function RecordingsContent() {
         }
     };
 
-    const handleEditClient = async (recording: Recording) => {
-        console.log('[Recordings] handleEditClient called for recording:', recording.id);
-        console.log('[Recordings] Recording client info:', { clientName: recording.clientName, clientId: recording.clientId, client_id: recording.client_id });
+    const handleEditClient = async (recording: Recording, fromUnallocated = false) => {
+        console.log('[Recordings] handleEditClient called for recording:', recording.id, 'fromUnallocated:', fromUnallocated);
         setEditingRecording(recording);
+        setEditingFromUnallocated(fromUnallocated);
         setEditClientName(recording.clientName || "");
         setPastSessions([]); // Reset sessions first
-        
-        // Set clientId if available, otherwise find it by name
+
         const clientId = recording.client_id || recording.clientId;
         if (clientId) {
             setEditClientId(clientId);
@@ -459,10 +473,37 @@ function RecordingsContent() {
     const handleSaveClient = async () => {
         if (!editingRecording) return;
 
-        // Find the selected client to get both name and ID
         const selectedClient = clients.find(c => c.name === editClientName.trim());
         const clientName = editClientName.trim() || selectedClient?.name;
         const clientId = selectedClient?.id || editClientId;
+
+        if (editingFromUnallocated) {
+            try {
+                const res = await fetch('/api/recordings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: editingRecording.id, client_id: clientId || null, session_id: editSessionId || null }),
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    loadRecordings();
+                    loadUnallocatedRecordings();
+                    if (typeof window !== 'undefined') window.dispatchEvent(new Event('recordings-updated'));
+                    setEditingRecording(null);
+                    setEditClientName("");
+                    setEditClientId(undefined);
+                    setEditSessionId(undefined);
+                    setEditingFromUnallocated(false);
+                    setPastSessions([]);
+                } else {
+                    const err = await res.json();
+                    alert(err.error || 'Failed to assign recording');
+                }
+            } catch (e) {
+                alert('Failed to assign recording');
+            }
+            return;
+        }
         
         // Regenerate structured notes with correct client if notes exist
         let updatedNotes = editingRecording.notes;
@@ -551,6 +592,47 @@ function RecordingsContent() {
         setEditClientId(undefined);
     };
 
+    const handleRetryTranscription = async (recording: Recording) => {
+        setRetryingId(recording.id);
+        try {
+            const res = await fetch('/api/recordings/retry-transcription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: recording.id }),
+                credentials: 'include'
+            });
+            if (res.ok) {
+                loadRecordings();
+                loadUnallocatedRecordings();
+                if (typeof window !== 'undefined') window.dispatchEvent(new Event('recordings-updated'));
+            } else {
+                const err = await res.json();
+                alert(err.error || 'Transcription failed');
+            }
+        } catch (e) {
+            alert('Transcription failed');
+        } finally {
+            setRetryingId(null);
+        }
+    };
+
+    const handleToggleFlag = async (recording: Recording) => {
+        try {
+            const res = await fetch('/api/recordings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: recording.id, flagged: !recording.flagged }),
+                credentials: 'include'
+            });
+            if (res.ok) {
+                loadUnallocatedRecordings();
+                loadRecordings();
+            }
+        } catch (e) {
+            alert('Failed to update flag');
+        }
+    };
+
     const highlightText = (text: string, query: string) => {
         if (!query) return text;
         const parts = text.split(new RegExp(`(${query})`, 'gi'));
@@ -585,7 +667,7 @@ function RecordingsContent() {
                 </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-2 max-w-md">
+                <TabsList className="grid w-full grid-cols-3 max-w-2xl">
                     <TabsTrigger value="new" className="gap-2">
                         <Mic className="h-4 w-4" />
                         New Recording
@@ -593,6 +675,15 @@ function RecordingsContent() {
                     <TabsTrigger value="history" className="gap-2">
                         <List className="h-4 w-4" />
                         History
+                    </TabsTrigger>
+                    <TabsTrigger value="unallocated" className="gap-2">
+                        <AlertCircle className="h-4 w-4" />
+                        Unallocated
+                        {unallocatedRecordings.length > 0 && (
+                            <span className="ml-1 rounded-full bg-amber-500/90 px-1.5 py-0.5 text-xs font-medium text-white">
+                                {unallocatedRecordings.length}
+                            </span>
+                        )}
                     </TabsTrigger>
                 </TabsList>
 
@@ -951,151 +1042,317 @@ function RecordingsContent() {
                         </div>
                     )}
 
-                    {/* Edit Client Dialog */}
-                    <Dialog open={!!editingRecording} onOpenChange={(open: boolean) => {
-                        if (!open) {
-                            setEditingRecording(null);
-                            setEditClientName("");
-                            setEditClientId(undefined);
-                            setEditSessionId(undefined);
-                            setPastSessions([]);
-                        }
-                    }}>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Assign Client & Session</DialogTitle>
-                                <DialogDescription>
-                                    Assign this recording to a client and optionally link it to a past session
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="client-name">Client Name *</Label>
-                                    {clients.length > 0 ? (
-                                        <Select 
-                                            value={editClientName || undefined} 
-                                            onValueChange={async (value) => {
-                                                console.log('[Recordings] Client selected from dropdown:', value);
-                                                setEditClientName(value);
-                                                const selectedClient = clients.find(c => c.name === value);
-                                                console.log('[Recordings] Found selected client:', selectedClient);
-                                                if (selectedClient?.id) {
-                                                    setEditClientId(selectedClient.id);
-                                                    await loadPastSessionsForClient(selectedClient.id, value);
-                                                } else {
-                                                    setEditClientId(undefined);
-                                                    setPastSessions([]);
-                                                }
-                                                // Clear session selection when client changes
-                                                setEditSessionId(undefined);
-                                            }}
-                                        >
-                                            <SelectTrigger id="client-name">
-                                                <SelectValue placeholder="Select a client" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {clients.map(client => (
-                                                    <SelectItem key={client.id} value={client.name}>
-                                                        {client.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            <Input
-                                                id="client-name"
-                                                placeholder="Enter client name"
-                                                value={editClientName}
-                                                onChange={(e) => setEditClientName(e.target.value)}
-                                            />
-                                            <p className="text-xs text-muted-foreground">
-                                                No clients found. <a href="/clients" className="text-primary hover:underline">Add a client</a> first or type a name.
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                {/* Session dropdown - always show when client is selected */}
-                                {editClientName && (
+                </TabsContent>
+
+                <TabsContent value="unallocated" className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight">Unallocated Recordings</h2>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button onClick={() => { loadRecordings(); loadUnallocatedRecordings(); }} variant="outline" size="sm">
+                                    Refresh List
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>Refresh Unallocated Recordings</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                        Recordings not yet assigned to a client or session. Assign them to link to Session Notes, retry transcription, or flag for review.
+                    </p>
+                    {unallocatedRecordings.length === 0 ? (
+                        <Card>
+                            <CardContent className="flex flex-col items-center justify-center py-16">
+                                <AlertCircle className="h-16 w-16 text-muted-foreground mb-4" />
+                                <h3 className="text-xl font-semibold mb-2">No unallocated recordings</h3>
+                                <p className="text-muted-foreground text-center max-w-md">
+                                    All recordings are assigned to a client or session.
+                                </p>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-4">
+                            <AnimatePresence>
+                                {unallocatedRecordings.map((recording, index) => (
+                                    <motion.div
+                                        key={`unallocated-${recording.id}-${index}`}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -20 }}
+                                        transition={{ delay: index * 0.05 }}
+                                    >
+                                        <Card className={recording.flagged ? "border-amber-500/50 bg-amber-50/30 dark:bg-amber-950/20" : ""}>
+                                            <CardHeader>
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex-1">
+                                                        <CardTitle className="flex items-center gap-2">
+                                                            <FileAudio className="h-5 w-5 text-primary" />
+                                                            {recording.clientName || "Unassigned"}
+                                                            {recording.flagged && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Flag className="h-4 w-4 fill-amber-500 text-amber-500" />
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Flagged for review</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            )}
+                                                        </CardTitle>
+                                                        <CardDescription className="flex items-center gap-4 mt-2 flex-wrap">
+                                                            <span className="flex items-center gap-1">
+                                                                <Calendar className="h-4 w-4 text-blue-500" />
+                                                                {formatDate(recording.date)}
+                                                            </span>
+                                                            <span className="flex items-center gap-1">
+                                                                <Clock className="h-4 w-4 text-green-500" />
+                                                                {formatDuration(calculatedDurations[recording.id] || recording.duration)}
+                                                            </span>
+                                                        </CardDescription>
+                                                    </div>
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => handleEditClient(recording, true)}
+                                                                >
+                                                                    <Edit className="h-4 w-4 text-blue-500" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Assign to Client & Session</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => handleRetryTranscription(recording)}
+                                                                    disabled={retryingId === recording.id}
+                                                                >
+                                                                    {retryingId === recording.id ? (
+                                                                        <RefreshCw className="h-4 w-4 animate-spin text-purple-500" />
+                                                                    ) : (
+                                                                        <RefreshCw className="h-4 w-4 text-purple-500" />
+                                                                    )}
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Retry transcription (Whisper)</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant={recording.flagged ? "default" : "outline"}
+                                                                    size="icon"
+                                                                    onClick={() => handleToggleFlag(recording)}
+                                                                >
+                                                                    <Flag className={`h-4 w-4 ${recording.flagged ? "fill-current" : ""}`} />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>{recording.flagged ? "Unflag" : "Flag for review"}</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="icon"
+                                                                    onClick={() => handlePlay(recording.id)}
+                                                                >
+                                                                    {playingId === recording.id ? (
+                                                                        <Pause className="h-4 w-4 text-green-500" />
+                                                                    ) : (
+                                                                        <Play className="h-4 w-4 text-green-500" />
+                                                                    )}
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>{playingId === recording.id ? "Pause" : "Play"}</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button variant="outline" size="icon" onClick={() => handleDownload(recording)}>
+                                                                    <Download className="h-4 w-4 text-purple-500" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Download</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </div>
+                                                </div>
+                                            </CardHeader>
+                                            <CardContent className="space-y-4">
+                                                {recording.transcript && (
+                                                    <div className="rounded-lg bg-muted/50 p-3">
+                                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-3">
+                                                            {recording.transcript}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {playingId === recording.id && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: 'auto' }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                    >
+                                                        <audio controls src={recording.audioURL} className="w-full" autoPlay />
+                                                    </motion.div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    </motion.div>
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    )}
+                </TabsContent>
+
+                {/* Dialogs - outside TabsContent so they stay mounted when switching tabs */}
+                <Dialog open={!!editingRecording} onOpenChange={(open: boolean) => {
+                    if (!open) {
+                        setEditingRecording(null);
+                        setEditClientName("");
+                        setEditClientId(undefined);
+                        setEditSessionId(undefined);
+                        setPastSessions([]);
+                        setEditingFromUnallocated(false);
+                    }
+                }}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Assign Client & Session</DialogTitle>
+                            <DialogDescription>
+                                Assign this recording to a client and optionally link it to a past session
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="client-name">Client Name *</Label>
+                                {clients.length > 0 ? (
+                                    <Select 
+                                        value={editClientName || undefined} 
+                                        onValueChange={async (value) => {
+                                            setEditClientName(value);
+                                            const selectedClient = clients.find(c => c.name === value);
+                                            if (selectedClient?.id) {
+                                                setEditClientId(selectedClient.id);
+                                                await loadPastSessionsForClient(selectedClient.id, value);
+                                            } else {
+                                                setEditClientId(undefined);
+                                                setPastSessions([]);
+                                            }
+                                            setEditSessionId(undefined);
+                                        }}
+                                    >
+                                        <SelectTrigger id="client-name">
+                                            <SelectValue placeholder="Select a client" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {clients.map(client => (
+                                                <SelectItem key={client.id} value={client.name}>
+                                                    {client.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
                                     <div className="space-y-2">
-                                        <Label htmlFor="session-select">Link to Past Session (Optional)</Label>
-                                        {isLoadingSessions ? (
-                                            <div className="text-sm text-muted-foreground p-2 border rounded">
-                                                Loading sessions...
-                                            </div>
-                                        ) : pastSessions.length > 0 ? (
-                                            <>
-                                                <Select 
-                                                    value={editSessionId || "none"} 
-                                                    onValueChange={(value) => {
-                                                        console.log('[Recordings] Session selected:', value);
-                                                        setEditSessionId(value === "none" ? undefined : value);
-                                                    }}
-                                                >
-                                                    <SelectTrigger id="session-select">
-                                                        <SelectValue placeholder="Select a past session (optional)" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="none">No session (unlinked)</SelectItem>
-                                                        {pastSessions.map(session => (
-                                                            <SelectItem key={session.id} value={session.id}>
-                                                                {new Date(session.date).toLocaleDateString('en-US', {
-                                                                    month: 'short',
-                                                                    day: 'numeric',
-                                                                    year: 'numeric',
-                                                                    hour: '2-digit',
-                                                                    minute: '2-digit'
-                                                                })} - {session.type}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                <p className="text-xs text-muted-foreground">
-                                                    Linking to a session will show this recording in the client's Session Notes
-                                                </p>
-                                            </>
-                                        ) : (
-                                            <div className="text-xs text-amber-600 dark:text-amber-400 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800">
-                                                ⚠️ No past sessions found for this client. 
-                                                <br />
-                                                <span className="text-muted-foreground">Check that the client has sessions logged in their profile, or log a session first.</span>
-                                            </div>
-                                        )}
+                                        <Input
+                                            id="client-name"
+                                            placeholder="Enter client name"
+                                            value={editClientName}
+                                            onChange={(e) => setEditClientName(e.target.value)}
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            No clients found. <a href="/clients" className="text-primary hover:underline">Add a client</a> first or type a name.
+                                        </p>
                                     </div>
                                 )}
                             </div>
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => {
-                                    setEditingRecording(null);
-                                    setEditClientName("");
-                                    setEditClientId(undefined);
-                                    setEditSessionId(undefined);
-                                    setPastSessions([]);
-                                }}>
-                                    Cancel
-                                </Button>
-                                <Button onClick={handleSaveClient} disabled={!editClientName.trim()}>
-                                    Save
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                            {editClientName && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="session-select">Link to Past Session (Optional)</Label>
+                                    {isLoadingSessions ? (
+                                        <div className="text-sm text-muted-foreground p-2 border rounded">
+                                            Loading sessions...
+                                        </div>
+                                    ) : pastSessions.length > 0 ? (
+                                        <>
+                                            <Select 
+                                                value={editSessionId || "none"} 
+                                                onValueChange={(value) => setEditSessionId(value === "none" ? undefined : value)}
+                                            >
+                                                <SelectTrigger id="session-select">
+                                                    <SelectValue placeholder="Select a past session (optional)" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="none">No session (unlinked)</SelectItem>
+                                                    {pastSessions.map(session => (
+                                                        <SelectItem key={session.id} value={session.id}>
+                                                            {new Date(session.date).toLocaleDateString('en-US', {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                year: 'numeric',
+                                                                hour: '2-digit',
+                                                                minute: '2-digit'
+                                                            })} - {session.type}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <p className="text-xs text-muted-foreground">
+                                                Linking to a session will show this recording in the client's Session Notes
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <div className="text-xs text-amber-600 dark:text-amber-400 p-2 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-200 dark:border-amber-800">
+                                            ⚠️ No past sessions found for this client.
+                                            <br />
+                                            <span className="text-muted-foreground">Check that the client has sessions logged in their profile, or log a session first.</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => {
+                                setEditingRecording(null);
+                                setEditClientName("");
+                                setEditClientId(undefined);
+                                setEditSessionId(undefined);
+                                setPastSessions([]);
+                                setEditingFromUnallocated(false);
+                            }}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleSaveClient} disabled={!editClientName.trim()}>
+                                Save
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
-                    {/* Delete Confirmation Dialog */}
-                    <DeleteConfirmationDialog
-                        open={deleteConfirm.isOpen}
-                        onOpenChange={(open) => setDeleteConfirm({ isOpen: open, recording: deleteConfirm.recording })}
-                        onConfirm={handleDelete}
-                        title="Delete Recording"
-                        description={
-                            deleteConfirm.recording
-                                ? `Are you sure you want to delete the recording from ${new Date(deleteConfirm.recording.date).toLocaleDateString()}${deleteConfirm.recording.clientName ? ` for ${deleteConfirm.recording.clientName}` : ''}? This will permanently remove the audio file and transcript. This action cannot be undone.`
-                                : "Are you sure you want to delete this recording? This action cannot be undone."
-                        }
-                        itemName={deleteConfirm.recording ? `${deleteConfirm.recording.clientName || 'Unnamed'} - ${new Date(deleteConfirm.recording.date).toLocaleDateString()}` : undefined}
-                    />
-                </TabsContent>
+                <DeleteConfirmationDialog
+                    open={deleteConfirm.isOpen}
+                    onOpenChange={(open) => setDeleteConfirm({ isOpen: open, recording: deleteConfirm.recording })}
+                    onConfirm={handleDelete}
+                    title="Delete Recording"
+                    description={
+                        deleteConfirm.recording
+                            ? `Are you sure you want to delete the recording from ${new Date(deleteConfirm.recording.date).toLocaleDateString()}${deleteConfirm.recording.clientName ? ` for ${deleteConfirm.recording.clientName}` : ''}? This will permanently remove the audio file and transcript. This action cannot be undone.`
+                            : "Are you sure you want to delete this recording? This action cannot be undone."
+                    }
+                    itemName={deleteConfirm.recording ? `${deleteConfirm.recording.clientName || 'Unnamed'} - ${new Date(deleteConfirm.recording.date).toLocaleDateString()}` : undefined}
+                />
             </Tabs>
             </div>
         </TooltipProvider>
