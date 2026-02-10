@@ -85,10 +85,7 @@ export async function POST(request: Request) {
         const buffer = Buffer.from(arrayBuffer);
 
         const formData = new FormData();
-        formData.append('file', new Blob([buffer]), {
-            type: 'audio/webm',
-            name: fileName
-        });
+        formData.append('file', new Blob([buffer], { type: 'audio/webm' }), fileName);
         formData.append('model', 'whisper-1');
         formData.append('response_format', 'json');
 

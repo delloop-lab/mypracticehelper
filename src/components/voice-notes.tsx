@@ -824,16 +824,16 @@ export function VoiceNotes() {
                     durationInSeconds = Math.floor(audio.duration);
                     console.log('[Voice Notes] Uploaded file duration:', durationInSeconds, 'seconds');
                     setRecordingTime(durationInSeconds);
-                    resolve(null);
+                    resolve();
                 };
                 audio.onerror = () => {
                     console.warn('[Voice Notes] Could not load audio metadata');
-                    resolve(null); // Continue even if duration can't be calculated
+                    resolve(); // Continue even if duration can't be calculated
                 };
                 // Timeout after 5 seconds
                 setTimeout(() => {
                     console.warn('[Voice Notes] Duration calculation timeout');
-                    resolve(null);
+                    resolve();
                 }, 5000);
             });
         } catch (err) {
