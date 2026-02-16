@@ -1,6 +1,6 @@
 {
   "name": "my-practice-helper",
-  "version": "0.9.911",
+  "version": "0.9.912",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
