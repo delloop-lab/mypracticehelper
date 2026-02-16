@@ -1264,8 +1264,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     if (!effectiveSessionId && clientAppointments.length > 0) {
                         const noteDate = note.sessionDate || note.createdDate || note.date || note.created_at;
                         const noteDateStr = noteDate ? new Date(noteDate).toISOString().split('T')[0] : null;
-                        const matchingApt = noteDateStr && clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === noteDateStr);
-                        effectiveSessionId = matchingApt?.id || null;
+                        const matchingApt = noteDateStr
+                            ? clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === noteDateStr)
+                            : undefined;
+                        effectiveSessionId = matchingApt?.id ?? null;
                     }
                     if (!effectiveSessionId) return;
 
@@ -1311,8 +1313,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         if (!effectiveSessionId && client && clientAppointments.length > 0) {
                             const recordingDate = recording.date || recording.created_at;
                             const recordingDateStr = recordingDate ? new Date(recordingDate).toISOString().split('T')[0] : null;
-                            const matchingApt = recordingDateStr && clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === recordingDateStr);
-                            effectiveSessionId = matchingApt?.id || null;
+                            const matchingApt = recordingDateStr
+                                ? clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === recordingDateStr)
+                                : undefined;
+                            effectiveSessionId = matchingApt?.id ?? null;
                         }
                         if (!effectiveSessionId) return;
 

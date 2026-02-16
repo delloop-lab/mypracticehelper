@@ -311,18 +311,24 @@ export async function GET(request: Request) {
                 .order('date', { ascending: false })
         ]);
 
-        const notesData = Array.from(
-            new Map([
-                ...(userNotesResult.data || []).map((n: any) => [n.id, n]),
-                ...(legacyNotesResult.data || []).map((n: any) => [n.id, n])
-            ]).values()
-        );
+        const noteEntries: Array<[string, any]> = [
+            ...(userNotesResult.data || [])
+                .filter((n: any) => n?.id)
+                .map((n: any): [string, any] => [n.id, n]),
+            ...(legacyNotesResult.data || [])
+                .filter((n: any) => n?.id)
+                .map((n: any): [string, any] => [n.id, n])
+        ];
+        const notesData = Array.from(new Map<string, any>(noteEntries).values());
         const notesError = userNotesResult.error || legacyNotesResult.error;
         const allRecordings = [
             ...(userRecordingsResult.data || []),
             ...(legacyRecordingsResult.data || [])
         ];
-        const recordingsData = Array.from(new Map(allRecordings.map((r: any) => [r.id, r])).values());
+        const recordingEntries: Array<[string, any]> = allRecordings
+            .filter((r: any) => r?.id)
+            .map((r: any): [string, any] => [r.id, r]);
+        const recordingsData = Array.from(new Map<string, any>(recordingEntries).values());
         const recordingsError = userRecordingsResult.error || legacyRecordingsResult.error;
         const sessionsData = [
             ...(userSessionsResult.data || []),
