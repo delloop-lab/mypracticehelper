@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRecordings, saveRecordings, saveAudioFile } from '@/lib/storage';
-import { supabase } from '@/lib/supabase';
+import { supabase, getSupabaseAdmin } from '@/lib/supabase';
 import { checkAuthentication } from '@/lib/auth';
 
 export async function GET(request: Request) {
@@ -21,27 +21,53 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
         
-        // Fetch recordings with user_id AND legacy recordings (user_id IS NULL) for migration period
-        // This ensures users see their recordings even if some haven't been migrated yet
-        const { data: userRecordings, error: userError } = await supabase
-            .from('recordings')
-            .select(`
+        const recordingSelect = `
                 *,
                 clients (name),
                 sessions (id, date, type)
-            `)
+            `;
+        const isMissingDeletedAtColumn = (error: any) =>
+            String(error?.message || '').toLowerCase().includes('deleted_at');
+
+        // Fetch recordings with user_id AND legacy recordings (user_id IS NULL) for migration period.
+        // Prefer soft-delete filtering when column exists; gracefully fallback if migration not applied yet.
+        let { data: userRecordings, error: userError } = await supabase
+            .from('recordings')
+            .select(recordingSelect)
             .eq('user_id', userId)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false });
-        
-        const { data: legacyRecordings, error: legacyError } = await supabase
+
+        if (isMissingDeletedAtColumn(userError)) {
+            const fallback = await supabase
+                .from('recordings')
+                .select(recordingSelect)
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false });
+            userRecordings = fallback.data || [];
+            userError = fallback.error;
+        }
+
+        let { data: legacyRecordings, error: legacyError } = await supabase
             .from('recordings')
-            .select(`
-                *,
-                clients (name),
-                sessions (id, date, type)
-            `)
+            .select(recordingSelect)
             .is('user_id', null)
+            .is('deleted_at', null)
             .order('created_at', { ascending: false });
+
+        if (isMissingDeletedAtColumn(legacyError)) {
+            const fallback = await supabase
+                .from('recordings')
+                .select(recordingSelect)
+                .is('user_id', null)
+                .order('created_at', { ascending: false });
+            legacyRecordings = fallback.data || [];
+            legacyError = fallback.error;
+        }
+
+        if (userError || legacyError) {
+            console.error('[Recordings API] Query errors:', { userError, legacyError });
+        }
         
         const allRecordings = [...(userRecordings || []), ...(legacyRecordings || [])];
         const uniqueRecordings = Array.from(
@@ -222,11 +248,25 @@ export async function PATCH(request: Request) {
             return NextResponse.json({ error: 'Recording id is required' }, { status: 400 });
         }
 
-        const { data: recording, error: fetchError } = await supabase
+        const isMissingDeletedAtColumn = (error: any) =>
+            String(error?.message || '').toLowerCase().includes('deleted_at');
+
+        let { data: recording, error: fetchError } = await supabase
             .from('recordings')
             .select('id, user_id')
             .eq('id', id)
+            .is('deleted_at', null)
             .single();
+
+        if (isMissingDeletedAtColumn(fetchError)) {
+            const fallback = await supabase
+                .from('recordings')
+                .select('id, user_id')
+                .eq('id', id)
+                .single();
+            recording = fallback.data;
+            fetchError = fallback.error;
+        }
 
         if (fetchError || !recording) {
             return NextResponse.json({ error: 'Recording not found' }, { status: 404 });
@@ -265,65 +305,40 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
     try {
-        // Check authentication (handles both new and fallback methods)
-        const { userId, isFallback } = await checkAuthentication(request);
-        
+        const { userId } = await checkAuthentication(request);
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { searchParams } = new URL(request.url);
-        const id = searchParams.get('id');
-
+        const id = new URL(request.url).searchParams.get('id');
         if (!id) {
             return NextResponse.json({ error: 'Recording id is required' }, { status: 400 });
         }
 
-        // Verify the recording exists and check ownership
-        // Handle both cases: recordings with user_id and legacy recordings without user_id
-        const { data: recording, error: fetchError } = await supabase
+        const db = process.env.SUPABASE_SERVICE_ROLE_KEY ? getSupabaseAdmin() : supabase;
+
+        const { data: recording, error: fetchError } = await db
             .from('recordings')
             .select('id, user_id')
             .eq('id', id)
             .single();
 
         if (fetchError || !recording) {
-            console.error('Error fetching recording or recording not found:', fetchError);
+            console.error('[Recordings DELETE] Fetch failed:', fetchError?.message ?? 'no rows');
             return NextResponse.json({ error: 'Recording not found' }, { status: 404 });
         }
 
-        // Check ownership:
-        // - If recording has user_id, it must match the current user
-        // - If recording has no user_id (legacy), allow deletion for fallback users or if no user_id exists
-        if (recording.user_id) {
-            if (recording.user_id !== userId) {
-                console.error('Recording belongs to different user:', { recordingUserId: recording.user_id, currentUserId: userId });
-                return NextResponse.json({ error: 'Unauthorized: Recording belongs to a different user' }, { status: 403 });
-            }
-            // Delete with user_id check
-            const { error } = await supabase
-                .from('recordings')
-                .delete()
-                .eq('id', id)
-                .eq('user_id', userId);
-            
-            if (error) {
-                console.error('Error deleting recording:', error);
-                return NextResponse.json({ error: `Failed to delete recording: ${error.message}` }, { status: 500 });
-            }
-        } else {
-            // Legacy recording without user_id - allow deletion for fallback users or authenticated users
-            // (This handles the migration period where recordings might not have user_id yet)
-            const { error } = await supabase
-                .from('recordings')
-                .delete()
-                .eq('id', id)
-                .is('user_id', null);
-            
-            if (error) {
-                console.error('Error deleting legacy recording:', error);
-                return NextResponse.json({ error: `Failed to delete recording: ${error.message}` }, { status: 500 });
-            }
+        if (recording.user_id && recording.user_id !== userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+        }
+
+        const { error } = recording.user_id
+            ? await db.from('recordings').delete().eq('id', id).eq('user_id', userId)
+            : await db.from('recordings').delete().eq('id', id).is('user_id', null);
+
+        if (error) {
+            console.error('[Recordings DELETE] Delete failed:', error.message);
+            return NextResponse.json({ error: `Failed to delete: ${error.message}` }, { status: 500 });
         }
 
         return NextResponse.json({ success: true });

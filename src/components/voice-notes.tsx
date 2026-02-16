@@ -4,12 +4,13 @@ import React, { useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Upload, ExternalLink, Sparkles } from "lucide-react";
+import { Mic, Square, Loader2, CheckCircle2, AlertCircle, Upload, ExternalLink, Sparkles, WifiOff } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { saveRecordingBackup, loadRecordingBackup, clearRecordingBackup, type PendingRecordingBackup } from "@/lib/recording-backup";
 
 interface NoteSection {
     title: string;
@@ -46,6 +47,22 @@ export function VoiceNotes() {
     const [isDragging, setIsDragging] = useState(false);
     const [currentTherapist, setCurrentTherapist] = useState<string>("");
     const [isUploadedFile, setIsUploadedFile] = useState(false);
+    // When save fails (e.g. no network or auth), keep context so user can Retry
+    const [saveRetryContext, setSaveRetryContext] = useState<{
+        blob: Blob;
+        transcript: string;
+        notes: NoteSection[];
+        clientId?: string;
+        clientName?: string;
+        sessionId?: string;
+        duration: number;
+        reason?: 'auth' | 'network'; // auth = session expired/401; network = offline/failed to fetch
+    } | null>(null);
+    const [isRetryingSave, setIsRetryingSave] = useState(false);
+    // Recovered from IndexedDB after crash/tab close - user can save or discard
+    const [recoveredBackup, setRecoveredBackup] = useState<PendingRecordingBackup | null>(null);
+    // Offline indicator - so user knows when internet is unavailable
+    const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
 
     // Refs
     const recognitionRef = useRef<any>(null);
@@ -58,6 +75,34 @@ export function VoiceNotes() {
     const isActivelyRecordingRef = useRef<boolean>(false);
     // Plan 3: Resolve when recognition fires onend during stop flow - capture final results ASAP.
     const onEndResolveRef = useRef<(() => void) | null>(null);
+    const saveRetryContextRef = useRef<typeof saveRetryContext>(null);
+    // UUID v4 generated at recording start - becomes storage filename, recording id, no overwrite risk
+    const recordingIdRef = useRef<string | null>(null);
+
+    // Keep ref in sync so retry handler always has latest context (avoids stale closure)
+    useEffect(() => { saveRetryContextRef.current = saveRetryContext; }, [saveRetryContext]);
+
+    // Listen for online/offline so user knows when internet is unavailable
+    useEffect(() => {
+        const handleOnline = () => setIsOffline(false);
+        const handleOffline = () => setIsOffline(true);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    // Check for recovered recording (saved to IndexedDB before crash) on mount
+    useEffect(() => {
+        loadRecordingBackup().then((backup) => {
+            if (backup) {
+                console.log("[Voice Notes] Recovered unsaved recording from local backup");
+                setRecoveredBackup(backup);
+            }
+        });
+    }, []);
 
     // Load clients on mount
     useEffect(() => {
@@ -481,6 +526,24 @@ export function VoiceNotes() {
                     console.warn("No speech detected - this is normal if you haven't spoken yet");
                     return;
                 }
+                // Network/aborted errors: keep recording, show non-fatal message. User can Stop when done → Whisper fallback.
+                if (ev.error === "network" || ev.error === "aborted") {
+                    console.warn("Speech recognition error (non-fatal):", ev.error);
+                    setError("Live transcription unavailable (network issue). Audio is still recording. Click Stop when you're done — we'll transcribe it.");
+                    // Optionally retry recognition after a delay in case network recovers
+                    setTimeout(() => {
+                        if (isActivelyRecordingRef.current && recognitionRef.current) {
+                            try {
+                                recognitionRef.current.start();
+                                setError("");
+                            } catch (e) {
+                                console.warn("Could not restart recognition:", e);
+                            }
+                        }
+                    }, 3000);
+                    return;
+                }
+                // Other errors: stop recording (fatal)
                 console.error("Speech recognition error:", ev.error);
                 setError(`Recognition error: ${ev.error}`);
                 setIsRecording(false);
@@ -680,6 +743,7 @@ export function VoiceNotes() {
                 setError("Error during recording: " + (e.error?.message || "Unknown error"));
             };
             mr.start(1000); // Collect data every second
+            recordingIdRef.current = crypto.randomUUID();
         } catch (e: any) {
             console.error("Audio error:", e);
             let errorMessage = "Could not access microphone.";
@@ -772,6 +836,17 @@ export function VoiceNotes() {
             if (!currentTranscript && blob.size > 0) {
                 console.log("[Voice Notes] No transcript from WebKit Speech Recognition, will use OpenAI Whisper fallback");
             }
+
+            // Backup to IndexedDB immediately (fire-and-forget) in case tab crashes during save
+            const clientName = clients.find((c) => c.id === selectedClientId)?.name;
+            saveRecordingBackup({
+                blob,
+                transcript: currentTranscript,
+                clientId: selectedClientId || undefined,
+                clientName: clientName || undefined,
+                sessionId: selectedSessionId || undefined,
+                duration: recordingTime,
+            }).catch(() => {});
 
             processTranscript(currentTranscript, blob);
         });
@@ -970,14 +1045,36 @@ export function VoiceNotes() {
             setStructuredNotes(notes);
             try {
                 const durationForSave = options?.duration ?? recordingTime;
-                await saveRecording(formattedText, blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined, durationForSave);
+                await saveRecording(formattedText, blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined, durationForSave, text === "__FILE_UPLOAD__" ? null : undefined);
+                setSaveRetryContext(null);
+                await clearRecordingBackup();
                 window.dispatchEvent(new Event("recordings-updated"));
                 if (text === "__FILE_UPLOAD__") {
                     setError("Could not generate a transcript. Recording saved with placeholder for later migration.");
                 }
             } catch (err: any) {
                 console.error("Failed to save recording:", err);
-                setError(err?.message || "Failed to save recording. Please try again.");
+                const msg = err?.message || "Failed to save recording. Please try again.";
+                const isAuth = /unauthorized|401/i.test(msg);
+                const isNetwork = /failed to fetch|network|ERR_|offline/i.test(msg) || (err?.name === 'TypeError' && /fetch/i.test(String(err?.message)));
+                // When offline, treat any failure as network - 401 can be a side effect of connectivity
+                const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+                const useNetworkMsg = offline || isNetwork;
+                setError(useNetworkMsg
+                    ? "No internet connection. Your recording could not be uploaded. It's stored locally — save it when you're back online."
+                    : isAuth
+                    ? "Session may have expired. Refresh the page and sign in again, then click 'Retry save' below. Your recording is still here."
+                    : msg);
+                setSaveRetryContext({
+                    blob,
+                    transcript: formattedText,
+                    notes,
+                    clientId: clientIdForSave,
+                    clientName: clientNameForSave,
+                    sessionId: selectedSessionId || undefined,
+                    duration: options?.duration ?? recordingTime,
+                    reason: useNetworkMsg ? 'network' : isAuth ? 'auth' : undefined
+                });
             }
             return;
         }
@@ -1119,15 +1216,35 @@ export function VoiceNotes() {
         // Saving will happen in the background
         setIsProcessing(false);
 
+        const sessionIdForSave = selectedSessionId || undefined;
         try {
-            // Save the raw-but-formatted transcript, and keep AI Clinical Assessment separately
-            // Include client information and session ID if available
-            const sessionId = selectedSessionId || undefined;
-            await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionId, duration);
+            await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionIdForSave, duration, text === "__FILE_UPLOAD__" ? null : undefined);
+            setSaveRetryContext(null);
+            await clearRecordingBackup();
             window.dispatchEvent(new Event("recordings-updated"));
         } catch (err: any) {
             console.error("Failed to save recording:", err);
-            setError(err?.message || "Failed to save recording. Please try again.");
+            const msg = err?.message || "Failed to save recording. Please try again.";
+            const isAuth = /unauthorized|401/i.test(msg);
+            const isNetwork = /failed to fetch|network|ERR_|offline/i.test(msg) || (err?.name === 'TypeError' && /fetch/i.test(String(err?.message)));
+            // When offline, treat any failure as network - 401 can be a side effect of connectivity
+            const offline = typeof navigator !== 'undefined' && !navigator.onLine;
+            const useNetworkMsg = offline || isNetwork;
+            setError(useNetworkMsg
+                ? "No internet connection. Your recording could not be uploaded. It's stored locally — save it when you're back online."
+                : isAuth
+                ? "Session may have expired. Refresh the page and sign in again, then click 'Retry save' below. Your recording is still here."
+                : msg);
+            setSaveRetryContext({
+                blob,
+                transcript: basicFormatted,
+                notes,
+                clientId,
+                clientName,
+                sessionId: sessionIdForSave,
+                duration,
+                reason: useNetworkMsg ? 'network' : isAuth ? 'auth' : undefined
+            });
         }
     };
 
@@ -1166,55 +1283,63 @@ export function VoiceNotes() {
         return formatted;
     };
 
-    const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[], clientId?: string, clientName?: string, sessionId?: string, durationOverride?: number) => {
-        const recordingId = Date.now().toString();
-        const fileName = `${recordingId}.webm`;
+    const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[], clientId?: string, clientName?: string, sessionId?: string, durationOverride?: number, recordingIdParam?: string | null) => {
+        // Reject empty blobs - do not upload, mark as failed, keep local copy
+        if (blob.size === 0) {
+            const err = new Error("Recording failed - no audio data captured. Please try again.");
+            console.error("[Voice Notes] Refusing to upload empty blob. blob.size === 0");
+            throw err;
+        }
+
+        // Use UUID from recording start (live recordings) or generate new (retry, recovery, file upload)
+        // Pass null to force new UUID; omit/undefined to use ref from live recording
+        const recordingId = recordingIdParam === null ? crypto.randomUUID() : (recordingIdParam ?? recordingIdRef.current ?? crypto.randomUUID());
+        // New recordings use recordings/{uuid}.webm. Legacy used {timestamp}.webm at root.
+        const storagePath = `recordings/${recordingId}.webm`;
         const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
-        
-        // Step 1: Get a signed upload URL from our API
+
+        // Step 1: Get a signed upload URL (no upsert - fails if file exists)
         const signedUrlResponse = await fetch("/api/storage/signed-url", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                fileName,
+                fileName: storagePath,
                 contentType: "audio/webm",
                 bucket: "audio"
-            })
+            }),
+            credentials: "include"
         });
-        
+
         if (!signedUrlResponse.ok) {
             const errorData = await signedUrlResponse.json().catch(() => ({}));
             throw new Error(errorData.error || `Failed to get upload URL: ${signedUrlResponse.status}`);
         }
-        
-        const { signedUrl, publicUrl } = await signedUrlResponse.json();
-        
-        // Step 2: Upload directly to Supabase Storage (bypassing Vercel)
+
+        const { signedUrl } = await signedUrlResponse.json();
+
+        // Step 2: Upload directly to Supabase Storage - no x-upsert; upload fails if file exists
         const uploadResponse = await fetch(signedUrl, {
             method: "PUT",
-            headers: { 
-                "Content-Type": "audio/webm",
-                "x-upsert": "true"
-            },
+            headers: { "Content-Type": "audio/webm" },
             body: blob
         });
-        
+
         if (!uploadResponse.ok) {
             const errorText = await uploadResponse.text().catch(() => '');
             console.error('[Voice Notes] Upload failed:', uploadResponse.status, errorText);
             throw new Error(`Direct upload failed: ${uploadResponse.status} ${uploadResponse.statusText}. ${errorText}`);
         }
-        
+
         // Step 3: Save metadata to our API (no file, just metadata)
-        // Use our API route for audio playback (works regardless of bucket public settings)
+        // Playback URL supports both legacy /api/audio/{id}.webm and new /api/audio/recordings/{uuid}.webm
         const meta: any = {
             id: recordingId,
             date: new Date().toISOString(),
             duration: durationOverride ?? recordingTime,
             transcript,
             notes,
-            audioURL: `/api/audio/${fileName}`,
-            fileName
+            audioURL: `/api/audio/${storagePath}`,
+            fileName: storagePath
         };
         
         // Include client information if available
@@ -1234,7 +1359,8 @@ export function VoiceNotes() {
         const metadataResponse = await fetch("/api/recordings", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ metadata: meta, directUpload: true })
+            body: JSON.stringify({ metadata: meta, directUpload: true }),
+            credentials: "include"
         });
         
         if (!metadataResponse.ok) {
@@ -1243,6 +1369,63 @@ export function VoiceNotes() {
         }
         
         return await metadataResponse.json();
+    };
+
+    const retryFailedSave = async () => {
+        const ctx = saveRetryContextRef.current;
+        if (!ctx) {
+            setError("Retry data was lost (e.g. after switching tabs). Please record again or refresh the page.");
+            setSaveRetryContext(null);
+            return;
+        }
+        setError("");
+        setIsRetryingSave(true);
+        try {
+            await saveRecording(ctx.transcript, ctx.blob, ctx.notes, ctx.clientId, ctx.clientName, ctx.sessionId, ctx.duration, null);
+            setSaveRetryContext(null);
+            saveRetryContextRef.current = null;
+            await clearRecordingBackup();
+            window.dispatchEvent(new Event("recordings-updated"));
+            setError("");
+        } catch (err: any) {
+            setError(err?.message || "Save failed. Check your connection and try again.");
+        } finally {
+            setIsRetryingSave(false);
+        }
+    };
+
+    const recoverAndSave = async () => {
+        const backup = recoveredBackup;
+        if (!backup) return;
+        setError("");
+        setIsRetryingSave(true);
+        try {
+            const notes: NoteSection[] = [];
+            await saveRecording(
+                backup.transcript,
+                backup.blob,
+                notes,
+                backup.clientId,
+                backup.clientName,
+                backup.sessionId,
+                backup.duration,
+                null
+            );
+            await clearRecordingBackup();
+            setRecoveredBackup(null);
+            window.dispatchEvent(new Event("recordings-updated"));
+            setError("");
+        } catch (err: any) {
+            setError(err?.message || "Save failed. Check your connection and try again.");
+            // Keep recoveredBackup so they can retry
+        } finally {
+            setIsRetryingSave(false);
+        }
+    };
+
+    const discardRecoveredBackup = async () => {
+        await clearRecordingBackup();
+        setRecoveredBackup(null);
     };
 
     const downloadAudio = () => {
@@ -1396,6 +1579,12 @@ export function VoiceNotes() {
                     <CardDescription>Record Session Notes with automatic transcription (Chrome/Edge only).</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                    {isOffline && (
+                        <div className="flex items-center gap-3 rounded-lg border-2 border-amber-600 bg-amber-100 px-5 py-4 text-base font-medium text-amber-900 dark:border-amber-500 dark:bg-amber-950/60 dark:text-amber-100 shadow-md">
+                            <WifiOff className="h-6 w-6 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                            <span>No internet connection. Recordings will be saved locally and can be uploaded when you&apos;re back online.</span>
+                        </div>
+                    )}
                     {/* Client and Therapist Info - Select BEFORE recording */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg border">
                         <div className="space-y-2">
@@ -1572,9 +1761,55 @@ export function VoiceNotes() {
                         </AnimatePresence>
                     </div>
 
+                    {recoveredBackup && (
+                        <div className="flex flex-col gap-2 rounded-lg border-2 border-amber-500/50 bg-amber-500/10 p-4 text-sm">
+                            <p className="font-medium text-amber-800 dark:text-amber-200">
+                                Unsaved recording recovered. It was saved locally before the page closed.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                <Button onClick={recoverAndSave} className="bg-amber-600 hover:bg-amber-700" disabled={isRetryingSave}>
+                                    {isRetryingSave ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Saving...
+                                        </>
+                                    ) : (
+                                        "Save now"
+                                    )}
+                                </Button>
+                                <Button onClick={discardRecoveredBackup} variant="outline" size="sm">
+                                    Discard
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     {error && (
-                        <div className="flex items-center gap-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
-                            <AlertCircle className="h-4 w-4" /> {error}
+                        <div className="flex flex-col gap-2 rounded-lg bg-red-500/10 p-3 text-sm text-red-500">
+                            <div className="flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4 flex-shrink-0" /> <span>{error}</span>
+                            </div>
+                            {saveRetryContext && (
+                                <div className="flex flex-col gap-2 pt-1">
+                                    <p className="text-xs text-muted-foreground">
+                                        {saveRetryContext.reason === 'auth'
+                                            ? "Refresh the page and sign in again, then click Retry save below. After saving, you must allocate the recording to a client."
+                                            : "Your recording is stored locally. When you're back online, save it below — then you must allocate it to a client."}
+                                    </p>
+                                    <Button onClick={retryFailedSave} variant="outline" size="sm" className="w-fit border-red-500/50 text-red-600 hover:bg-red-500/20" disabled={isRetryingSave}>
+                                        {isRetryingSave ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Retrying...
+                                            </>
+                                        ) : saveRetryContext.reason === 'auth' ? (
+                                            "Retry save"
+                                        ) : (
+                                            "Retry save when back online"
+                                        )}
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     )}
 

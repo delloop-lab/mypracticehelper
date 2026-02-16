@@ -1,6 +1,6 @@
 {
   "name": "my-practice-helper",
-  "version": "0.9.910",
+  "version": "0.9.911",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
@@ -13,7 +13,11 @@
     "version:bump": "npm run version:patch && git add package.json",
     "migrate:legacy-transcripts": "node scripts/migrate-legacy-no-transcript-recordings.js",
     "migrate:legacy-transcripts:dry-run": "node scripts/migrate-legacy-no-transcript-recordings.js --dry-run",
-    "sanity-check:recordings": "node scripts/sanity-check-recordings.js"
+    "sanity-check:recordings": "node scripts/sanity-check-recordings.js",
+    "map-legacy-audio": "node scripts/map-legacy-audio-urls.js",
+    "map-legacy-audio:dry-run": "node scripts/map-legacy-audio-urls.js --dry-run",
+    "restore-legacy-recordings": "node scripts/restore-legacy-recordings.js",
+    "restore-legacy-recordings:dry-run": "node scripts/restore-legacy-recordings.js --dry-run"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",

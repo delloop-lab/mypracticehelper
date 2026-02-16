@@ -104,6 +104,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const router = useRouter();
     const [clients, setClients] = useState<Client[]>([]);
     const [recordings, setRecordings] = useState<any[]>([]);
+    const [notesForAudioCounts, setNotesForAudioCounts] = useState<any[]>([]);
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(autoOpenAddDialog);
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
     const [isDocumentsExpanded, setIsDocumentsExpanded] = useState(false);
@@ -492,45 +493,116 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
     const loadRecordings = async () => {
         try {
-            const response = await fetch('/api/recordings');
-            if (response.ok) {
-                const data = await response.json();
+            const [recordingsResponse, notesResponse] = await Promise.all([
+                fetch('/api/recordings', { credentials: 'include' }),
+                fetch('/api/session-notes', { credentials: 'include' }),
+            ]);
+
+            if (recordingsResponse.ok) {
+                const data = await recordingsResponse.json();
                 setRecordings(data);
+            } else {
+                setRecordings([]);
+            }
+
+            if (notesResponse.ok) {
+                const notesData = await notesResponse.json();
+                setNotesForAudioCounts(Array.isArray(notesData) ? notesData : []);
+            } else {
+                setNotesForAudioCounts([]);
             }
         } catch (error) {
             console.error('Error loading recordings:', error);
+            setRecordings([]);
+            setNotesForAudioCounts([]);
         }
     };
 
-    const getRecordingCount = (clientName: string) => {
-        // Find the client by name to get their ID
-        const client = clients.find(c => c.name === clientName);
-        if (!client) return 0;
+    const getRecordingCount = (client: Client) => {
+        const clientDisplayName = getClientDisplayName(client);
+        const normalizedClientName = clientDisplayName.trim().toLowerCase();
+        const normalizedStoredName = String(client.name || '').trim().toLowerCase();
+        const nameAliases = new Set([normalizedClientName, normalizedStoredName].filter(Boolean));
+        if (nameAliases.size === 0) return 0;
 
-        // Normalize names for case-insensitive matching
-        const normalizedClientName = clientName.trim().toLowerCase();
+        const extractRecordingIdFromAudioUrl = (audioUrl: unknown) => {
+            if (!audioUrl || typeof audioUrl !== 'string') return null;
+            const url = audioUrl.trim();
+            if (!url) return null;
+            const match = url.match(/\/api\/audio\/(?:recordings\/)?([^/?]+?)(?:\.(webm|m4a|mp3|wav|mp4|ogg))?$/i);
+            return match?.[1] || null;
+        };
 
-        // Filter recordings by:
-        // 1. client_id or clientId matching client.id (from database) - PRIMARY METHOD
-        // 2. clientName matching (case-insensitive, trimmed) - FALLBACK ONLY
-        const count = recordings.filter(r => {
-            // Primary: Match by ID (most reliable)
-            if (r.client_id === client.id || r.clientId === client.id) {
-                return true;
-            }
-            // Fallback: Match by name (case-insensitive, trimmed)
-            if (r.clientName) {
-                const normalizedRecordingName = r.clientName.trim().toLowerCase();
-                return normalizedRecordingName === normalizedClientName;
-            }
-            return false;
-        }).length;
-        
-        return count;
+        const clientAppointments = appointments.filter((apt: any) => {
+            const aptName = String(apt?.clientName || '').trim().toLowerCase();
+            return aptName && nameAliases.has(aptName);
+        });
+        const clientSessionIds = new Set(
+            clientAppointments
+                .map(a => String(a.id || ''))
+                .filter(Boolean)
+        );
+        const audioKeys = new Set<string>();
+
+        // Match by explicit assignment only (client_id/clientName/session_id) to avoid overcounting.
+        recordings.forEach((r: any) => {
+            const recordingClientId = String(r.client_id ?? r.clientId ?? '');
+            const recordingClientName = String(r.clientName ?? '').trim().toLowerCase();
+            const recordingSessionId = String(r.session_id ?? r.sessionId ?? '');
+
+            let matches = false;
+            if (recordingClientId && recordingClientId === String(client.id)) matches = true;
+            if (recordingClientName && nameAliases.has(recordingClientName)) matches = true;
+            if (recordingSessionId && clientSessionIds.has(recordingSessionId)) matches = true;
+
+            const hasExplicitAssignment = Boolean(recordingClientId || recordingClientName || recordingSessionId);
+            if (!matches && hasExplicitAssignment) return;
+            if (!matches) return;
+
+            const explicitId = String(r.id || '').trim();
+            const extractedId = extractRecordingIdFromAudioUrl(r.audioURL || r.audio_url);
+            const key =
+                (explicitId && `rec:${explicitId}`) ||
+                (extractedId && `rec:${extractedId}`) ||
+                String(r.audioURL || r.audio_url || '').trim().toLowerCase();
+            if (key) audioKeys.add(key);
+        });
+
+        // Include session_notes entries that have audio_url (shown in Notes Library as Session Note + Show player).
+        notesForAudioCounts.forEach((note: any) => {
+            const audioUrl = note.audioURL || note.audio_url;
+            if (!audioUrl) return;
+            if (note.source && note.source !== 'session_note') return;
+
+            const noteClientId = String(note.clientId ?? note.client_id ?? '');
+            const noteClientName = String(note.clientName || '').trim().toLowerCase();
+            const noteSessionId = String(note.sessionId ?? note.session_id ?? '');
+            const matchesClient =
+                (noteClientId && noteClientId === String(client.id)) ||
+                (noteClientName && nameAliases.has(noteClientName)) ||
+                (noteSessionId && clientSessionIds.has(noteSessionId));
+
+            if (!matchesClient) return;
+
+            const explicitRecordingId = String(note.recordingId || '').trim();
+            const extractedId = extractRecordingIdFromAudioUrl(audioUrl);
+            const key =
+                (explicitRecordingId && `rec:${explicitRecordingId}`) ||
+                (extractedId && `rec:${extractedId}`) ||
+                String(audioUrl).trim().toLowerCase();
+            if (key) audioKeys.add(key);
+        });
+
+        return audioKeys.size;
     };
 
     const getClientName = (id: string) => {
         return clients.find(c => c.id === id)?.name || "Unknown Client";
+    };
+
+    const getClientDisplayName = (c: Client) => {
+        const fromParts = `${c.firstName || ''} ${c.lastName || ''}`.trim();
+        return fromParts || (c.name || '').trim();
     };
 
     const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -611,6 +683,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     
     // Session note counts for displaying indicators on session cards
     const [sessionNoteCounts, setSessionNoteCounts] = useState<Record<string, { recordings: number; written: number; admin: number }>>({});
+    // Recordings for current client (shown in Sessions tab - ensures visibility without clicking Notes)
+    const [clientRecordings, setClientRecordings] = useState<any[]>([]);
 
     // AI Clinical Assessment State
     const [currentTherapist, setCurrentTherapist] = useState<string>("");
@@ -629,6 +703,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [deleteTranscriptConfirmation, setDeleteTranscriptConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
     const [deleteNoteConfirmation, setDeleteNoteConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
     const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+    const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
     const [isAdminNoteDialogOpen, setIsAdminNoteDialogOpen] = useState(false);
     const [adminNoteContent, setAdminNoteContent] = useState("");
     const [isSavingAdminNote, setIsSavingAdminNote] = useState(false);
@@ -837,8 +912,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     useEffect(() => {
         if (isAddDialogOpen && editingClient && clientDialogTab === 'sessions') {
             loadSessionNoteCounts(editingClient.name);
+            loadClientRecordings(editingClient);
         }
-    }, [isAddDialogOpen, editingClient, clientDialogTab]);
+    }, [isAddDialogOpen, editingClient, clientDialogTab, appointments]);
 
     const loadSessionNotes = async (sessionId: string) => {
         setIsLoadingSessionNotes(true);
@@ -900,67 +976,28 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         }
                     }
                     
-                    // For recordings: match by session_id first, then fallback to client ID and date
+                    // For recordings: include session_id match OR session_id null (legacy);
+                    // include client_id match OR client_id null (legacy)
                     if (note.source === 'recording') {
-                        // Primary: Show recording if it's explicitly linked to THIS session
-                        if (note.sessionId === sessionId || note.session_id === sessionId) {
-                            console.log('[Load Session Notes] Recording matched by session_id:', note.id);
-                            return true;
-                        }
-                        
-                        // Fallback: Match recordings by client ID and date if sessionId is not set
-                        // This handles cases where recordings weren't properly linked to sessions
                         const recordingClientId = note.clientId || note.client_id;
                         const recordingClientName = note.clientName;
-                        // Prefer sessionDate (how /api/session-notes groups recordings under a session),
-                        // then fall back to raw creation dates
+                        const recordingSessionId = note.sessionId || note.session_id;
                         const recordingDate = note.sessionDate || note.date || note.created_at || note.createdDate;
-                        
-                        // Match by client ID and date
-                        if (recordingClientId && sessionClientId && recordingClientId === sessionClientId) {
-                            if (recordingDate) {
-                                const recordingDateStr = new Date(recordingDate).toISOString().split('T')[0];
-                                console.log('[Load Session Notes] Checking recording date match:', {
-                                    recordingId: note.id,
-                                    recordingDate: recordingDateStr,
-                                    sessionDate: sessionDate,
-                                    match: recordingDateStr === sessionDate
-                                });
-                                if (recordingDateStr === sessionDate) {
-                                    console.log('[Load Session Notes] Recording matched by client ID and date (fallback):', note.id);
-                                    return true;
-                                }
-                            } else {
-                                console.log('[Load Session Notes] Recording has no date:', note.id);
-                            }
-                        } else {
-                            console.log('[Load Session Notes] Recording client ID mismatch:', {
-                                recordingId: note.id,
-                                recordingClientId: recordingClientId,
-                                sessionClientId: sessionClientId,
-                                match: recordingClientId === sessionClientId
-                            });
-                        }
-                        
-                        // Fallback: Match by client name and date
-                        if (recordingClientName && session.clientName && 
-                            recordingClientName.toLowerCase() === session.clientName.toLowerCase()) {
-                            if (recordingDate) {
-                                const recordingDateStr = new Date(recordingDate).toISOString().split('T')[0];
-                                if (recordingDateStr === sessionDate) {
-                                    console.log('[Load Session Notes] Recording matched by client name and date (fallback):', note.id);
-                                    return true;
-                                }
-                            }
-                        } else {
-                            console.log('[Load Session Notes] Recording client name mismatch:', {
-                                recordingId: note.id,
-                                recordingClientName: recordingClientName,
-                                sessionClientName: session.clientName
-                            });
-                        }
-                        
-                        // Don't show recordings that don't match this session
+                        const recordingDateStr = recordingDate ? new Date(recordingDate).toISOString().split('T')[0] : null;
+
+                        // Primary: explicitly linked to this session
+                        if (recordingSessionId === sessionId) return true;
+
+                        // Client: allocated to this client OR legacy (client_id null)
+                        const clientMatch =
+                            !recordingClientId ||
+                            recordingClientId === sessionClientId ||
+                            (recordingClientName && session.clientName && recordingClientName.toLowerCase() === session.clientName.toLowerCase());
+
+                        // Session: allocated to this session OR legacy (session_id null) - require date match for placement
+                        const sessionMatch = recordingSessionId ? (recordingSessionId === sessionId) : (recordingDateStr === sessionDate);
+
+                        if (clientMatch && sessionMatch) return true;
                         return false;
                     }
                     
@@ -976,16 +1013,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                     const recordingClientId = note.clientId || note.client_id;
                     const recordingClientName = note.clientName;
-                    const recordingSessionDate = note.sessionDate
-                        ? new Date(note.sessionDate).toISOString().split('T')[0]
+                    const recordingSessionId = note.sessionId || note.session_id;
+                    const recordingDateStr = note.sessionDate || note.date || note.created_at || note.createdDate
+                        ? new Date((note.sessionDate || note.date || note.created_at || note.createdDate) as string).toISOString().split('T')[0]
                         : null;
 
-                    const matchesClient =
-                        (recordingClientId && sessionClientId && recordingClientId === sessionClientId) ||
-                        (recordingClientName && session.clientName &&
-                         recordingClientName.toLowerCase() === session.clientName.toLowerCase());
+                    const clientMatch = !recordingClientId || recordingClientId === sessionClientId ||
+                        (recordingClientName && session.clientName && recordingClientName.toLowerCase() === session.clientName.toLowerCase());
+                    const sessionMatch = recordingSessionId ? (recordingSessionId === sessionId) : (recordingDateStr === sessionDate);
 
-                    return !!(matchesClient && recordingSessionDate === sessionDate);
+                    return !!(clientMatch && sessionMatch);
                 });
 
                 const allNotesForSession = [
@@ -1023,53 +1060,138 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     hasContent: !!(n.content && n.content.trim())
                 })));
                 
-                // Deduplicate notes by content and timestamp to prevent showing the same voice note twice
-                // This can happen if the same recording exists in both recordings and session_notes tables
+                // Deduplicate: by recording.id or audio_url (same recording = same audio file)
+                // Also by content+timestamp for non-recording notes
+                const seenRecordingKeys = new Set<string>(); // recordingId or normalized audio_url
                 const seenContentKeys = new Set<string>();
-                const deduplicatedNotes = allNotesForSession.filter((note: any) => {
-                    // Filter out empty notes - MUST have content OR transcript OR audioURL to be displayable
-                    // For recordings, audioURL is sufficient (transcript can be added later)
+                const seenRecordingTranscriptKeys = new Set<string>();
+                // Prioritize richer notes first so dedupe keeps entries with transcript/content.
+                // This avoids keeping an audio-only session_note over a transcript-rich recording note.
+                const prioritizedNotes = [...allNotesForSession].sort((a: any, b: any) => {
+                    const score = (n: any) => {
+                        const hasTranscript = Boolean(n?.transcript && String(n.transcript).trim() !== '');
+                        const hasContent = Boolean(n?.content && String(n.content).trim() !== '');
+                        const hasAudio = Boolean((n?.audioURL || n?.audio_url) && String(n.audioURL || n.audio_url).trim() !== '');
+                        const isRecording = n?.source === 'recording';
+                        return (hasTranscript ? 8 : 0) + (isRecording ? 4 : 0) + (hasContent ? 2 : 0) + (hasAudio ? 1 : 0);
+                    };
+                    return score(b) - score(a);
+                });
+
+                const deduplicatedNotes = prioritizedNotes.filter((note: any) => {
                     const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
                     const hasTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
-                    const hasAudio = note.audioURL && typeof note.audioURL === 'string' && note.audioURL.trim() !== '';
-                    
-                    // For recordings, allow them through if they have audioURL (even without transcript yet)
-                    // For other notes, require content or transcript
-                    if (note.source === 'recording') {
-                        if (!hasContent && !hasTranscript && !hasAudio) {
+                    const hasAudio = (note.audioURL || note.audio_url) && typeof (note.audioURL || note.audio_url) === 'string' && (note.audioURL || note.audio_url).trim() !== '';
+
+                    // Must have content, transcript, or audio to display
+                    if (!hasContent && !hasTranscript && !hasAudio) {
+                        if (note.source === 'recording') {
                             console.log('[Load Session Notes] Filtering out recording with no content/transcript/audio:', note.id);
-                            return false;
+                        } else {
+                            console.log('[Load Session Notes] Filtering out empty note:', note.id, note.source);
                         }
-                    } else {
-                        // Non-recording notes must have content or transcript
-                        if (!hasContent && !hasTranscript) {
-                            console.log('[Load Session Notes] Filtering out empty/deleted note:', note.id, note.source, { content: note.content, transcript: note.transcript });
-                            return false;
-                        }
-                    }
-                    
-                    // For recordings, include the ID in the deduplication key to avoid false duplicates
-                    // (Two different recordings might have similar transcripts)
-                    // For other notes, use content + timestamp
-                    const content = (note.content || note.transcript || '').trim().substring(0, 200);
-                    const timestamp = note.createdDate || note.created_at || '';
-                    const dateKey = timestamp ? new Date(timestamp).toISOString().substring(0, 16) : ''; // Round to minute
-                    
-                    // Include note ID for recordings to prevent false duplicates
-                    const key = note.source === 'recording' && note.id 
-                        ? `${note.source}-${note.id}-${content}-${dateKey}`
-                        : `${content}-${dateKey}`;
-                    
-                    if (seenContentKeys.has(key)) {
-                        console.log('[Load Session Notes] Removing duplicate note:', note.id, note.source);
                         return false;
                     }
-                    seenContentKeys.add(key);
+
+                    // Deduplicate by recording.id or audio_url
+                    const recordingId = note.recordingId || (note.id?.startsWith('recording-') ? note.id.replace('recording-', '') : (note.source === 'recording' ? note.id : null));
+                    const audioUrl = (note.audioURL || note.audio_url)?.trim() || '';
+                    const audioMatch = audioUrl.match(/\/api\/audio\/([^/?]+)/i);
+                    const audioKey = audioMatch ? audioMatch[1].replace(/\.(webm|m4a|mp3|wav|mp4|ogg)$/i, '') : audioUrl;
+                    const recordingKey = recordingId || (audioKey ? `audio:${audioKey}` : null);
+                    if (recordingKey) {
+                        if (seenRecordingKeys.has(recordingKey)) {
+                            console.log('[Load Session Notes] Dedupe by recording/audio:', note.id);
+                            return false;
+                        }
+                        seenRecordingKeys.add(recordingKey);
+                    }
+
+                    // For recordings with transcript: dedupe by transcript+session (retry-save duplicates)
+                    if ((note.source === 'recording') && hasTranscript && sessionId) {
+                        const transcriptNorm = (note.transcript || '').trim().substring(0, 500).toLowerCase();
+                        const transcriptKey = `recording-transcript-${sessionId}-${transcriptNorm}`;
+                        if (seenRecordingTranscriptKeys.has(transcriptKey)) {
+                            console.log('[Load Session Notes] Removing duplicate recording (same transcript):', note.id);
+                            return false;
+                        }
+                        seenRecordingTranscriptKeys.add(transcriptKey);
+                    }
+
+                    // For non-recording notes: dedupe by content + timestamp
+                    if (note.source !== 'recording') {
+                        const content = (note.content || note.transcript || '').trim().substring(0, 200);
+                        const dateKey = (note.createdDate || note.created_at || '') ? new Date(note.createdDate || note.created_at).toISOString().substring(0, 16) : '';
+                        const key = `${content}-${dateKey}`;
+                        if (seenContentKeys.has(key)) {
+                            console.log('[Load Session Notes] Removing duplicate note:', note.id);
+                            return false;
+                        }
+                        seenContentKeys.add(key);
+                    }
                     return true;
                 });
                 
                 if (deduplicatedNotes.length !== allNotesForSession.length) {
                     console.log(`[Load Session Notes] Removed ${allNotesForSession.length - deduplicatedNotes.length} duplicate notes`);
+                }
+
+                // Ensure we include ALL recordings for this session (matches the "4 Recordings" count)
+                // session-notes API may omit some; fetch recordings directly and merge any missing
+                const recordingIdsInNotes = new Set<string>();
+                deduplicatedNotes.forEach((n: any) => {
+                    if (n.source === 'recording') {
+                        const id = n.recordingId || (n.id?.startsWith('recording-') ? n.id.replace('recording-', '') : n.id);
+                        if (id) recordingIdsInNotes.add(id);
+                    }
+                    if (n.recordingId) recordingIdsInNotes.add(n.recordingId);
+                    // Session notes with audio_url may reference a recording file - extract id for deduplication
+                    if ((n.audioURL || n.audio_url) && typeof (n.audioURL || n.audio_url) === 'string') {
+                        const url = n.audioURL || n.audio_url;
+                        const match = url.match(/\/api\/audio\/(?:recordings\/)?([^/?]+)(?:\.(webm|m4a|mp3|wav|mp4|ogg))?/i);
+                        if (match) recordingIdsInNotes.add(match[1]);
+                    }
+                });
+                try {
+                    const recRes = await fetch('/api/recordings', { credentials: 'include' });
+                    if (recRes.ok) {
+                        const allRecs = await recRes.json();
+                        const normalizedClientName = session.clientName?.trim().toLowerCase() || '';
+                        const recsForSession = (allRecs || []).filter((r: any) => {
+                            if (recordingIdsInNotes.has(r.id)) return false;
+                            const rSessionId = r.session_id ?? r.sessionId;
+                            const rClientId = r.client_id ?? r.clientId;
+                            const rClientName = (r.clientName || '').trim().toLowerCase();
+                            const recordingDateStr = (r.date || r.created_at) ? new Date(r.date || r.created_at).toISOString().split('T')[0] : null;
+                            const clientMatch = !rClientId || rClientId === sessionClientId || (rClientName && rClientName === normalizedClientName);
+                            const sessionMatch = rSessionId ? (rSessionId === sessionId) : (recordingDateStr === sessionDate && clientMatch);
+                            return clientMatch && sessionMatch;
+                        });
+                        if (recsForSession.length > 0) {
+                            const sessionClientName = session.clientName || '';
+                            const extraNotes = recsForSession.map((r: any) => ({
+                                id: `recording-${r.id}`,
+                                source: 'recording',
+                                recordingId: r.id,
+                                sessionId: sessionId,
+                                session_id: sessionId,
+                                clientId: sessionClientId || r.clientId || r.client_id,
+                                clientName: sessionClientName || r.clientName,
+                                transcript: r.transcript || '',
+                                content: '',
+                                audioURL: r.audioURL || r.audio_url || (r.id ? `/api/audio/${r.id}.webm` : ''),
+                                createdDate: r.date || r.created_at,
+                                sessionDate: session.date
+                            }));
+                            const merged = [...deduplicatedNotes, ...extraNotes].sort((a: any, b: any) =>
+                                new Date(b.createdDate || 0).getTime() - new Date(a.createdDate || 0).getTime()
+                            );
+                            setSessionNotes(merged);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[Load Session Notes] Could not fetch supplementary recordings:', e);
                 }
                 
                 setSessionNotes(deduplicatedNotes);
@@ -1086,6 +1208,28 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     };
 
     // Load note counts for all sessions of a client (for displaying indicators on session cards)
+    const loadClientRecordings = async (client: Client | null) => {
+        if (!client) {
+            setClientRecordings([]);
+            return;
+        }
+        try {
+            const response = await fetch('/api/recordings', { credentials: 'include' });
+            if (!response.ok) return;
+            const all = await response.json();
+            const normalized = client.name.trim().toLowerCase();
+            const filtered = (all || []).filter((r: any) => {
+                const matchesId = r.client_id === client.id || r.clientId === client.id;
+                const matchesName = r.clientName && r.clientName.trim().toLowerCase() === normalized;
+                return matchesId || matchesName;
+            });
+            setClientRecordings(filtered);
+        } catch (e) {
+            console.warn('[Load Client Recordings]', e);
+            setClientRecordings([]);
+        }
+    };
+
     const loadSessionNoteCounts = async (clientName: string) => {
         try {
             const [notesResponse, recordingsResponse] = await Promise.all([
@@ -1096,18 +1240,34 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             if (notesResponse.ok) {
                 const allNotes = await notesResponse.json();
 
-                // Filter notes for this client
-                const clientNotes = allNotes.filter((note: any) =>
-                    note.clientName?.toLowerCase() === clientName.toLowerCase()
-                );
+                // Filter notes for this client: include client_id match OR client_id null (legacy)
+                const normalizedClientName = clientName.trim().toLowerCase();
+                const client = clients.find(c => (c.name || '').trim().toLowerCase() === normalizedClientName);
+                const clientNotes = allNotes.filter((note: any) => {
+                    const noteClientId = note.clientId || note.client_id;
+                    const noteClientName = (note.clientName || '').trim().toLowerCase();
+                    return (
+                        noteClientName === normalizedClientName ||
+                        (client && noteClientId === client.id) ||
+                        !noteClientId
+                    );
+                });
 
-                // Group counts by session ID
+                // Group counts by session ID - use getClientAppointments for consistent case-insensitive matching
                 const counts: Record<string, { recordings: number; written: number; admin: number }> = {};
                 const recordingIdsFromNotes = new Set<string>();
+                const clientAppointments = getClientAppointments(clientName);
 
                 clientNotes.forEach((note: any) => {
-                    const sessionId = note.sessionId || note.session_id;
-                    if (!sessionId) return;
+                    let effectiveSessionId = note.sessionId || note.session_id;
+                    // Legacy: session_id null - match by date to a session for this client
+                    if (!effectiveSessionId && clientAppointments.length > 0) {
+                        const noteDate = note.sessionDate || note.createdDate || note.date || note.created_at;
+                        const noteDateStr = noteDate ? new Date(noteDate).toISOString().split('T')[0] : null;
+                        const matchingApt = noteDateStr && clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === noteDateStr);
+                        effectiveSessionId = matchingApt?.id || null;
+                    }
+                    if (!effectiveSessionId) return;
 
                     // Skip soft-deleted notes (content, transcript, and audio_url are all null/empty)
                     const hasContent = note.content && note.content.trim().length > 0;
@@ -1119,58 +1279,57 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         return; // Skip empty/soft-deleted notes
                     }
 
-                    if (!counts[sessionId]) {
-                        counts[sessionId] = { recordings: 0, written: 0, admin: 0 };
+                    if (!counts[effectiveSessionId]) {
+                        counts[effectiveSessionId] = { recordings: 0, written: 0, admin: 0 };
                     }
 
                     // Check note type
                     if (note.source === 'recording') {
-                        // Store both the note ID (recording-{id}) and the actual recording ID for deduplication
                         if (note.id) {
                             recordingIdsFromNotes.add(note.id);
-                            // Also add the actual recording ID if available (for deduplication)
                             if (note.recordingId) {
                                 recordingIdsFromNotes.add(note.recordingId);
                             } else if (note.id.startsWith('recording-')) {
-                                // Extract numeric ID from "recording-{id}" format
-                                const numericId = note.id.replace('recording-', '');
-                                recordingIdsFromNotes.add(numericId);
+                                recordingIdsFromNotes.add(note.id.replace('recording-', ''));
                             }
                         }
-                        counts[sessionId].recordings++;
+                        counts[effectiveSessionId].recordings++;
                     } else if (note.source === 'written_session_note' || (note.id && note.id.startsWith('written-'))) {
-                        counts[sessionId].written++;
+                        counts[effectiveSessionId].written++;
                     } else if (note.source === 'admin' || (note.id && note.id.startsWith('admin-'))) {
-                        counts[sessionId].admin++;
+                        counts[effectiveSessionId].admin++;
                     }
                 });
 
                 // Add recordings linked to sessions (if not already counted via session notes)
                 if (recordingsResponse.ok) {
                     const allRecordings = await recordingsResponse.json();
-                    const client = clients.find(c => c.name === clientName);
-                    const normalizedClientName = clientName.trim().toLowerCase();
 
                     allRecordings.forEach((recording: any) => {
-                        const sessionId = recording.sessionId || recording.session_id;
-                        if (!sessionId) return;
+                        let effectiveSessionId = recording.sessionId || recording.session_id;
+                        // Legacy: session_id null - match by date to a session for this client
+                        if (!effectiveSessionId && client && clientAppointments.length > 0) {
+                            const recordingDate = recording.date || recording.created_at;
+                            const recordingDateStr = recordingDate ? new Date(recordingDate).toISOString().split('T')[0] : null;
+                            const matchingApt = recordingDateStr && clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === recordingDateStr);
+                            effectiveSessionId = matchingApt?.id || null;
+                        }
+                        if (!effectiveSessionId) return;
 
                         const matchesClientId = client && (recording.client_id === client.id || recording.clientId === client.id);
                         const matchesClientName = recording.clientName?.trim().toLowerCase() === normalizedClientName;
-                        if (!matchesClientId && !matchesClientName) return;
+                        const matchesLegacy = !recording.client_id && !recording.clientId;
+                        if (!matchesClientId && !matchesClientName && !matchesLegacy) return;
 
-                        if (!counts[sessionId]) {
-                            counts[sessionId] = { recordings: 0, written: 0, admin: 0 };
+                        if (!counts[effectiveSessionId]) {
+                            counts[effectiveSessionId] = { recordings: 0, written: 0, admin: 0 };
                         }
 
-                        // Check if this recording was already counted via session notes
-                        // Check both the recording ID and the "recording-{id}" format
                         const recordingId = recording.id?.toString() || '';
                         const recordingNoteId = `recording-${recordingId}`;
                         const alreadyCounted = recordingIdsFromNotes.has(recordingId) || recordingIdsFromNotes.has(recordingNoteId);
-                        
                         if (!alreadyCounted) {
-                            counts[sessionId].recordings++;
+                            counts[effectiveSessionId].recordings++;
                         }
                     });
                 }
@@ -1785,6 +1944,12 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         // No reciprocal relationships needed, proceed normally
         setEditingClient(null);
 
+        // Clear client/highlight params so URL doesn't have stale ?client=OldName.
+        // After a name change, ?client=OldName would fail to find the client on reload.
+        if (searchParams.get('client') || searchParams.get('highlight')) {
+            router.replace('/clients');
+        }
+
         // Reset form
         setFormData({
             name: "",
@@ -2155,6 +2320,29 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         setEditingTranscriptId(null);
     };
 
+    const handleRetryTranscription = async (note: any) => {
+        const recordingId = note.recordingId || (note.id && note.id.startsWith('recording-') ? note.id.replace('recording-', '') : note.id);
+        if (!recordingId) return;
+        try {
+            const res = await fetch('/api/recordings/retry-transcription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: recordingId }),
+                credentials: 'include'
+            });
+            if (res.ok) {
+                if (activeSession) await loadSessionNotes(activeSession.id);
+                if (editingClient) await loadSessionNoteCounts(editingClient.name);
+                setNotificationModal({ open: true, type: 'success', message: 'Transcription complete' });
+            } else {
+                const err = await res.json().catch(() => ({}));
+                setNotificationModal({ open: true, type: 'error', message: err.error || 'Transcription failed' });
+            }
+        } catch (e) {
+            setNotificationModal({ open: true, type: 'error', message: 'Transcription failed' });
+        }
+    };
+
     const handleDeleteTranscript = (note: any) => {
         setDeleteTranscriptConfirmation({ open: true, note });
     };
@@ -2164,23 +2352,43 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         if (!note) return;
 
         try {
-            // Delete both transcript and AI assessment (content) if it exists
-            const updatedNote = {
-                ...note,
-                transcript: null,
-                content: null // Also delete AI assessment
-            };
-
-            const response = await fetch('/api/session-notes', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify([updatedNote])
-            });
-
-            if (response.ok) {
-                if (activeSession) {
-                    await loadSessionNotes(activeSession.id);
+            // Voice notes (recordings) live in the recordings table - must use recordings DELETE API
+            if (note.source === 'recording') {
+                const recordingId = note.recordingId || (note.id?.startsWith('recording-') ? note.id.replace('recording-', '') : note.id);
+                if (!recordingId) {
+                    setNotificationModal({ open: true, type: 'error', message: 'Cannot delete: recording ID missing' });
+                    return;
                 }
+                const response = await fetch(`/api/recordings?id=${encodeURIComponent(recordingId)}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    if (activeSession) await loadSessionNotes(activeSession.id);
+                    if (editingClient) await loadSessionNoteCounts(editingClient.name);
+                    window.dispatchEvent(new Event('recordings-updated'));
+                    setNotificationModal({ open: true, type: 'success', message: 'Voice note deleted successfully' });
+                    setDeleteTranscriptConfirmation({ open: false, note: null });
+                } else {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    setNotificationModal({ open: true, type: 'error', message: errorData.error || 'Failed to delete voice note' });
+                }
+                return;
+            }
+
+            // Non-recording notes: delete the session_notes row entirely.
+            // Soft-clearing transcript/content leaves audio_url behind and the card reappears.
+            if (!note.id) {
+                setNotificationModal({ open: true, type: 'error', message: 'Cannot delete: note ID missing' });
+                return;
+            }
+            const response = await fetch(`/api/session-notes?id=${encodeURIComponent(note.id)}`, {
+                method: 'DELETE',
+                credentials: 'include'
+            });
+            if (response.ok) {
+                if (activeSession) await loadSessionNotes(activeSession.id);
+                if (editingClient) await loadSessionNoteCounts(editingClient.name);
                 setNotificationModal({ open: true, type: 'success', message: 'Transcript and AI assessment deleted successfully' });
                 setDeleteTranscriptConfirmation({ open: false, note: null });
             } else {
@@ -2189,7 +2397,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             }
         } catch (error) {
             console.error('Error deleting transcript:', error);
-            setNotificationModal({ open: true, type: 'error', message: 'Error deleting transcript. Please try again.' });
+            setNotificationModal({ open: true, type: 'error', message: 'Error deleting. Please try again.' });
         }
     };
 
@@ -2338,7 +2546,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
     // Handle audio playback
     const handlePlayAudio = (note: any) => {
-        if (!note.audioURL) return;
+        const audioUrl = note.audioURL || note.audio_url;
+        if (!audioUrl) return;
 
         // Stop any currently playing audio
         if (audioElement) {
@@ -2349,24 +2558,49 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         if (playingAudioId === note.id) {
             // If clicking the same note, stop playback
             setPlayingAudioId(null);
+            setLoadingAudioId(null);
             setAudioElement(null);
         } else {
-            // Play new audio
-            const audio = new Audio(note.audioURL);
-            audio.play();
+            // Play new audio (supports legacy /api/audio/timestamp.webm and new /api/audio/recordings/uuid.webm)
+            const audio = new Audio(audioUrl);
             setPlayingAudioId(note.id);
+            setLoadingAudioId(note.id);
             setAudioElement(audio);
+
+            // Audio is ready/playing: hide spinner
+            audio.oncanplay = () => {
+                setLoadingAudioId((prev) => (prev === note.id ? null : prev));
+            };
+            audio.onplaying = () => {
+                setLoadingAudioId((prev) => (prev === note.id ? null : prev));
+            };
+            // If buffering again after initial play, show spinner
+            audio.onwaiting = () => {
+                setLoadingAudioId(note.id);
+            };
 
             audio.onended = () => {
                 setPlayingAudioId(null);
+                setLoadingAudioId(null);
                 setAudioElement(null);
             };
 
             audio.onerror = () => {
                 setNotificationModal({ open: true, type: 'error', message: 'Error playing audio. Please check the audio file.' });
                 setPlayingAudioId(null);
+                setLoadingAudioId(null);
                 setAudioElement(null);
             };
+
+            const playPromise = audio.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.catch(() => {
+                    setNotificationModal({ open: true, type: 'error', message: 'Error playing audio. Please check the audio file.' });
+                    setPlayingAudioId(null);
+                    setLoadingAudioId(null);
+                    setAudioElement(null);
+                });
+            }
         }
     };
 
@@ -2421,10 +2655,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             doctorInfo: { name: "", phone: "" },
             newClientFormSigned: false,
         });
-        // Remove client query parameter from URL to prevent dialog from reopening
-        if (searchParams.get('client')) {
-            router.replace('/clients');
-        }
+        // Reset param cache so same card can be reopened; avoid router.replace (can cause remount/state reset)
+        hasProcessedParamsRef.current = '';
     };
 
     // Selection handlers
@@ -3224,6 +3456,52 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto overflow-x-hidden px-1 sm:px-0 pb-4">
+                                    {/* Recordings for this client - always visible */}
+                                    {editingClient && clientRecordings.length > 0 && (
+                                        <div className="mb-6">
+                                            <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                                <Mic className="h-4 w-4 text-purple-600" />
+                                                Recordings ({clientRecordings.length})
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {clientRecordings.map((r: any) => {
+                                                    const audioUrl = r.audioURL || r.audio_url || (r.id ? `/api/audio/${r.id}.webm` : '');
+                                                    return (
+                                                        <div
+                                                            key={r.id}
+                                                            className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/50"
+                                                        >
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-9 w-9 p-0 flex-shrink-0"
+                                                                onClick={() => handlePlayAudio({ id: `rec-${r.id}`, audioURL: audioUrl })}
+                                                            >
+                                                                {loadingAudioId === `rec-${r.id}` ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : playingAudioId === `rec-${r.id}` ? (
+                                                                    <Pause className="h-4 w-4" />
+                                                                ) : (
+                                                                    <Play className="h-4 w-4" />
+                                                                )}
+                                                            </Button>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {r.date || r.created_at
+                                                                    ? new Date(r.date || r.created_at).toLocaleString(undefined, {
+                                                                          day: '2-digit',
+                                                                          month: 'short',
+                                                                          year: 'numeric',
+                                                                          hour: '2-digit',
+                                                                          minute: '2-digit'
+                                                                      })
+                                                                    : 'No date'}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                     {editingClient && getClientAppointments(editingClient.name).length === 0 ? (
                                         <div className="text-center py-8 text-muted-foreground">
                                             <Calendar className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -3668,25 +3946,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         <div className="space-y-6 flex flex-col flex-1 min-h-0 sm:block sm:flex-none sm:min-h-0 relative">
                                             <TooltipProvider>
                                             {sessionNotes.filter((note: any) => {
-                                                // Filter out notes that have been deleted or are empty
-                                                // Note: We MUST have transcript or content to display - audio alone is not enough
-                                                // because the audio player is inside the transcript block
                                                 const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
                                                 const hasTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
-                                                
-                                                // Must have either actual content OR actual transcript to be shown
-                                                // Audio-only notes cannot be displayed (player is in transcript section)
-                                                const shouldShow = hasContent || hasTranscript;
+                                                const hasAudio = (note.audioURL || note.audio_url) && typeof (note.audioURL || note.audio_url) === 'string' && (note.audioURL || note.audio_url).trim() !== '';
+                                                // Show if has content, transcript, or audio (recordings and session_notes with audio_url)
+                                                const shouldShow = hasContent || hasTranscript || hasAudio;
                                                 return shouldShow;
                                             }).map((note, index) => {
-                                                // Final check - determine what content this note actually has to display
                                                 const displayContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
                                                 const displayTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
-                                                
-                                                // Don't render card if there's nothing to display
-                                                if (!displayContent && !displayTranscript) {
-                                                    return null;
-                                                }
+                                                const displayAudio = (note.audioURL || note.audio_url) && typeof (note.audioURL || note.audio_url) === 'string' && (note.audioURL || note.audio_url).trim() !== '';
+                                                if (!displayContent && !displayTranscript && !displayAudio) return null;
                                                 
                                                 // Determine if this is an uploaded recording with AI Clinical Assessment
                                                 const hasAIClinicalAssessment = displayContent && 
@@ -3783,8 +4053,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Show transcript FIRST - for live recordings this is the only content, for uploaded it's the original */}
-                                                    {note.transcript && (
+                                                    {/* Show transcript/audio block - for recordings and session_notes with audio */}
+                                                    {(note.transcript || (note.audioURL || note.audio_url)) && (
                                                         <div
                                                             className={`flex flex-col ${
                                                                 hasAIClinicalAssessment ? "" : "sm:flex-1 sm:min-h-0"
@@ -3800,8 +4070,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                         : "Original Transcript (Therapist's Words):"}
                                                                 </p>
                                                                 <div className="flex items-center gap-2.5 sm:gap-2 flex-wrap min-w-0 overflow-visible">
-                                                                    {/* Play button for audio recordings */}
-                                                                    {note.audioURL && (
+                                                                    {/* Play button for audio recordings and session_notes with audio */}
+                                                                    {(note.audioURL || note.audio_url) && (
                                                                         <Tooltip>
                                                                             <TooltipTrigger asChild>
                                                                                 <Button
@@ -3813,7 +4083,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                     }}
                                                                                     className="h-8 w-8 sm:h-7 sm:w-7 p-0 flex-shrink-0"
                                                                                 >
-                                                                                    {playingAudioId === note.id ? (
+                                                                                    {loadingAudioId === note.id ? (
+                                                                                        <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                                                                                    ) : playingAudioId === note.id ? (
                                                                                         <Pause className="h-4 w-4 text-primary" />
                                                                                     ) : (
                                                                                         <Play className="h-4 w-4 text-primary" />
@@ -3821,7 +4093,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                                 </Button>
                                                                             </TooltipTrigger>
                                                                             <TooltipContent>
-                                                                                <p>{playingAudioId === note.id ? 'Pause' : 'Play'} Recording</p>
+                                                                                <p>{loadingAudioId === note.id ? 'Loading' : playingAudioId === note.id ? 'Pause' : 'Play'} Recording</p>
                                                                             </TooltipContent>
                                                                         </Tooltip>
                                                                     )}
@@ -3964,7 +4236,23 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                         hasAIClinicalAssessment ? "" : "flex-1 min-h-0"
                                                                     }`}
                                                                 >
-                                                                    {note.transcript}
+                                                                    {note.transcript && note.transcript.trim() !== ''
+                                                                        ? note.transcript
+                                                                        : note.source === 'recording'
+                                                                        ? (
+                                                                            <span className="flex flex-col gap-2">
+                                                                                <span className="text-muted-foreground">No transcript captured.</span>
+                                                                                <Button
+                                                                                    variant="outline"
+                                                                                    size="sm"
+                                                                                    className="w-fit"
+                                                                                    onClick={(e) => { e.stopPropagation(); handleRetryTranscription(note); }}
+                                                                                >
+                                                                                    Retry transcription (Whisper)
+                                                                                </Button>
+                                                                            </span>
+                                                                          )
+                                                                        : ''}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -4240,10 +4528,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     open={deleteTranscriptConfirmation.open}
                     onOpenChange={(open) => setDeleteTranscriptConfirmation({ open, note: open ? deleteTranscriptConfirmation.note : null })}
                     onConfirm={confirmDeleteTranscript}
-                    title="Delete Transcript and AI Assessment"
-                    description="Are you sure you want to delete this transcript and its AI assessment? This will permanently remove both the transcript text and any associated AI clinical assessment. This action cannot be undone."
+                    title={deleteTranscriptConfirmation.note?.source === 'recording' ? 'Delete Voice Note' : 'Delete Transcript and AI Assessment'}
+                    description={deleteTranscriptConfirmation.note?.source === 'recording'
+                        ? 'Are you sure you want to delete this voice note? It will be removed from this session. This action cannot be undone.'
+                        : 'Are you sure you want to delete this transcript and its AI assessment? This will permanently remove both the transcript text and any associated AI clinical assessment. This action cannot be undone.'}
                     requireConfirmation={true}
-                    checkboxText="I understand this will delete both the transcript and AI assessment permanently"
+                    checkboxText={deleteTranscriptConfirmation.note?.source === 'recording'
+                        ? 'I understand this will permanently remove this voice note'
+                        : 'I understand this will delete both the transcript and AI assessment permanently'}
                     confirmButtonText="Delete"
                 />
 
@@ -4698,7 +4990,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     <Link
                                                         href={`/clients?highlight=${client.id}`}
                                                         className="font-medium truncate text-sm leading-none flex-1 hover:underline text-primary transition-colors"
-                                                        onClick={(e) => e.stopPropagation()}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            // Re-click fix: if already at this URL and dialog closed, open via handler (Link won't navigate)
+                                                            if (searchParams.get('highlight') === client.id && !editingClient) {
+                                                                e.preventDefault();
+                                                                handleEdit(client, 'profile');
+                                                            }
+                                                        }}
                                                         aria-label={`View ${client.firstName ? `${client.firstName} ${client.lastName}` : client.name} details`}
                                                     >
                                                         {client.firstName ? `${client.firstName} ${client.lastName}` : client.name}
@@ -4804,17 +5103,19 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </div>
                                                     );
                                                 })()}
-                                                {(getRecordingCount(client.name) > 0) ? (
+                                                {(() => {
+                                                    const recordingCount = getRecordingCount(client);
+                                                    return recordingCount > 0 ? (
                                                     <Link
-                                                        href={`/recordings?client=${encodeURIComponent(client.name)}`}
+                                                        href={`/recordings?client=${encodeURIComponent(getClientDisplayName(client))}`}
                                                         className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
                                                         title="View Recordings"
                                                         onClick={(e) => e.stopPropagation()}
                                                     >
                                                         <Mic className="h-3 w-3 text-purple-500" />
-                                                        <span>{getRecordingCount(client.name)}</span>
+                                                        <span>{recordingCount}</span>
                                                     </Link>
-                                                ) : (
+                                                    ) : (
                                                     <div
                                                         className="flex items-center gap-1 text-purple-300/80 cursor-default"
                                                         title="No Recordings"
@@ -4823,7 +5124,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         <Mic className="h-3 w-3 text-purple-300/80" />
                                                         <span>0</span>
                                                     </div>
-                                                )}
+                                                    );
+                                                })()}
                                                 {((client.documents || []).length > 0) ? (
                                                     <Link
                                                         href={`/documents?client=${encodeURIComponent(client.name)}`}

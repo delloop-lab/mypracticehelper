@@ -31,6 +31,23 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid bucket' }, { status: 400 });
         }
 
+        // For new recordings path: fail if file already exists (no overwrite)
+        if (bucket === 'audio' && fileName.startsWith('recordings/')) {
+            const parts = fileName.split('/');
+            const folder = parts.slice(0, -1).join('/') || 'recordings';
+            const baseName = parts[parts.length - 1] || '';
+            const { data: list } = await supabase.storage
+                .from('audio')
+                .list(folder, { limit: 5000 });
+            const exists = list?.some((f: { name: string }) => f.name === baseName);
+            if (exists) {
+                return NextResponse.json(
+                    { error: 'File already exists - cannot overwrite' },
+                    { status: 409 }
+                );
+            }
+        }
+
         // Generate a signed URL for uploading
         // The URL is valid for 1 hour (3600 seconds)
         const { data, error } = await supabase.storage

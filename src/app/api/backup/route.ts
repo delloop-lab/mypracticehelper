@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { getClients } from '@/lib/storage';
 import archiver from 'archiver';
-import { Readable } from 'stream';
-import { PassThrough } from 'stream';
+
+/** Extract storage path from audio_url or recording id. Supports legacy {id}.webm and new recordings/{uuid}.webm. */
+function getAudioFileName(audioUrl: string | null | undefined, recordingId: string): string {
+    if (!audioUrl || typeof audioUrl !== 'string') return `${recordingId}.webm`;
+    if (audioUrl.includes('/api/audio/')) return audioUrl.replace(/.*\/api\/audio\//, '').split('?')[0].trim();
+    const match = audioUrl.match(/\/([^/]+\.(webm|m4a|mp3|wav|mp4|ogg|mpeg))$/i);
+    if (match) return match[1];
+    if (audioUrl.includes('/audio/')) return audioUrl.split('/audio/').pop()?.split('?')[0].trim() || `${recordingId}.webm`;
+    if (/^[^/]+\.(webm|m4a|mp3|wav|mp4|ogg|mpeg)$/i.test(audioUrl.trim())) return audioUrl.trim();
+    return `${recordingId}.webm`;
+}
 
 export async function GET() {
     // Return empty list as local backups are not supported in cloud mode
@@ -182,13 +190,35 @@ export async function POST() {
                 date: recording.created_at ? new Date(recording.created_at).toISOString().split('T')[0] : '',
                 notes: notes,
                 duration: recording.duration || 0,
-                url: recording.url || '',
+                url: recording.url || recording.audio_url || '',
                 transcript: recording.transcript || ''
             };
         });
         console.log(`[Backup API] Fetched ${recordings.length} recordings`);
-        
-        // 5. Create ZIP file with separate JSON files
+
+        // 5. Download all audio files from Supabase Storage
+        const audioBuffers = new Map<string, Buffer>();
+        let audioDownloaded = 0;
+        await Promise.all(
+            (allRecordings || []).map(async (recording: any) => {
+                const fileName = getAudioFileName(recording.audio_url, recording.id);
+                try {
+                    const { data, error } = await supabase.storage
+                        .from('audio')
+                        .download(fileName);
+                    if (!error && data) {
+                        const arrayBuffer = await data.arrayBuffer();
+                        audioBuffers.set(recording.id, Buffer.from(arrayBuffer));
+                        audioDownloaded++;
+                    }
+                } catch (e) {
+                    console.warn(`[Backup API] Could not download audio for recording ${recording.id}:`, e);
+                }
+            })
+        );
+        console.log(`[Backup API] Downloaded ${audioDownloaded}/${recordings.length} audio files`);
+
+        // 6. Create ZIP file with separate JSON files and audio
         console.log('[Backup API] Creating ZIP archive...');
         
         return new Promise<NextResponse>((resolve, reject) => {
@@ -206,7 +236,7 @@ export async function POST() {
                 const zipBuffer = Buffer.concat(chunks);
                 console.log('[Backup API] ZIP archive created successfully');
                 console.log(`[Backup API] ZIP size: ${(zipBuffer.length / 1024 / 1024).toFixed(2)} MB`);
-                console.log(`[Backup API] Summary: ${clients.length} clients, ${appointments.length} appointments, ${sessionNotes.length} notes, ${recordings.length} recordings`);
+                console.log(`[Backup API] Summary: ${clients.length} clients, ${appointments.length} appointments, ${sessionNotes.length} notes, ${recordings.length} recordings, ${audioBuffers.size} audio files`);
                 
                 resolve(new NextResponse(zipBuffer, {
                     status: 200,
@@ -231,25 +261,35 @@ export async function POST() {
                     clients: clients.length,
                     appointments: appointments.length,
                     sessionNotes: sessionNotes.length,
-                    recordings: recordings.length
+                    recordings: recordings.length,
+                    audioFiles: audioBuffers.size
                 }
             };
-            
+
             // Add metadata file
             archive.append(JSON.stringify(backupData, null, 2), { name: 'backup-metadata.json' });
-            
+
             // Add clients file
             archive.append(JSON.stringify(clients, null, 2), { name: 'clients.json' });
-            
+
             // Add appointments file
             archive.append(JSON.stringify(appointments, null, 2), { name: 'appointments.json' });
-            
+
             // Add session notes file
             archive.append(JSON.stringify(sessionNotes, null, 2), { name: 'session-notes.json' });
-            
+
             // Add recordings file
             archive.append(JSON.stringify(recordings, null, 2), { name: 'recordings.json' });
-            
+
+            // Add audio files to audio/ folder
+            for (const recording of allRecordings || []) {
+                const buffer = audioBuffers.get(recording.id);
+                if (buffer) {
+                    const fileName = getAudioFileName(recording.audio_url, recording.id);
+                    archive.append(buffer, { name: `audio/${fileName}` });
+                }
+            }
+
             // Finalize the archive
             archive.finalize();
         });

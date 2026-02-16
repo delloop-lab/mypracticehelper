@@ -181,12 +181,14 @@ export async function saveClients(clients: any[], userId?: string | null) {
 
 export async function getRecordings(userId?: string | null) {
     // Build query with optional user_id filter
+    // Exclude soft-deleted (deleted_at IS NULL) per RECORDINGS_TRANSCRIPTION_AUDIT.md
     let query = supabase
         .from('recordings')
         .select(`
             *,
             clients (name)
-        `);
+        `)
+        .is('deleted_at', null);
     
     // Filter by user_id if provided (recordings table has user_id column)
     if (userId) {

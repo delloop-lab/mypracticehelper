@@ -6,6 +6,29 @@ export async function GET(request: Request) {
     try {
         // Check authentication (handles both new and fallback methods)
         const { userId, isFallback, userEmail } = await checkAuthentication(request);
+        const isMissingDeletedAtColumn = (error: any) =>
+            String(error?.message || '').toLowerCase().includes('deleted_at');
+        const fetchRecordings = async (scopeUserId: string | null) => {
+            let query = supabase
+                .from('recordings')
+                .select(`*, clients (id, name)`);
+
+            query = scopeUserId ? query.eq('user_id', scopeUserId) : query.is('user_id', null);
+
+            let result = await query
+                .is('deleted_at', null)
+                .order('created_at', { ascending: false });
+
+            if (isMissingDeletedAtColumn(result.error)) {
+                let fallbackQuery = supabase
+                    .from('recordings')
+                    .select(`*, clients (id, name)`);
+                fallbackQuery = scopeUserId ? fallbackQuery.eq('user_id', scopeUserId) : fallbackQuery.is('user_id', null);
+                result = await fallbackQuery.order('created_at', { ascending: false });
+            }
+
+            return result;
+        };
         
         // If fallback auth, show legacy data (notes without user_id)
         if (isFallback && userEmail === 'claire@claireschillaci.com') {
@@ -16,16 +39,7 @@ export async function GET(request: Request) {
                     .select('*')
                     .is('user_id', null)
                     .order('created_at', { ascending: false }),
-                supabase
-                    .from('recordings')
-                    .select(`
-                        *,
-                        clients (id, name)
-                    `)
-                    .is('user_id', null)
-                    .not('transcript', 'is', null)
-                    .neq('transcript', '')
-                    .order('created_at', { ascending: false }),
+                fetchRecordings(null),
                 supabase
                     .from('sessions')
                     .select('*')
@@ -95,6 +109,13 @@ export async function GET(request: Request) {
                     ? sessionInfo.date
                     : note.created_at || new Date().toISOString();
                 const venue = sessionInfo ? sessionInfo.venue : 'The Practice';
+
+                const audioUrl = note.audio_url || undefined;
+                let recordingId: string | undefined;
+                if (audioUrl && typeof audioUrl === 'string') {
+                    const m = audioUrl.match(/\/api\/audio\/(?:recordings\/)?([^/?]+?)(?:\.(webm|m4a|mp3|wav|mp4|ogg))?$/i);
+                    if (m) recordingId = m[1];
+                }
                 
                 return {
                     id: note.id,
@@ -105,7 +126,11 @@ export async function GET(request: Request) {
                     content: note.content || '',
                     createdDate: note.created_at || new Date().toISOString(),
                     attachments: note.attachments || [],
-                    source: 'session_note'
+                    audioURL: audioUrl,
+                    transcript: note.transcript || undefined,
+                    sessionId: note.session_id || undefined,
+                    source: 'session_note',
+                    ...(recordingId && { recordingId })
                 };
             });
             
@@ -199,7 +224,7 @@ export async function GET(request: Request) {
                     attachments: recording.attachments || [],
                     source: 'recording',
                     recordingId: recording.id,
-                    audioURL: recording.audio_url || null
+                    audioURL: recording.audio_url || recording.audioURL || `/api/audio/${recording.id}.webm`
                 };
             });
             
@@ -259,36 +284,51 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Fetch session notes, recordings with transcripts, and sessions (filtered by user_id)
-        const [notesResult, recordingsResult, sessionsResult] = await Promise.all([
+        // Fetch session notes, recordings, sessions: user_id = current OR user_id IS NULL (legacy)
+        // Include legacy so client cards show all recordings and notes
+        const [userNotesResult, legacyNotesResult, userRecordingsResult, legacyRecordingsResult, userSessionsResult, legacySessionsResult] = await Promise.all([
             supabase
                 .from('session_notes')
                 .select('*')
                 .eq('user_id', userId)
                 .order('created_at', { ascending: false }),
             supabase
-                .from('recordings')
-                .select(`
-                    *,
-                    clients (id, name)
-                `)
-                .eq('user_id', userId)
-                .not('transcript', 'is', null)
-                .neq('transcript', '')
+                .from('session_notes')
+                .select('*')
+                .is('user_id', null)
                 .order('created_at', { ascending: false }),
+            fetchRecordings(userId),
+            fetchRecordings(null),
             supabase
                 .from('sessions')
                 .select('*')
                 .eq('user_id', userId)
+                .order('date', { ascending: false }),
+            supabase
+                .from('sessions')
+                .select('*')
+                .is('user_id', null)
                 .order('date', { ascending: false })
         ]);
 
-        const notesData = notesResult.data || [];
-        const notesError = notesResult.error;
-        const recordingsData = recordingsResult.data || [];
-        const recordingsError = recordingsResult.error;
-        const sessionsData = sessionsResult.data || [];
-        const sessionsError = sessionsResult.error;
+        const notesData = Array.from(
+            new Map([
+                ...(userNotesResult.data || []).map((n: any) => [n.id, n]),
+                ...(legacyNotesResult.data || []).map((n: any) => [n.id, n])
+            ]).values()
+        );
+        const notesError = userNotesResult.error || legacyNotesResult.error;
+        const allRecordings = [
+            ...(userRecordingsResult.data || []),
+            ...(legacyRecordingsResult.data || [])
+        ];
+        const recordingsData = Array.from(new Map(allRecordings.map((r: any) => [r.id, r])).values());
+        const recordingsError = userRecordingsResult.error || legacyRecordingsResult.error;
+        const sessionsData = [
+            ...(userSessionsResult.data || []),
+            ...(legacySessionsResult.data || [])
+        ];
+        const sessionsError = userSessionsResult.error || legacySessionsResult.error;
 
         if (notesError) {
             console.error('Error fetching session notes:', notesError);
@@ -359,6 +399,14 @@ export async function GET(request: Request) {
                 ? sessionInfo.date
                 : note.created_at || new Date().toISOString();
             const venue = sessionInfo ? sessionInfo.venue : 'The Practice';
+
+            const audioUrl = note.audio_url || undefined;
+            // Extract recordingId from audio_url for deduplication (e.g. /api/audio/1739123456789.webm -> 1739123456789)
+            let recordingId: string | undefined;
+            if (audioUrl && typeof audioUrl === 'string') {
+                const m = audioUrl.match(/\/api\/audio\/(?:recordings\/)?([^/?]+?)(?:\.(webm|m4a|mp3|wav|mp4|ogg))?$/i);
+                if (m) recordingId = m[1];
+            }
             
             return {
                 id: note.id,
@@ -368,12 +416,13 @@ export async function GET(request: Request) {
                 venue: venue,
                 content: note.content || '',
                 transcript: note.transcript || undefined,
-                audioURL: note.audio_url || undefined,
+                audioURL: audioUrl,
                 aiOverview: note.ai_overview || undefined,
                 sessionId: note.session_id || undefined,
                 createdDate: note.created_at || new Date().toISOString(),
                 attachments: note.attachments || [],
-                source: 'session_note' // Mark as session note
+                source: 'session_note', // Mark as session note
+                ...(recordingId && { recordingId }) // For deduplication with recordings table
             };
         });
 
@@ -488,12 +537,12 @@ export async function GET(request: Request) {
                 sessionDate: sessionDate, // Use session date if linked, otherwise recording date
                 venue: venue,
                 content: transcriptContent,
-                transcript: rawTranscript || transcriptContent,
+                transcript: rawTranscript || transcriptContent || recording.transcript || '',
                 createdDate: recording.created_at || new Date().toISOString(),
                 attachments: [],
                 source: 'recording', // Mark as recording
                 recordingId: recording.id, // Keep original recording ID
-                audioURL: recording.audio_url || null,
+                audioURL: recording.audio_url || recording.audioURL || `/api/audio/${recording.id}.webm`,
                 sessionId: sessionId || undefined // Include sessionId if linked
             };
         });
