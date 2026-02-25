@@ -163,7 +163,7 @@ export async function POST(request: Request) {
 
         let recordingId: string;
         let buffer: Buffer;
-        let fileName: string;
+        let fileName = '';
 
         if (fetchError || !recording) {
             // No recording row exists — create one from session-note audio in storage so it appears in Recordings and can be transcribed
@@ -239,7 +239,8 @@ export async function POST(request: Request) {
         }
 
         const formData = new FormData();
-        formData.append('file', new Blob([buffer], { type: 'audio/webm' }), fileName);
+        // Buffer isn't typed as a valid BlobPart in TS DOM libs; wrap as Uint8Array for Blob compatibility.
+        formData.append('file', new Blob([new Uint8Array(buffer)], { type: 'audio/webm' }), fileName);
         formData.append('model', 'whisper-1');
         formData.append('response_format', 'json');
 
