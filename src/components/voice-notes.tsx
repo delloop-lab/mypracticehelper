@@ -61,8 +61,8 @@ export function VoiceNotes() {
     const [isRetryingSave, setIsRetryingSave] = useState(false);
     // Recovered from IndexedDB after crash/tab close - user can save or discard
     const [recoveredBackup, setRecoveredBackup] = useState<PendingRecordingBackup | null>(null);
-    // Offline indicator - so user knows when internet is unavailable
-    const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+    // Offline indicator - so user knows when internet is unavailable (init false to avoid hydration mismatch with server)
+    const [isOffline, setIsOffline] = useState(false);
 
     // Refs
     const recognitionRef = useRef<any>(null);
@@ -82,8 +82,9 @@ export function VoiceNotes() {
     // Keep ref in sync so retry handler always has latest context (avoids stale closure)
     useEffect(() => { saveRetryContextRef.current = saveRetryContext; }, [saveRetryContext]);
 
-    // Listen for online/offline so user knows when internet is unavailable
+    // Listen for online/offline so user knows when internet is unavailable (set initial after mount to avoid hydration mismatch)
     useEffect(() => {
+        setIsOffline(!navigator.onLine);
         const handleOnline = () => setIsOffline(false);
         const handleOffline = () => setIsOffline(true);
         window.addEventListener('online', handleOnline);

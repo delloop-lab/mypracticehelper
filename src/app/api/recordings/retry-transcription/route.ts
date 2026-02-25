@@ -26,7 +26,25 @@ function validateTranscriptPayload(payload: string): { valid: boolean; error?: s
 /** Check if existing transcript is non-empty (would trigger non-destructive behaviour). */
 function hasExistingTranscript(transcript: string | null | undefined): boolean {
     if (transcript == null || typeof transcript !== 'string') return false;
-    return transcript.trim().length > 0;
+    const trimmed = transcript.trim();
+    if (!trimmed) return false;
+
+    // Try to inspect JSON payloads like {"transcript": "...", "notes":[...]}
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const inner = String((parsed as any).transcript ?? '').trim();
+            if (!inner) return false;
+            if (inner.toLowerCase() === 'no transcript captured') return false;
+            return true;
+        }
+    } catch {
+        // Not JSON, fall through to plain-text checks
+    }
+
+    // Plain text placeholder means "no real transcript"
+    if (trimmed.toLowerCase() === 'no transcript captured') return false;
+    return true;
 }
 
 /** Extract storage path from audio_url or recording id. Supports legacy {id}.webm and new recordings/{uuid}.webm. */
@@ -57,6 +75,13 @@ function parseTranscriptPayload(transcriptRaw: string | null): { transcript: str
     }
 }
 
+/** Detects when the recordings.deleted_at column is missing (older schema). */
+function isMissingDeletedAtColumn(error: any): boolean {
+    if (!error) return false;
+    const message = String(error.message || '').toLowerCase();
+    return message.includes('deleted_at');
+}
+
 export async function POST(request: Request) {
     try {
         const { userId, isFallback } = await checkAuthentication(request);
@@ -78,40 +103,140 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { id, force } = body;
+        const { id, force, audioUrl: bodyAudioUrl, sessionId: bodySessionId, clientId: bodyClientId, createdAt: bodyCreatedAt } = body;
         if (!id || typeof id !== 'string') {
             return NextResponse.json({ error: 'Recording id is required' }, { status: 400 });
         }
         const forceOverwrite = force === true;
+        const audioUrlHint = typeof bodyAudioUrl === 'string' && bodyAudioUrl.trim() ? bodyAudioUrl.trim() : null;
 
-        const { data: recording, error: fetchError } = await supabase
+        let recording: { id: string; user_id: string | null; audio_url: string | null; transcript: string | null } | null = null;
+        let fetchError: unknown = null;
+
+        let result = await supabase
             .from('recordings')
             .select('id, user_id, audio_url, transcript')
             .eq('id', id)
             .is('deleted_at', null)
             .single();
+        recording = result.data;
+        fetchError = result.error;
+
+        // Fallback for older schemas that don't yet have deleted_at on recordings.
+        if (isMissingDeletedAtColumn(fetchError)) {
+            const fallback = await supabase
+                .from('recordings')
+                .select('id, user_id, audio_url, transcript')
+                .eq('id', id)
+                .single();
+            recording = fallback.data;
+            fetchError = fallback.error;
+        }
+
+        // If not found by id but client sent audio URL (e.g. session_note card), try to find recording by audio_url
+        if ((fetchError || !recording) && audioUrlHint && userId) {
+            const pathFromUrl = audioUrlHint.includes('/api/audio/')
+                ? audioUrlHint.replace(/.*\/api\/audio\//, '').split('?')[0].trim()
+                : audioUrlHint;
+            for (const urlToTry of [audioUrlHint, pathFromUrl]) {
+                let byUrl = await supabase
+                    .from('recordings')
+                    .select('id, user_id, audio_url, transcript')
+                    .eq('user_id', userId)
+                    .eq('audio_url', urlToTry)
+                    .limit(1);
+                if (isMissingDeletedAtColumn(byUrl.error)) {
+                    byUrl = await supabase
+                        .from('recordings')
+                        .select('id, user_id, audio_url, transcript')
+                        .eq('user_id', userId)
+                        .eq('audio_url', urlToTry)
+                        .limit(1);
+                }
+                if (byUrl.data && byUrl.data.length > 0) {
+                    recording = byUrl.data[0];
+                    fetchError = null;
+                    break;
+                }
+            }
+        }
+
+        let recordingId: string;
+        let buffer: Buffer;
+        let fileName: string;
 
         if (fetchError || !recording) {
-            return NextResponse.json({ error: 'Recording not found' }, { status: 404 });
+            // No recording row exists — create one from session-note audio in storage so it appears in Recordings and can be transcribed
+            if (!audioUrlHint || !userId) {
+                return NextResponse.json(
+                    { error: 'Recording not found. Send audioUrl (and optionally sessionId, clientId) to create a recording from this audio.' },
+                    { status: 404 }
+                );
+            }
+            const pathFromUrl = audioUrlHint.includes('/api/audio/')
+                ? audioUrlHint.replace(/.*\/api\/audio\//, '').split('?')[0].trim()
+                : audioUrlHint;
+            const pathsToTry = [pathFromUrl];
+            if (pathFromUrl.includes('/')) pathsToTry.push(pathFromUrl.split('/').pop()!); // legacy: file at bucket root
+            let audioData: Blob | null = null;
+            for (const p of pathsToTry) {
+                const result = await supabase.storage.from('audio').download(p);
+                if (!result.error && result.data) {
+                    audioData = result.data;
+                    fileName = p;
+                    break;
+                }
+            }
+            if (!audioData) {
+                return NextResponse.json(
+                    { error: 'Audio file not found in storage. The file may have been moved or deleted.' },
+                    { status: 404 }
+                );
+            }
+            buffer = Buffer.from(await audioData.arrayBuffer());
+            // Use the client-sent id (e.g. from audio URL) so this recording matches the original card; preserve original date when provided
+            const newId = (typeof id === 'string' && id.trim()) ? id.trim() : crypto.randomUUID();
+            const sessionId = typeof bodySessionId === 'string' && bodySessionId.trim() ? bodySessionId.trim() : null;
+            const clientId = typeof bodyClientId === 'string' && bodyClientId.trim() ? bodyClientId.trim() : null;
+            const createdAt = (typeof bodyCreatedAt === 'string' && bodyCreatedAt.trim())
+                ? bodyCreatedAt.trim()
+                : new Date().toISOString();
+            const insertPayload: Record<string, unknown> = {
+                id: newId,
+                user_id: userId,
+                audio_url: pathFromUrl,
+                transcript: null,
+                session_id: sessionId,
+                client_id: clientId,
+                created_at: createdAt
+            };
+            const { error: insertError } = await supabase
+                .from('recordings')
+                .insert(insertPayload);
+            if (insertError) {
+                console.error('[Retry transcription] Failed to create recording from session note:', insertError);
+                const msg = insertError.message || 'Failed to create recording from session note';
+                return NextResponse.json({ error: `Failed to create recording: ${msg}` }, { status: 500 });
+            }
+            recording = { id: newId, user_id: userId, audio_url: pathFromUrl, transcript: null };
+            recordingId = newId;
+        } else {
+            recordingId = recording.id;
+            if (recording.user_id !== userId) {
+                return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+            }
+            fileName = getAudioFileName(recording.audio_url, recordingId);
+            const { data: audioData, error: downloadError } = await supabase.storage
+                .from('audio')
+                .download(fileName);
+            if (downloadError || !audioData) {
+                return NextResponse.json(
+                    { error: 'Audio file not found in storage' },
+                    { status: 404 }
+                );
+            }
+            buffer = Buffer.from(await audioData.arrayBuffer());
         }
-        if (recording.user_id !== userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-        }
-
-        const fileName = getAudioFileName(recording.audio_url, recording.id);
-        const { data: audioData, error: downloadError } = await supabase.storage
-            .from('audio')
-            .download(fileName);
-
-        if (downloadError || !audioData) {
-            return NextResponse.json(
-                { error: 'Audio file not found in storage' },
-                { status: 404 }
-            );
-        }
-
-        const arrayBuffer = await audioData.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
 
         const formData = new FormData();
         formData.append('file', new Blob([buffer], { type: 'audio/webm' }), fileName);
@@ -162,7 +287,7 @@ export async function POST(request: Request) {
             const { error: attemptError } = await supabase
                 .from('recordings')
                 .update({ transcript_latest_attempt: newPayload })
-                .eq('id', id)
+                .eq('id', recordingId)
                 .eq('user_id', userId);
             if (attemptError) {
                 console.error('[Retry transcription] Failed to store transcript_latest_attempt:', attemptError);
@@ -179,7 +304,7 @@ export async function POST(request: Request) {
         const { error: updateError } = await supabase
             .from('recordings')
             .update({ transcript: newPayload, transcript_latest_attempt: null })
-            .eq('id', id)
+            .eq('id', recordingId)
             .eq('user_id', userId);
 
         if (updateError) {

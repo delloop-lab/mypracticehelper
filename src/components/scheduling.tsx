@@ -922,14 +922,17 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         setBlockedDayWarningShown(false);
     };
 
-    // Convert full name to initials (e.g., "Lilly Schillaci" -> "LS")
-    const getInitials = (name: string): string => {
+    // Show "First L" in month calendar chips (e.g., "Lilly Schillaci" -> "Lilly S")
+    const getShortName = (name: string): string => {
         if (!name) return '';
         const parts = name.trim().split(/\s+/);
         if (parts.length === 1) {
-            return parts[0].substring(0, 2).toUpperCase();
+            return parts[0];
         }
-        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        const first = parts[0];
+        const last = parts[parts.length - 1];
+        const initial = last.charAt(0).toUpperCase();
+        return `${first} ${initial}`;
     };
 
     // Get currency symbol from currency code
@@ -1252,7 +1255,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                             const displayTime = apt.time && apt.time.length > 0 
                                                                 ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
                                                                 : '--:--';
-                                                            const initials = getInitials(apt.clientName);
+                                                            const shortName = getShortName(apt.clientName);
                                                             return (
                                                                 <div
                                                                     key={`${apt.id}-${apt.clientName}-${apt.time}-${idx}`}
@@ -1270,7 +1273,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                 >
                                                                     <div className="font-bold text-[12px] sm:text-[10px] leading-tight flex items-center gap-1">
                                                                         <span>{displayTime}</span>
-                                                                        <span className="font-semibold">{initials}</span>
+                                                                        <span className="font-semibold truncate">{shortName}</span>
                                                                     </div>
                                                                 </div>
                                                             );
@@ -1291,7 +1294,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                         const displayTime = apt.time && apt.time.length > 0 
                                                             ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
                                                             : '--:--';
-                                                        const initials = getInitials(apt.clientName);
+                                                        const shortName = getShortName(apt.clientName);
                                                         return (
                                                             <div
                                                                 key={`${apt.id}-${apt.clientName}-${apt.time}-${idx}`}
@@ -1309,7 +1312,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                             >
                                                                 <div className="font-bold text-[12px] sm:text-[10px] leading-tight flex items-center gap-1">
                                                                     <span>{displayTime}</span>
-                                                                    <span className="font-semibold">{initials}</span>
+                                                                    <span className="font-semibold truncate">{shortName}</span>
                                                                 </div>
                                                             </div>
                                                         );
