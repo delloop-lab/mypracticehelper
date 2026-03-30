@@ -1,4 +1,5 @@
 // Application version - updated automatically on each GitHub push
-export const APP_VERSION = "0.9.928";
+export const APP_VERSION = "0.9.948";
+
 
 
