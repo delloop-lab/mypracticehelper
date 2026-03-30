@@ -24,6 +24,8 @@ interface Client {
 }
 
 export function VoiceNotes() {
+    const RESUMABLE_UPLOAD_THRESHOLD_BYTES = 6 * 1024 * 1024; // 6MB
+    const DIRECT_UPLOAD_TIMEOUT_MS = 120000; // 2 minutes
     const searchParams = useSearchParams();
     
     // Core state
@@ -1291,6 +1293,13 @@ export function VoiceNotes() {
             console.error("[Voice Notes] Refusing to upload empty blob. blob.size === 0");
             throw err;
         }
+        const uploadDebug =
+            typeof window !== "undefined" &&
+            window.localStorage?.getItem("voiceNotesUploadDebug") === "1";
+        const logUploadDebug = (message: string, data?: Record<string, unknown>) => {
+            if (!uploadDebug) return;
+            console.log(`[Voice Notes Upload] ${message}`, data || {});
+        };
 
         // Use UUID from recording start (live recordings) or generate new (retry, recovery, file upload)
         // Pass null to force new UUID; omit/undefined to use ref from live recording
@@ -1316,20 +1325,116 @@ export function VoiceNotes() {
             throw new Error(errorData.error || `Failed to get upload URL: ${signedUrlResponse.status}`);
         }
 
-        const { signedUrl } = await signedUrlResponse.json();
+        const signedPayload = await signedUrlResponse.json();
+        const signedUrl: string | undefined = signedPayload?.signedUrl;
+        const signedToken: string | undefined = signedPayload?.token;
+        if (!signedUrl) {
+            throw new Error("Signed upload URL missing from response");
+        }
+
+        const putWithTimeout = async (url: string, body: Blob, timeoutMs: number) => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                return await fetch(url, {
+                    method: "PUT",
+                    headers: { "Content-Type": "audio/webm" },
+                    body,
+                    signal: controller.signal
+                });
+            } finally {
+                clearTimeout(timeout);
+            }
+        };
+
+        const projectRefFromUrl = (() => {
+            const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+            if (!raw) return null;
+            try {
+                const hostname = new URL(raw).hostname;
+                return hostname.split(".")[0] || null;
+            } catch {
+                return null;
+            }
+        })();
+
+        const uploadResumableWithSignedToken = async () => {
+            if (!signedToken || !projectRefFromUrl) {
+                throw new Error("Resumable upload is unavailable (missing token or project ref)");
+            }
+            const tusImport = await import("tus-js-client");
+            const tus = (tusImport as any).default || tusImport;
+            const endpoint = `https://${projectRefFromUrl}.storage.supabase.co/storage/v1/upload/resumable`;
+
+            await new Promise<void>((resolve, reject) => {
+                const upload = new tus.Upload(blob, {
+                    endpoint,
+                    chunkSize: RESUMABLE_UPLOAD_THRESHOLD_BYTES,
+                    uploadDataDuringCreation: true,
+                    removeFingerprintOnSuccess: true,
+                    retryDelays: [0, 2000, 5000, 10000],
+                    headers: {
+                        "x-signature": signedToken
+                    },
+                    metadata: {
+                        bucketName: "audio",
+                        objectName: storagePath,
+                        contentType: "audio/webm",
+                        cacheControl: "3600"
+                    },
+                    onError: (error: Error) => reject(error),
+                    onSuccess: () => resolve()
+                });
+                upload.start();
+            });
+        };
 
         // Step 2: Upload directly to Supabase Storage - no x-upsert; upload fails if file exists
-        const uploadResponse = await fetch(signedUrl, {
-            method: "PUT",
-            headers: { "Content-Type": "audio/webm" },
-            body: blob
+        const shouldUseResumable = blob.size > RESUMABLE_UPLOAD_THRESHOLD_BYTES;
+        const uploadStartMs = Date.now();
+        logUploadDebug("starting upload", {
+            recordingId,
+            sizeMB,
+            bytes: blob.size,
+            mode: shouldUseResumable ? "resumable" : "direct",
+            directTimeoutMs: DIRECT_UPLOAD_TIMEOUT_MS
         });
+        let uploadResponse: Response | null = null;
+        try {
+            if (shouldUseResumable) {
+                await uploadResumableWithSignedToken();
+            } else {
+                uploadResponse = await putWithTimeout(signedUrl, blob, DIRECT_UPLOAD_TIMEOUT_MS);
+            }
+        } catch (error: any) {
+            const elapsedMs = Date.now() - uploadStartMs;
+            logUploadDebug("upload failed", {
+                recordingId,
+                sizeMB,
+                elapsedMs,
+                mode: shouldUseResumable ? "resumable" : "direct",
+                error: error?.message || String(error)
+            });
+            const isAbort = error?.name === "AbortError";
+            if (isAbort) {
+                throw new Error(
+                    "Upload timed out while saving recording. Your audio is safe locally. Please tap 'Retry save'."
+                );
+            }
+            throw new Error(error?.message || "Recording upload failed");
+        }
 
-        if (!uploadResponse.ok) {
+        if (uploadResponse && !uploadResponse.ok) {
             const errorText = await uploadResponse.text().catch(() => '');
             console.error('[Voice Notes] Upload failed:', uploadResponse.status, errorText);
             throw new Error(`Direct upload failed: ${uploadResponse.status} ${uploadResponse.statusText}. ${errorText}`);
         }
+        logUploadDebug("upload completed", {
+            recordingId,
+            sizeMB,
+            elapsedMs: Date.now() - uploadStartMs,
+            mode: shouldUseResumable ? "resumable" : "direct"
+        });
 
         // Step 3: Save metadata to our API (no file, just metadata)
         // Playback URL supports both legacy /api/audio/{id}.webm and new /api/audio/recordings/{uuid}.webm
