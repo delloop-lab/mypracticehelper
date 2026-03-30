@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Clock, ClipboardCheck, Landmark, Plus, X, CheckCircle2 } from "lucide-react";
+import { AlertCircle, ClipboardCheck, Landmark, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -33,18 +33,6 @@ interface Client {
     archived?: boolean;
 }
 
-interface AdminReminder {
-    id: string;
-    type: string;
-    client_id?: string;
-    session_id?: string;
-    title: string;
-    description?: string;
-    is_active: boolean;
-    clients?: { id: string; name: string };
-    sessions?: { id: string; date: string; type: string };
-}
-
 export function RemindersModal() {
     const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
@@ -53,7 +41,6 @@ export function RemindersModal() {
     const [reminders, setReminders] = useState<Appointment[]>([]);
     const [unsignedFormClients, setUnsignedFormClients] = useState<Client[]>([]);
     const [unpaidSessions, setUnpaidSessions] = useState<Appointment[]>([]);
-    const [adminReminders, setAdminReminders] = useState<AdminReminder[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -80,13 +67,8 @@ export function RemindersModal() {
             const notesRes = await fetch('/api/session-notes', { cache: 'no-store' });
             const notesData = notesRes.ok ? await notesRes.json() : [];
 
-            // Load admin reminders
-            const adminRemindersRes = await fetch('/api/admin-reminders', { cache: 'no-store' });
-            const adminRemindersData = adminRemindersRes.ok ? await adminRemindersRes.json() : [];
-
             setAppointments(appointmentsData);
             setClients(clientsData);
-            setAdminReminders(adminRemindersData);
 
             // Calculate reminders
             const now = new Date();
@@ -190,7 +172,26 @@ export function RemindersModal() {
     };
 
     const getTimeAgo = (dateString: string, timeString: string) => {
-        const date = new Date(`${dateString}T${timeString}`);
+        // Parse date part (YYYY-MM-DD) from ISO string.
+        const datePart = (dateString || '').split('T')[0];
+        const [year, month, day] = datePart.split('-').map(Number);
+
+        // Parse 12-hour time format (e.g., "02:00 PM"). If time is missing/invalid, default to 00:00.
+        let hours = 0;
+        let minutes = 0;
+        const timeLower = (timeString || '00:00').toLowerCase().trim();
+        const isPM = timeLower.includes('pm');
+        const isAM = timeLower.includes('am');
+        const timeMatch = timeLower.match(/(\d{1,2}):(\d{2})/);
+        if (timeMatch) {
+            hours = parseInt(timeMatch[1], 10);
+            minutes = parseInt(timeMatch[2], 10);
+            if (isPM && hours !== 12) hours += 12;
+            else if (isAM && hours === 12) hours = 0;
+        }
+
+        const date = new Date(year, month - 1, day, hours, minutes, 0);
+        if (isNaN(date.getTime())) return '';
         const now = new Date();
         const diffMs = now.getTime() - date.getTime();
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -202,7 +203,7 @@ export function RemindersModal() {
         return `${Math.floor(diffDays / 30)} months ago`;
     };
 
-    const totalReminders = reminders.length + unsignedFormClients.length + unpaidSessions.length + adminReminders.length;
+    const totalReminders = reminders.length + unsignedFormClients.length + unpaidSessions.length;
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => {
