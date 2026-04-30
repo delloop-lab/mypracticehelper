@@ -4,6 +4,35 @@ import { checkAuthentication } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+const getAdditionalParticipantIds = (metadata: any): string[] => {
+    if (!metadata || typeof metadata !== 'object') return [];
+    const raw = (metadata as any).additionalParticipantIds;
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((id: any) => String(id || '').trim())
+        .filter((id: string) => id.length > 0)
+        .slice(0, 2);
+};
+
+const getAdditionalParticipantNames = (metadata: any, clientMap: Map<string, string>): string[] => {
+    const ids = getAdditionalParticipantIds(metadata);
+    if (ids.length > 0) {
+        const fromIds = ids
+            .map((id) => clientMap.get(id) || '')
+            .filter((name) => name.trim().length > 0);
+        if (fromIds.length > 0) return fromIds;
+    }
+
+    const raw = metadata && typeof metadata === 'object'
+        ? (metadata as any).additionalParticipantNames
+        : [];
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((name: any) => String(name || '').trim())
+        .filter((name: string) => name.length > 0)
+        .slice(0, 2);
+};
+
 export async function GET(request: Request) {
     try {
         const { userId, isFallback, userEmail } = await checkAuthentication(request);
@@ -59,6 +88,8 @@ export async function GET(request: Request) {
                 return {
                     id: session.id,
                     clientName: clientName,
+                    additionalParticipantIds: getAdditionalParticipantIds(metadata),
+                    additionalParticipantNames: getAdditionalParticipantNames(metadata, clientMap),
                     date: session.date,
                     time: new Date(session.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     duration: session.duration,
@@ -188,6 +219,8 @@ export async function GET(request: Request) {
             return {
                 id: session.id,
                 clientName: clientName,
+                additionalParticipantIds: getAdditionalParticipantIds(metadata),
+                additionalParticipantNames: getAdditionalParticipantNames(metadata, clientMap),
                 date: session.date, // ISO string
                 time: new Date(session.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 duration: session.duration,
@@ -256,6 +289,24 @@ export async function POST(request: Request) {
         
         const records = appointments.map((apt: any, index: number) => {
             const client = clients?.find(c => c.name === apt.clientName);
+            const byProvidedIds = Array.isArray(apt.additionalParticipantIds)
+                ? apt.additionalParticipantIds
+                    .map((id: any) => String(id || '').trim())
+                    .filter((id: string) => id.length > 0)
+                : [];
+            const byNames = Array.isArray(apt.additionalParticipantNames)
+                ? apt.additionalParticipantNames
+                    .map((name: any) => String(name || '').trim())
+                    .filter((name: string) => name.length > 0)
+                    .map((name: string) => clients?.find(c => c.name === name)?.id || '')
+                    .filter((id: string) => id.length > 0)
+                : [];
+            const additionalParticipantIds = Array.from(new Set([...byProvidedIds, ...byNames]))
+                .filter((id) => id !== client?.id)
+                .slice(0, 2);
+            const additionalParticipantNames = additionalParticipantIds
+                .map((id) => clients?.find(c => c.id === id)?.name || '')
+                .filter((name) => name.length > 0);
             console.log(`[Appointments API POST] Processing appointment ${index + 1}/${appointments.length}:`, {
                 id: apt.id,
                 clientName: apt.clientName,
@@ -289,6 +340,10 @@ export async function POST(request: Request) {
             if (apt.venue) metadata.venue = apt.venue;
             if (apt.status) metadata.status = apt.status;
             if (apt.attachments && apt.attachments.length > 0) metadata.attachments = apt.attachments;
+            if (additionalParticipantIds.length > 0) {
+                metadata.additionalParticipantIds = additionalParticipantIds;
+                metadata.additionalParticipantNames = additionalParticipantNames;
+            }
             
             console.log(`[Appointments API POST] Appointment ${index + 1} - Final metadata:`, metadata);
 
@@ -356,7 +411,7 @@ export async function PUT(request: Request) {
         }
 
         const body = await request.json();
-        const { id, paymentStatus, fee, currency, paymentMethod, venue } = body;
+        const { id, paymentStatus, fee, currency, paymentMethod, venue, additionalParticipantIds, additionalParticipantNames } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Appointment ID is required' }, { status: 400 });
@@ -399,6 +454,28 @@ export async function PUT(request: Request) {
         if (currency !== undefined && currency !== null) metadata.currency = currency;
         if (paymentMethod !== undefined && paymentMethod !== null) metadata.paymentMethod = paymentMethod;
         if (venue !== undefined && venue !== null) metadata.venue = venue;
+        if (additionalParticipantIds !== undefined || additionalParticipantNames !== undefined) {
+            const ids = Array.isArray(additionalParticipantIds)
+                ? additionalParticipantIds
+                    .map((value: any) => String(value || '').trim())
+                    .filter((value: string) => value.length > 0)
+                    .slice(0, 2)
+                : [];
+            const names = Array.isArray(additionalParticipantNames)
+                ? additionalParticipantNames
+                    .map((value: any) => String(value || '').trim())
+                    .filter((value: string) => value.length > 0)
+                    .slice(0, 2)
+                : [];
+
+            if (ids.length > 0) {
+                metadata.additionalParticipantIds = ids;
+                metadata.additionalParticipantNames = names;
+            } else {
+                delete metadata.additionalParticipantIds;
+                delete metadata.additionalParticipantNames;
+            }
+        }
 
 
         // Prepare update object

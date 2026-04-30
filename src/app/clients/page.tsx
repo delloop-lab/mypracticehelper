@@ -37,6 +37,8 @@ import { GDPRDeleteDialog } from "@/components/ui/gdpr-delete-dialog";
 interface Appointment {
     id: string;
     clientName: string;
+    additionalParticipantIds?: string[];
+    additionalParticipantNames?: string[];
     date: string;
     time: string;
     duration: number;
@@ -624,6 +626,24 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         return fromParts || (c.name || '').trim();
     };
 
+    const normalizeName = (value?: string | null) => (value || "").trim().toLowerCase();
+    const getAppointmentParticipantNames = (appointment: Appointment): string[] => {
+        const names: string[] = [];
+        if (appointment.clientName) names.push(appointment.clientName);
+        if (Array.isArray(appointment.additionalParticipantNames)) {
+            appointment.additionalParticipantNames.forEach((name) => {
+                if (name && name.trim().length > 0) names.push(name);
+            });
+        }
+        return Array.from(new Set(names));
+    };
+    const appointmentIncludesClientName = (appointment: Appointment, clientName: string) => {
+        const target = normalizeName(clientName);
+        if (!target) return false;
+        return getAppointmentParticipantNames(appointment).some((name) => normalizeName(name) === target);
+    };
+    const getAppointmentLabel = (appointment: Appointment) => getAppointmentParticipantNames(appointment).join(" + ");
+
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [syncingNextAppointment, setSyncingNextAppointment] = useState<string | null>(null);
     
@@ -635,8 +655,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             const nextDateStr = toLocalDateKey(nextDate); // Date only
             
             return appointments.some(apt => {
-                // Match by client name (API only returns clientName, not client_id)
-                const matchesClient = apt.clientName === client.name;
+                const matchesClient = appointmentIncludesClientName(apt, client.name);
                 
                 if (!matchesClient) return false;
                 
@@ -1631,8 +1650,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         return appointments
             .filter(apt => {
                 if (!apt.clientName) return false;
-                const normalizedAptName = apt.clientName.trim().toLowerCase();
-                return normalizedAptName === normalizedClientName;
+                return appointmentIncludesClientName(apt, normalizedClientName);
             })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     };
@@ -1686,8 +1704,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         // Get all future appointments for this client
         const futureAppointments = appointments
             .filter(apt => {
-                const normalizedAptName = (apt.clientName || '').trim().toLowerCase();
-                if (normalizedAptName !== normalizedClientName) return false;
+                if (!appointmentIncludesClientName(apt, normalizedClientName)) return false;
                 
                 const aptDate = new Date(apt.date);
                 return aptDate > now; // Only future appointments
@@ -3833,9 +3850,14 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 <DialogHeader>
                                     <DialogTitle className="text-base sm:text-lg">Session Details</DialogTitle>
                                     <DialogDescription className="text-xs sm:text-sm">
-                                        {activeSession && `${new Date(activeSession.date).toLocaleDateString()} - ${activeSession.type}`}
+                                        {activeSession && `${new Date(activeSession.date).toLocaleDateString()} - ${activeSession.type} - ${getAppointmentLabel(activeSession)}`}
                                     </DialogDescription>
                                 </DialogHeader>
+                                {activeSession && Array.isArray(activeSession.additionalParticipantNames) && activeSession.additionalParticipantNames.length > 0 && (
+                                    <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                                        Shared session. Notes and recordings are visible to all participants.
+                                    </div>
+                                )}
                                 <div className="flex items-center justify-between mt-3">
                                     <Button
                                         variant="outline"

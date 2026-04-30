@@ -36,6 +36,8 @@ import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-di
 interface Appointment {
     id: string;
     clientName: string;
+    additionalParticipantIds?: string[];
+    additionalParticipantNames?: string[];
     date: string;
     time: string;
     duration: number;
@@ -106,6 +108,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
     // Form data for new appointment, includes currency
     const [formData, setFormData] = useState({
         clientName: "",
+        additionalParticipantNames: [] as string[],
         date: todayStr,
         time: "10:00",
         duration: 60,
@@ -121,7 +124,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [bookingError, setBookingError] = useState<string | null>(null);
     const [isEditingAppointment, setIsEditingAppointment] = useState(false);
-    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; venue?: "The Practice" | "WhatsApp" | "Phone" | "Video" | "Call Out"; duration?: number; notes?: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit" } | null>(null);
+    const [editedAppointment, setEditedAppointment] = useState<{ date: string; time: string; type: string; venue?: "The Practice" | "WhatsApp" | "Phone" | "Video" | "Call Out"; duration?: number; notes?: string; fee?: number; paymentMethod?: "Cash" | "PayPal" | "Multibanco" | "Bank Deposit"; additionalParticipantNames?: string[] } | null>(null);
     
     // New client creation state
     const [isAddingNewClient, setIsAddingNewClient] = useState(false);
@@ -129,6 +132,19 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
     
     // Past date warning state
     const [pastDateWarningShown, setPastDateWarningShown] = useState(false);
+
+    const getAdditionalParticipantNames = (appointment: Appointment): string[] =>
+        Array.isArray(appointment.additionalParticipantNames)
+            ? appointment.additionalParticipantNames.filter((name) => !!name && name.trim().length > 0)
+            : [];
+
+    const getParticipantDisplayName = (appointment: Appointment): string => {
+        const extras = getAdditionalParticipantNames(appointment);
+        if (extras.length === 0) return appointment.clientName;
+        return [appointment.clientName, ...extras].join(" + ");
+    };
+
+    const isMultiParticipant = (appointment: Appointment): boolean => getAdditionalParticipantNames(appointment).length > 0;
 
     // Load data on mount
     useEffect(() => {
@@ -307,6 +323,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         const currentCurrency = settings.currency || "EUR";
         setFormData({
             clientName: "",
+            additionalParticipantNames: [],
             date: format(new Date(), "yyyy-MM-dd"),
             time: "10:00",
             duration: 60,
@@ -429,6 +446,14 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             return;
         }
 
+        const additionalParticipantNames = (formData.additionalParticipantNames || [])
+            .map((name) => name.trim())
+            .filter((name) => name.length > 0);
+        if (additionalParticipantNames.some((name) => name.toLowerCase() === clientName.toLowerCase())) {
+            setBookingError('Additional participants cannot include the primary client.');
+            return;
+        }
+
         // Combine date and time into a full ISO timestamp for the date field
         // Keep time separate for display purposes
         const timeStr = formData.time.length === 5 ? `${formData.time}:00` : formData.time;
@@ -460,6 +485,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         const newAppointment: Appointment = {
             id: `apt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // More unique ID
             clientName: clientName,
+            additionalParticipantNames: additionalParticipantNames,
             date: dateWithTime, // Full ISO timestamp
             time: formData.time, // Keep time for display
             duration: formData.duration,
@@ -758,7 +784,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             duration: selectedAppointment.duration,
             notes: selectedAppointment.notes || "",
             fee: selectedAppointment.fee,
-            paymentMethod: selectedAppointment.paymentMethod || "Cash"
+            paymentMethod: selectedAppointment.paymentMethod || "Cash",
+            additionalParticipantNames: getAdditionalParticipantNames(selectedAppointment)
         });
         setIsEditingAppointment(true);
         setBookingError(null);
@@ -786,6 +813,13 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
         const dateWithTime = `${editedAppointment.date}T${timeStr}`;
         console.log('[Appointment Edit] Combined date/time:', dateWithTime);
+        const editedAdditionalParticipantNames = (editedAppointment.additionalParticipantNames || [])
+            .map((name) => name.trim())
+            .filter((name) => name.length > 0);
+        if (editedAdditionalParticipantNames.some((name) => name.toLowerCase() === selectedAppointment.clientName.toLowerCase())) {
+            setBookingError('Additional participants cannot include the primary client.');
+            return;
+        }
 
         // Check if the edited appointment is in the past
         const appointmentDateTime = new Date(dateWithTime);
@@ -830,7 +864,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     duration: editedAppointment.duration !== undefined ? editedAppointment.duration : apt.duration,
                     notes: editedAppointment.notes !== undefined ? editedAppointment.notes : apt.notes,
                     fee: editedAppointment.fee !== undefined ? editedAppointment.fee : apt.fee,
-                    paymentMethod: editedAppointment.paymentMethod || apt.paymentMethod || "Cash"
+                    paymentMethod: editedAppointment.paymentMethod || apt.paymentMethod || "Cash",
+                    additionalParticipantNames: editedAdditionalParticipantNames
                 };
                 console.log('[Appointment Edit] Updated appointment:', updatedApt);
                 return updatedApt;
@@ -866,7 +901,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     duration: editedAppointment.duration !== undefined ? editedAppointment.duration : selectedAppointment.duration,
                     notes: editedAppointment.notes !== undefined ? editedAppointment.notes : selectedAppointment.notes,
                     fee: editedAppointment.fee !== undefined ? editedAppointment.fee : selectedAppointment.fee,
-                    paymentMethod: editedAppointment.paymentMethod || selectedAppointment.paymentMethod || "Cash"
+                    paymentMethod: editedAppointment.paymentMethod || selectedAppointment.paymentMethod || "Cash",
+                    additionalParticipantNames: editedAdditionalParticipantNames
                 });
                 setIsEditingAppointment(false);
                 setEditedAppointment(null);
@@ -908,6 +944,17 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         const last = parts[parts.length - 1];
         const initial = last.charAt(0).toUpperCase();
         return `${first} ${initial}`;
+    };
+
+    // Calendar chips show primary + second participant in short form.
+    const getCalendarChipName = (appointment: Appointment): string => {
+        const primary = getShortName(appointment.clientName);
+        const extras = getAdditionalParticipantNames(appointment);
+        if (extras.length === 0) return primary;
+
+        const second = getShortName(extras[0]);
+        if (extras.length === 1) return `${primary} + ${second}`;
+        return `${primary} + ${second} +${extras.length - 1}`;
     };
 
     // Get currency symbol from currency code
@@ -1084,17 +1131,22 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                             href={linkHref}
                                                                             className="font-semibold text-sm leading-tight hover:underline text-primary transition-colors"
                                                                             onClick={(e) => e.stopPropagation()}
-                                                                            aria-label={`View ${appointment.clientName} details`}
+                                                                            aria-label={`View ${getParticipantDisplayName(appointment)} details`}
                                                                         >
-                                                                            {appointment.clientName}
+                                                                            {getParticipantDisplayName(appointment)}
                                                                         </Link>
                                                                     ) : (
-                                                                        <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                                        <h4 className="font-semibold text-sm leading-tight">{getParticipantDisplayName(appointment)}</h4>
                                                                     );
                                                                 })()}
                                                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium leading-tight whitespace-nowrap">
                                                                     {appointment.type}
                                                                 </span>
+                                                                {isMultiParticipant(appointment) && (
+                                                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium leading-tight whitespace-nowrap">
+                                                                        2+ participants
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1218,7 +1270,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                             const displayTime = apt.time && apt.time.length > 0 
                                                                 ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
                                                                 : '--:--';
-                                                            const shortName = getShortName(apt.clientName);
+                                                            const shortName = getCalendarChipName(apt);
                                                             return (
                                                                 <div
                                                                     key={`${apt.id}-${apt.clientName}-${apt.time}-${idx}`}
@@ -1232,7 +1284,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                         getAppointmentTypeColor(apt.type).text,
                                                                         getAppointmentTypeColor(apt.type).border
                                                                     )}
-                                                                    title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
+                                                                    title={`${displayTime} - ${getParticipantDisplayName(apt)} - ${apt.type}`}
                                                                 >
                                                                     <div className="font-bold text-[12px] sm:text-[10px] leading-tight flex items-center gap-1">
                                                                         <span>{displayTime}</span>
@@ -1257,7 +1309,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                         const displayTime = apt.time && apt.time.length > 0 
                                                             ? (apt.time.includes(':') ? apt.time.substring(0, 5) : apt.time)
                                                             : '--:--';
-                                                        const shortName = getShortName(apt.clientName);
+                                                        const shortName = getCalendarChipName(apt);
                                                         return (
                                                             <div
                                                                 key={`${apt.id}-${apt.clientName}-${apt.time}-${idx}`}
@@ -1271,7 +1323,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                     getAppointmentTypeColor(apt.type).text,
                                                                     getAppointmentTypeColor(apt.type).border
                                                                 )}
-                                                                title={`${displayTime} - ${apt.clientName} - ${apt.type}`}
+                                                                title={`${displayTime} - ${getParticipantDisplayName(apt)} - ${apt.type}`}
                                                             >
                                                                 <div className="font-bold text-[12px] sm:text-[10px] leading-tight flex items-center gap-1">
                                                                     <span>{displayTime}</span>
@@ -1388,12 +1440,12 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                 href={linkHref}
                                                                 className="font-semibold text-sm leading-tight hover:underline text-primary transition-colors"
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                aria-label={`View ${appointment.clientName} details`}
+                                                                aria-label={`View ${getParticipantDisplayName(appointment)} details`}
                                                             >
-                                                                {appointment.clientName}
+                                                                {getParticipantDisplayName(appointment)}
                                                             </Link>
                                                         ) : (
-                                                            <h4 className="font-semibold text-sm leading-tight">{appointment.clientName}</h4>
+                                                            <h4 className="font-semibold text-sm leading-tight">{getParticipantDisplayName(appointment)}</h4>
                                                         );
                                                     })()}
                                                     <div className="flex items-start gap-2">
@@ -1404,6 +1456,11 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                         )}>
                                                             {appointment.type}
                                                         </span>
+                                                        {isMultiParticipant(appointment) && (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 leading-tight whitespace-nowrap inline-block">
+                                                                2+ participants
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-2 text-xs text-muted-foreground leading-tight">
                                                         <span className="flex items-center gap-1">
@@ -1596,13 +1653,13 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                                         ? 'text-red-700 dark:text-red-300 hover:text-red-800 dark:hover:text-red-200' 
                                                                                         : 'text-primary'
                                                                                 }`}
-                                                                                aria-label={`View ${appointment.clientName} details`}
+                                                                                aria-label={`View ${getParticipantDisplayName(appointment)} details`}
                                                                             >
-                                                                                {appointment.clientName}
+                                                                                {getParticipantDisplayName(appointment)}
                                                                             </Link>
                                                                         ) : (
                                                                             <h4 className={`font-semibold text-lg ${pastDue ? 'text-red-700 dark:text-red-300' : ''}`}>
-                                                                                {appointment.clientName}
+                                                                                {getParticipantDisplayName(appointment)}
                                                                             </h4>
                                                                         );
                                                                     })()}
@@ -1626,6 +1683,11 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                                     )}>
                                                                         {appointment.type}
                                                                     </span>
+                                                                    {isMultiParticipant(appointment) && (
+                                                                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                                                                            2+ participants
+                                                                        </span>
+                                                                    )}
                                                                     <span className="flex items-center gap-1 text-xs">
                                                                         <MapPin className="h-3 w-3" />
                                                                         {appointment.venue || "The Practice"}
@@ -1681,7 +1743,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                             type="button"
                                             onClick={() => {
                                                 setIsAddingNewClient(true);
-                                                setFormData({ ...formData, clientName: "" });
+                                                setFormData({ ...formData, clientName: "", additionalParticipantNames: [] });
                                             }}
                                             className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
                                         >
@@ -1722,6 +1784,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                             setFormData({
                                                 ...formData,
                                                 clientName: value,
+                                                additionalParticipantNames: (formData.additionalParticipantNames || []).filter((name) => name !== value),
                                                 fee: fee,
                                                 currency: client?.currency ?? settings.currency ?? "EUR",
                                             });
@@ -1768,6 +1831,60 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                     </div>
                                 )}
                             </div>
+
+                            {/* Additional Participants (up to 2 extra) */}
+                            {!isAddingNewClient && formData.clientName && (
+                                <div className="space-y-2">
+                                    <Label className="text-sm">Additional Participants (optional)</Label>
+                                    {[0, 1].map((slot) => {
+                                        const selectedNames = formData.additionalParticipantNames || [];
+                                        const currentValue = selectedNames[slot] || "__none__";
+                                        const availableClients = clients
+                                            .filter((client) => {
+                                                if (client.name === formData.clientName) return false;
+                                                const alreadySelected = selectedNames.some((name, idx) => idx !== slot && name === client.name);
+                                                return !alreadySelected;
+                                            })
+                                            .sort((a, b) => a.name.localeCompare(b.name));
+
+                                        return (
+                                            <Select
+                                                key={`additional-create-${slot}`}
+                                                value={currentValue}
+                                                onValueChange={(value) => {
+                                                    const next = [...selectedNames];
+                                                    if (value === "__none__") {
+                                                        next[slot] = "";
+                                                    } else {
+                                                        next[slot] = value;
+                                                    }
+                                                    setFormData({
+                                                        ...formData,
+                                                        additionalParticipantNames: next,
+                                                    });
+                                                }}
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder={`Add participant ${slot + 2}...`} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="__none__">None</SelectItem>
+                                                    {availableClients.map((client) => (
+                                                        <SelectItem key={`additional-create-${slot}-${client.id}`} value={client.name}>
+                                                            {client.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        );
+                                    })}
+                                    {(formData.additionalParticipantNames || []).length > 0 && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Shared session for: {[formData.clientName, ...(formData.additionalParticipantNames || [])].join(" + ")}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Date & Time Row */}
                             <div className="grid grid-cols-2 gap-3">
@@ -2012,9 +2129,14 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                                 setIsDetailsOpen(false);
                                             }}
                                         >
-                                            {selectedAppointment.clientName}
+                                            {getParticipantDisplayName(selectedAppointment)}
                                         </Link>
                                     </h3>
+                                    {isMultiParticipant(selectedAppointment) && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Shared session for all participants.
+                                        </p>
+                                    )}
                                     <p className="text-muted-foreground">{selectedAppointment.type}</p>
                                 </div>
                             </div>
@@ -2166,6 +2288,58 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         </div>
                                     )}
                                 </div>
+                                {isEditingAppointment && editedAppointment && (
+                                    <div className="space-y-2 col-span-2">
+                                        <Label className="text-xs text-muted-foreground uppercase">Additional Participants (optional)</Label>
+                                        {[0, 1].map((slot) => {
+                                            const selectedNames = editedAppointment.additionalParticipantNames || [];
+                                            const currentValue = selectedNames[slot] || "__none__";
+                                            const availableClients = clients
+                                                .filter((client) => {
+                                                    if (client.name === selectedAppointment.clientName) return false;
+                                                    const alreadySelected = selectedNames.some((name, idx) => idx !== slot && name === client.name);
+                                                    return !alreadySelected;
+                                                })
+                                                .sort((a, b) => a.name.localeCompare(b.name));
+
+                                            return (
+                                                <Select
+                                                    key={`additional-edit-${slot}`}
+                                                    value={currentValue}
+                                                    onValueChange={(value) => {
+                                                        const next = [...selectedNames];
+                                                        if (value === "__none__") {
+                                                            next[slot] = "";
+                                                        } else {
+                                                            next[slot] = value;
+                                                        }
+                                                        setEditedAppointment({
+                                                            ...editedAppointment,
+                                                            additionalParticipantNames: next,
+                                                        });
+                                                    }}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder={`Add participant ${slot + 2}...`} />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="__none__">None</SelectItem>
+                                                        {availableClients.map((client) => (
+                                                            <SelectItem key={`additional-edit-${slot}-${client.id}`} value={client.name}>
+                                                                {client.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            );
+                                        })}
+                                        {(editedAppointment.additionalParticipantNames || []).length > 0 && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Changes apply to all participants: {[selectedAppointment.clientName, ...(editedAppointment.additionalParticipantNames || [])].join(" + ")}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             {isEditingAppointment && bookingError && (
@@ -2392,8 +2566,10 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                 onOpenChange={setIsDeleteConfirmOpen}
                 onConfirm={handleDeleteAppointment}
                 title="Delete Appointment"
-                description="Are you sure you want to delete this appointment? This action cannot be undone."
-                itemName={selectedAppointment?.clientName ? `${selectedAppointment.clientName}'s appointment` : undefined}
+                description={selectedAppointment && isMultiParticipant(selectedAppointment)
+                    ? "Are you sure you want to delete this shared appointment? This removes it from all participants and cannot be undone."
+                    : "Are you sure you want to delete this appointment? This action cannot be undone."}
+                itemName={selectedAppointment?.clientName ? `${getParticipantDisplayName(selectedAppointment)} appointment` : undefined}
             />
         </div >
     );
