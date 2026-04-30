@@ -69,7 +69,6 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 setIsLoading(true);
             }
             try {
-                console.log('Fetching dashboard data...');
 
                 // Load appointments
                 const aptRes = await fetch('/api/appointments', { cache: 'no-store' });
@@ -97,18 +96,13 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 const now = new Date();
                 const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
                 
-                console.log('[Dashboard] Today is:', today);
-                console.log('[Dashboard] All appointments:', appointments.map((a: any) => ({ client: a.clientName, date: a.date, dateStr: a.date.split('T')[0] })));
 
                 // Filter today's appointments - compare date parts only
                 const todayApts = appointments.filter((a: any) => {
                     const aptDateStr = a.date.split('T')[0];
                     const isToday = aptDateStr === today;
-                    console.log(`[Dashboard] Checking ${a.clientName}: ${aptDateStr} === ${today} ? ${isToday}`);
                     return isToday;
                 });
-                
-                console.log('[Dashboard] Today appointments:', todayApts.length);
 
                 // Filter upcoming sessions - exclude past appointments (including today's past ones)
                 const upcoming = appointments
@@ -210,7 +204,6 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                 setUnsignedFormClients(clientsWithoutSignedForms);
 
                 // Calculate unpaid past sessions (with proper time parsing and fee check)
-                console.log(`[Dashboard] Checking ${appointments.length} appointments for unpaid sessions...`);
                 const pastUnpaidSessions = appointments.filter((apt: any) => {
                     const dateStr = apt.date.split('T')[0];
                     const timeStr = apt.time || '00:00';
@@ -243,15 +236,8 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                     
                     const shouldInclude = isPast && isUnpaid && hasFee;
                     
-                    // Debug logging for all past sessions
-                    if (isPast) {
-                        console.log(`[Dashboard] Unpaid check: ${apt.clientName} on ${dateStr} at ${apt.time} (parsed: ${aptDate.toLocaleString()}) - isPast: ${isPast}, isUnpaid: ${isUnpaid}, hasFee: ${hasFee}, fee: ${fee}, paymentStatus: ${paymentStatus}, shouldInclude: ${shouldInclude}`);
-                    }
-                    
                     return shouldInclude;
                 });
-                
-                console.log(`[Dashboard] Found ${pastUnpaidSessions.length} unpaid sessions:`, pastUnpaidSessions.map((s: any) => ({ client: s.clientName, date: s.date, time: s.time, fee: s.fee, paymentStatus: s.paymentStatus })));
                 setUnpaidSessions(pastUnpaidSessions);
 
                 // Store individual reminder counts
@@ -282,9 +268,6 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
                     unpaidSessions: pastUnpaidSessions.length,
                     customReminders: clientsNotSeenReminders.length
                 };
-                
-                console.log(`[Dashboard] Setting reminder counts:`, counts);
-                console.log(`[Dashboard] Unpaid sessions count: ${counts.unpaidSessions}, actual sessions:`, pastUnpaidSessions.map((s: any) => s.clientName));
                 
                 setReminderCounts(counts);
 
@@ -674,13 +657,6 @@ function DashboardOverview({ onNavigate }: { onNavigate: (tab: Tab, action?: str
             {(() => {
                 // Calculate total from the individual counts to ensure consistency (include unpaid sessions)
                 const displayTotal = reminderCounts.clinicalNotes + reminderCounts.unsignedForms + reminderCounts.unpaidSessions + reminderCounts.customReminders;
-                console.log(`[Dashboard] Action Required calculation:`, {
-                    clinicalNotes: reminderCounts.clinicalNotes,
-                    unsignedForms: reminderCounts.unsignedForms,
-                    unpaidSessions: reminderCounts.unpaidSessions,
-                    customReminders: reminderCounts.customReminders,
-                    displayTotal
-                });
                 return displayTotal > 0 && (
                 <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900">
                     <CardContent className="p-4 sm:p-6">

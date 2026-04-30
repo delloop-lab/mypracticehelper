@@ -85,7 +85,6 @@ export function VersionUpdateModal() {
                 });
 
                 if (!response.ok) {
-                    console.log('[Version Update] Failed to fetch version.json:', response.status);
                     setIsChecking(false);
                     setHasChecked(true);
                     return;
@@ -95,7 +94,6 @@ export function VersionUpdateModal() {
                 const latest = data.latest;
 
                 if (!latest || typeof latest !== 'string') {
-                    console.log('[Version Update] Invalid version format in version.json');
                     setIsChecking(false);
                     setHasChecked(true);
                     return;
@@ -106,19 +104,9 @@ export function VersionUpdateModal() {
                 // Compare versions
                 const comparison = compareVersions(latest, CURRENT_VERSION);
                 
-                console.log('[Version Update] Version comparison:', {
-                    current: CURRENT_VERSION,
-                    latest: latest,
-                    comparison: comparison,
-                    shouldShow: comparison > 0
-                });
-                
                 if (comparison > 0) {
                     // Latest version is newer than current
-                    console.log('[Version Update] Showing update modal');
                     setIsOpen(true);
-                } else {
-                    console.log('[Version Update] No update available or versions match');
                 }
             } catch (error) {
                 console.error('[Version Update] Error checking for updates:', error);

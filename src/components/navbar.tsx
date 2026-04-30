@@ -58,15 +58,9 @@ export function Navbar() {
         
         if (response.ok) {
           const data = await response.json();
-          console.log('[Navbar] Settings API response:', { 
-            hasCompanyLogo: !!data.companyLogo, 
-            companyLogo: data.companyLogo,
-            companyLogoLength: data.companyLogo?.length || 0
-          });
           
           // The API returns the config directly, so companyLogo is at the root level
           const newLogo = (data.companyLogo && data.companyLogo.trim() !== "") ? data.companyLogo : undefined;
-          console.log('[Navbar] Processed logo:', { newLogo, isEmpty: !newLogo });
           
           setCompanyLogo((currentLogo) => {
             // Only update if logo changed or if forcing refresh
@@ -74,7 +68,6 @@ export function Navbar() {
               // Increment version to force image refresh when logo changes
               if (forceRefresh || newLogo !== currentLogo) {
                 setLogoVersion(prev => prev + 1);
-                console.log('[Navbar] Logo updated, incrementing version. New logo:', newLogo, 'Old logo:', currentLogo);
               }
               return newLogo;
             }
@@ -83,7 +76,6 @@ export function Navbar() {
         } else if (response.status === 401) {
           // 401 is expected when user is not authenticated - don't log as error
           // This can happen during redirects or when session expires
-          console.log('[Navbar] Settings API returned 401 (not authenticated)');
         } else {
           console.error('[Navbar] Settings API response not OK:', response.status, response.statusText);
           const errorText = await response.text();
@@ -99,7 +91,6 @@ export function Navbar() {
     
     // Listen for custom event when logo is updated (no polling needed)
     const handleLogoUpdate = () => {
-      console.log('Logo update event received in navbar, forcing refresh...');
       fetchCompanyLogo(true);
     };
     window.addEventListener('logo-updated', handleLogoUpdate);
@@ -198,9 +189,6 @@ export function Navbar() {
                     console.error('Menu logo failed to load:', menuLogoSrc);
                     // Fallback to default logo if image fails to load
                     (e.target as HTMLImageElement).src = "/your-logo-here.png";
-                  }}
-                  onLoad={() => {
-                    console.log('Menu logo loaded successfully:', menuLogoSrc);
                   }}
                 />
               ) : (

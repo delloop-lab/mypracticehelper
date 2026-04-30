@@ -111,9 +111,6 @@ const SidebarContent = ({ onNavigate, companyLogo, logoVersion }: { onNavigate?:
                                 // Fallback to default logo if image fails to load
                                 (e.target as HTMLImageElement).src = "/your-logo-here.png";
                             }}
-                            onLoad={() => {
-                                console.log('Sidebar logo loaded successfully:', logoSrc);
-                            }}
                         />
                     ) : (
                         <Image
@@ -195,15 +192,9 @@ export function Sidebar() {
                 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('[Sidebar] Settings API response:', { 
-                        hasCompanyLogo: !!data.companyLogo, 
-                        companyLogo: data.companyLogo,
-                        companyLogoLength: data.companyLogo?.length || 0
-                    });
                     
                     // The API returns the config directly, so companyLogo is at the root level
                     const newLogo = (data.companyLogo && data.companyLogo.trim() !== "") ? data.companyLogo : undefined;
-                    console.log('[Sidebar] Processed logo:', { newLogo, isEmpty: !newLogo });
                     
                     setCompanyLogo((currentLogo) => {
                         // Only update if logo changed or if forcing refresh
@@ -211,7 +202,6 @@ export function Sidebar() {
                             // Increment version to force image refresh when logo changes
                             if (forceRefresh || newLogo !== currentLogo) {
                                 setLogoVersion(prev => prev + 1);
-                                console.log('[Sidebar] Logo updated, incrementing version. New logo:', newLogo, 'Old logo:', currentLogo);
                             }
                             return newLogo;
                         }
@@ -220,7 +210,6 @@ export function Sidebar() {
                 } else if (response.status === 401) {
                     // 401 is expected when user is not authenticated - don't log as error
                     // This can happen during redirects or when session expires
-                    console.log('[Sidebar] Settings API returned 401 (not authenticated)');
                 } else {
                     console.error('[Sidebar] Settings API response not OK:', response.status, response.statusText);
                     const errorText = await response.text();
@@ -236,7 +225,6 @@ export function Sidebar() {
         
         // Listen for custom event when logo is updated (no polling needed)
         const handleLogoUpdate = () => {
-            console.log('Logo update event received, forcing refresh...');
             fetchCompanyLogo(true);
         };
         window.addEventListener('logo-updated', handleLogoUpdate);
