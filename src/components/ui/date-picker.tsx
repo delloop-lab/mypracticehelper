@@ -20,7 +20,6 @@ interface DatePickerProps {
   disabled?: boolean;
   className?: string;
   minDate?: Date;
-  blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
 }
 
 export function DatePicker({
@@ -30,41 +29,32 @@ export function DatePicker({
   disabled = false,
   className,
   minDate,
-  blockedDays = [],
 }: DatePickerProps) {
+  const parseDateValue = React.useCallback((dateValue: string): Date | undefined => {
+    if (!dateValue) return undefined;
+    const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    }
+
+    const parsed = new Date(dateValue);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  }, []);
+
   const parsedDate =
     typeof value === "string"
       ? value
-        ? new Date(value)
+        ? parseDateValue(value)
         : undefined
       : value;
 
-  // Ensure blockedDays is always an array
-  const safeBlockedDays = React.useMemo(() => {
-    if (!blockedDays) return [];
-    if (!Array.isArray(blockedDays)) return [];
-    return blockedDays;
-  }, [blockedDays]);
-
-  // Helper function to check if a date is disabled
-  const isDateDisabled = React.useCallback((date: Date): boolean => {
-    // Disable past dates if minDate is set
-    if (minDate) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const checkDate = new Date(date);
-      checkDate.setHours(0, 0, 0, 0);
-      if (checkDate < today) return true;
-    }
-    // Disable blocked days of the week (0=Sunday, 1=Monday, ..., 6=Saturday)
-    if (safeBlockedDays.length > 0) {
-      const dayOfWeek = date.getDay();
-      if (safeBlockedDays.includes(dayOfWeek)) {
-        return true;
-      }
-    }
-    return false;
-  }, [minDate, safeBlockedDays]);
+  const normalizedMinDate = React.useMemo(() => {
+    if (!minDate) return undefined;
+    const normalized = new Date(minDate);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  }, [minDate]);
 
   return (
     <Popover>
@@ -87,23 +77,18 @@ export function DatePicker({
         <Calendar
           mode="single"
           selected={parsedDate}
-          onSelect={(date) => {
-            // Allow selection of blocked days (warning will be shown in the form)
-            onChange?.(date);
-          }}
+          onSelect={(date) => onChange?.(date)}
           initialFocus
-          fromDate={minDate || undefined}
+          fromDate={normalizedMinDate}
           toDate={undefined}
           disabled={(date) => {
-            // Disable past dates if minDate is set
-            if (minDate) {
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
+            if (normalizedMinDate) {
               const checkDate = new Date(date);
               checkDate.setHours(0, 0, 0, 0);
-              if (checkDate < today) return true;
+              if (checkDate < normalizedMinDate) {
+                return true;
+              }
             }
-            // Allow blocked days to be selected (they will show a warning instead)
             return false;
           }}
         />

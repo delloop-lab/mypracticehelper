@@ -16,7 +16,6 @@ const DEFAULT_SETTINGS = {
     defaultFee: 80,
     currency: "EUR",
     timezone: "UTC",
-    blockedDays: [],
     companyName: "",
     companyLogo: "",
     reminderHoursBefore: 24, // Hours before appointment to send reminder

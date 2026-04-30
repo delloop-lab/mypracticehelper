@@ -65,6 +65,17 @@ type SortOption = 'date-desc' | 'date-asc' | 'client-asc' | 'client-desc';
 
 export default function RemindersPage() {
     const router = useRouter();
+    const parseLocalDate = (value?: string | null): Date | null => {
+        if (!value) return null;
+        const datePart = value.split('T')[0];
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+        if (match) {
+            const [, year, month, day] = match;
+            return new Date(Number(year), Number(month) - 1, Number(day));
+        }
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [notes, setNotes] = useState<SessionNote[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
@@ -183,8 +194,8 @@ export default function RemindersPage() {
 
         // Get the most recent past session
         const sortedAppointments = [...clientAppointments].sort((a, b) => {
-            const dateA = new Date(a.date.split('T')[0]);
-            const dateB = new Date(b.date.split('T')[0]);
+            const dateA = parseLocalDate(a.date) ?? new Date(0);
+            const dateB = parseLocalDate(b.date) ?? new Date(0);
             return dateB.getTime() - dateA.getTime();
         });
 
@@ -395,7 +406,9 @@ export default function RemindersPage() {
     // Sort reminders (newest first)
     const sortedReminders = useMemo(() => {
         return [...reminders].sort((a, b) => {
-            return new Date(b.date).getTime() - new Date(a.date).getTime();
+            const dateA = parseLocalDate(a.date) ?? new Date(0);
+            const dateB = parseLocalDate(b.date) ?? new Date(0);
+            return dateB.getTime() - dateA.getTime();
         });
     }, [reminders]);
 
@@ -414,7 +427,8 @@ export default function RemindersPage() {
     }, [clientsWithoutEmail]);
 
     const formatDate = (dateString: string): string => {
-        const date = new Date(dateString);
+        const date = parseLocalDate(dateString);
+        if (!date) return '';
         return date.toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',

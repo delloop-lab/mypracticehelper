@@ -174,6 +174,18 @@ function SessionNotesContent() {
         }
     };
 
+    const toLocalDateKey = (dateString: string): string => {
+        const datePart = dateString.split('T')[0];
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+        if (match) return datePart;
+        const parsed = new Date(dateString);
+        if (Number.isNaN(parsed.getTime())) return datePart;
+        const year = parsed.getFullYear();
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const day = String(parsed.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     useEffect(() => {
         const clientParam = searchParams.get('client');
         const clientIdParam = searchParams.get('clientId');
@@ -519,7 +531,7 @@ function SessionNotesContent() {
             const a = document.createElement('a');
             a.href = blobUrl;
             const fileName = note.clientName && note.sessionDate
-                ? `${note.clientName}-${new Date(note.sessionDate).toISOString().split('T')[0]}.webm`
+                ? `${note.clientName}-${toLocalDateKey(note.sessionDate)}.webm`
                 : `recording-${note.id}.webm`;
             a.download = fileName;
             console.log('[Session Notes] Downloading as:', fileName);

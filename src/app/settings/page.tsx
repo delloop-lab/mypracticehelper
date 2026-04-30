@@ -34,7 +34,6 @@ interface SettingsData {
     defaultFee: number;
     currency: string;
     timezone?: string; // IANA timezone (e.g., "Europe/Lisbon", "America/New_York")
-    blockedDays?: number[]; // Array of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
     companyName?: string;
     companyLogo?: string; // Path or URL to company logo
 }
@@ -56,7 +55,6 @@ export default function SettingsPage() {
         defaultFee: 80,
         currency: "EUR",
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", // Auto-detect user's timezone
-        blockedDays: [],
     });
     const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
     const [newTypeName, setNewTypeName] = useState("");
@@ -1087,46 +1085,6 @@ export default function SettingsPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="space-y-2">
-                                <Label>Days of Week Not Available for Bookings</Label>
-                                <div className="grid grid-cols-7 gap-2">
-                                    {[
-                                        { day: 0, label: 'Sun' },
-                                        { day: 1, label: 'Mon' },
-                                        { day: 2, label: 'Tue' },
-                                        { day: 3, label: 'Wed' },
-                                        { day: 4, label: 'Thu' },
-                                        { day: 5, label: 'Fri' },
-                                        { day: 6, label: 'Sat' },
-                                    ].map(({ day, label }) => (
-                                        <label
-                                            key={day}
-                                            className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 cursor-pointer transition-colors ${
-                                                settings.blockedDays?.includes(day)
-                                                    ? 'bg-muted/50 border-muted text-muted-foreground opacity-50'
-                                                    : 'bg-background border-border hover:bg-muted'
-                                            }`}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={settings.blockedDays?.includes(day) || false}
-                                                onChange={(e) => {
-                                                    const currentBlocked = settings.blockedDays || [];
-                                                    const updatedBlocked = e.target.checked
-                                                        ? [...currentBlocked, day]
-                                                        : currentBlocked.filter(d => d !== day);
-                                                    setSettings({ ...settings, blockedDays: updatedBlocked });
-                                                }}
-                                                className="sr-only"
-                                            />
-                                            <span className="text-sm font-medium">{label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Select days when you do not accept bookings. These days will be disabled in the calendar.
-                                </p>
-                            </div>
                             <div className="space-y-2">
                                 <Label htmlFor="defaultDuration">Default Duration (minutes)</Label>
                                 <div className="flex items-center gap-2">

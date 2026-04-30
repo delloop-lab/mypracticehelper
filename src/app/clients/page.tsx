@@ -102,6 +102,25 @@ interface ClientsPageProps {
 function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const searchParams = useSearchParams();
     const router = useRouter();
+    const toLocalDateKey = (dateValue?: string | Date | null) => {
+        if (!dateValue) return null;
+        if (dateValue instanceof Date) {
+            if (Number.isNaN(dateValue.getTime())) return null;
+            const year = dateValue.getFullYear();
+            const month = String(dateValue.getMonth() + 1).padStart(2, "0");
+            const day = String(dateValue.getDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+        }
+        const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+        if (dateOnlyMatch) return dateValue;
+        const parsed = new Date(dateValue);
+        if (Number.isNaN(parsed.getTime())) return null;
+        const year = parsed.getFullYear();
+        const month = String(parsed.getMonth() + 1).padStart(2, "0");
+        const day = String(parsed.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    };
+    const todayLocalDate = toLocalDateKey(new Date()) || "";
     const [clients, setClients] = useState<Client[]>([]);
     const [recordings, setRecordings] = useState<any[]>([]);
     const [notesForAudioCounts, setNotesForAudioCounts] = useState<any[]>([]);
@@ -613,7 +632,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         if (!client.nextAppointment) return false;
         try {
             const nextDate = new Date(client.nextAppointment);
-            const nextDateStr = nextDate.toISOString().split('T')[0]; // Date only
+            const nextDateStr = toLocalDateKey(nextDate); // Date only
             
             return appointments.some(apt => {
                 // Match by client name (API only returns clientName, not client_id)
@@ -622,7 +641,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 if (!matchesClient) return false;
                 
                 const aptDate = new Date(apt.date);
-                const aptDateStr = aptDate.toISOString().split('T')[0]; // Date only
+                const aptDateStr = toLocalDateKey(aptDate); // Date only
                 
                 // Compare dates (ignore time for matching)
                 return aptDateStr === nextDateStr;
@@ -719,7 +738,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     // Log Past Session State
     const [isLogSessionDialogOpen, setIsLogSessionDialogOpen] = useState(false);
     const [logSessionData, setLogSessionData] = useState({
-        date: new Date().toISOString().split('T')[0],
+        date: todayLocalDate,
         time: "12:00",
         duration: 50,
         type: "Therapy Session",
@@ -779,7 +798,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             setIsLogSessionDialogOpen(false);
             // Reset form
             setLogSessionData({
-                date: new Date().toISOString().split('T')[0],
+                date: toLocalDateKey(new Date()) || "",
                 time: "12:00",
                 duration: 50,
                 type: "Therapy Session",
@@ -952,7 +971,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                 // Calculate session date outside filter so it's accessible everywhere
                 const sessionClientId = editingClient?.id;
-                const sessionDate = new Date(session.date).toISOString().split('T')[0];
+                const sessionDate = toLocalDateKey(session.date);
 
                 // Filter notes for this specific session
                 const notesForSession = allNotes.filter((note: any) => {
@@ -963,7 +982,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     
                     // Also match by client ID and date for session notes
                     const noteClientId = note.clientId || note.client_id;
-                    const noteDate = note.sessionDate ? new Date(note.sessionDate).toISOString().split('T')[0] : null;
+                    const noteDate = toLocalDateKey(note.sessionDate);
                     
                     // Match session notes by client ID and date
                     if (note.source === 'session_note' || !note.source) {
@@ -987,7 +1006,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         const recordingClientName = note.clientName;
                         const recordingSessionId = note.sessionId || note.session_id;
                         const recordingDate = note.sessionDate || note.date || note.created_at || note.createdDate;
-                        const recordingDateStr = recordingDate ? new Date(recordingDate).toISOString().split('T')[0] : null;
+                        const recordingDateStr = toLocalDateKey(recordingDate);
 
                         // Primary: explicitly linked to this session
                         if (recordingSessionId === sessionId) return true;
@@ -1018,9 +1037,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     const recordingClientId = note.clientId || note.client_id;
                     const recordingClientName = note.clientName;
                     const recordingSessionId = note.sessionId || note.session_id;
-                    const recordingDateStr = note.sessionDate || note.date || note.created_at || note.createdDate
-                        ? new Date((note.sessionDate || note.date || note.created_at || note.createdDate) as string).toISOString().split('T')[0]
-                        : null;
+                    const recordingDateStr = toLocalDateKey((note.sessionDate || note.date || note.created_at || note.createdDate) as string);
 
                     const clientMatch = !recordingClientId || recordingClientId === sessionClientId ||
                         (recordingClientName && session.clientName && recordingClientName.toLowerCase() === session.clientName.toLowerCase());
@@ -1169,7 +1186,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             const rSessionId = r.session_id ?? r.sessionId;
                             const rClientId = r.client_id ?? r.clientId;
                             const rClientName = (r.clientName || '').trim().toLowerCase();
-                            const recordingDateStr = (r.date || r.created_at) ? new Date(r.date || r.created_at).toISOString().split('T')[0] : null;
+                            const recordingDateStr = toLocalDateKey(r.date || r.created_at);
                             const clientMatch = !rClientId || rClientId === sessionClientId || (rClientName && rClientName === normalizedClientName);
                             const sessionMatch = rSessionId ? (rSessionId === sessionId) : (recordingDateStr === sessionDate && clientMatch);
                             return clientMatch && sessionMatch;
@@ -1307,9 +1324,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     // Legacy: session_id null - match by date to a session for this client
                     if (!effectiveSessionId && clientAppointments.length > 0) {
                         const noteDate = note.sessionDate || note.createdDate || note.date || note.created_at;
-                        const noteDateStr = noteDate ? new Date(noteDate).toISOString().split('T')[0] : null;
+                        const noteDateStr = toLocalDateKey(noteDate);
                         const matchingApt = noteDateStr
-                            ? clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === noteDateStr)
+                            ? clientAppointments.find(a => toLocalDateKey(a.date) === noteDateStr)
                             : undefined;
                         effectiveSessionId = matchingApt?.id ?? null;
                     }
@@ -1362,9 +1379,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         // Legacy: session_id null - match by date to a session for this client
                         if (!effectiveSessionId && client && clientAppointments.length > 0) {
                             const recordingDate = recording.date || recording.created_at;
-                            const recordingDateStr = recordingDate ? new Date(recordingDate).toISOString().split('T')[0] : null;
+                            const recordingDateStr = toLocalDateKey(recordingDate);
                             const matchingApt = recordingDateStr
-                                ? clientAppointments.find(a => new Date(a.date).toISOString().split('T')[0] === recordingDateStr)
+                                ? clientAppointments.find(a => toLocalDateKey(a.date) === recordingDateStr)
                                 : undefined;
                             effectiveSessionId = matchingApt?.id ?? null;
                         }

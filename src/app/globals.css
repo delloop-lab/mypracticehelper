@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ensure blocked/disabled days in react-day-picker v9 are properly styled */
+/* Ensure disabled days in react-day-picker v9 are properly styled */
 /* Target all possible selectors for disabled days */
 .rdp-day_disabled,
 .rdp-day[aria-disabled="true"],
@@ -207,7 +207,7 @@ button[aria-disabled="true"].rdp-day_button:hover,
   justify-content: center;
 }
 
-/* Force styling for disabled/blocked days in react-day-picker v9 */
+/* Force styling for disabled days in react-day-picker v9 */
 /* Target ALL possible selectors - subtle ghosting so days are still visible */
 .rdp-day_disabled,
 .rdp-day-disabled-custom,

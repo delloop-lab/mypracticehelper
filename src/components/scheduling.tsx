@@ -78,12 +78,23 @@ interface SchedulingProps {
 
 export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingProps = {}) {
     const router = useRouter();
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const parseLocalDate = (dateValue?: string) => {
+        if (!dateValue) return undefined;
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+        if (match) {
+            const [, year, month, day] = match;
+            return new Date(Number(year), Number(month) - 1, Number(day));
+        }
+        const parsed = new Date(dateValue);
+        return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+    };
     // State hooks
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
     const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>(DEFAULT_APPOINTMENT_TYPES);
-    const [settings, setSettings] = useState<{ currency: string; defaultFee: number; blockedDays?: number[] }>({ currency: "EUR", defaultFee: 80, blockedDays: [] });
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [settings, setSettings] = useState<{ currency: string; defaultFee: number }>({ currency: "EUR", defaultFee: 80 });
+    const [selectedDate, setSelectedDate] = useState(todayStr);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -95,7 +106,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
     // Form data for new appointment, includes currency
     const [formData, setFormData] = useState({
         clientName: "",
-        date: new Date().toISOString().split('T')[0],
+        date: todayStr,
         time: "10:00",
         duration: 60,
         type: "Therapy Session" as Appointment['type'],
@@ -118,8 +129,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
     
     // Past date warning state
     const [pastDateWarningShown, setPastDateWarningShown] = useState(false);
-    // Blocked day warning state
-    const [blockedDayWarningShown, setBlockedDayWarningShown] = useState(false);
 
     // Load data on mount
     useEffect(() => {
@@ -271,14 +280,12 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     }
                 }
                 
-                // Load currency, defaultFee, and blockedDays from settings
+                // Load currency and defaultFee from settings
                 const defaultFee = data.defaultFee || 80;
                 const currency = data.currency || "EUR";
-                const blockedDays = data.blockedDays || [];
                 setSettings({
                     currency: currency,
-                    defaultFee: defaultFee,
-                    blockedDays: blockedDays
+                    defaultFee: defaultFee
                 });
                 // Always update formData with settings (especially important if dialog is open)
                 setFormData(prev => ({
@@ -300,7 +307,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         const currentCurrency = settings.currency || "EUR";
         setFormData({
             clientName: "",
-            date: new Date().toISOString().split('T')[0],
+            date: format(new Date(), "yyyy-MM-dd"),
             time: "10:00",
             duration: 60,
             type: "Therapy Session",
@@ -314,9 +321,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         // Reset new client state
         setIsAddingNewClient(false);
         setNewClientData({ firstName: "", lastName: "", email: "" });
-        // Reset past date warning and blocked day warning
+        // Reset past date warning
         setPastDateWarningShown(false);
-        setBlockedDayWarningShown(false);
         setBookingError(null);
     };
 
@@ -353,21 +359,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setBookingError(null);
-
-        // Check if selected date is on a blocked day
-        if (formData.date) {
-            const selectedDate = new Date(formData.date);
-            const dayOfWeek = selectedDate.getDay();
-            const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
-            
-            if (isBlocked && !blockedDayWarningShown) {
-                setBookingError(
-                    `⚠️ This appointment is scheduled on a non-working day. Click "Create Appointment" again to confirm.`
-                );
-                setBlockedDayWarningShown(true);
-                return;
-            }
-        }
 
         // Determine the client name - either from existing client or new client
         let clientName = formData.clientName;
@@ -791,21 +782,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         
         setBookingError(null);
 
-        // Check if selected date is on a blocked day
-        if (editedAppointment.date) {
-            const selectedDate = new Date(editedAppointment.date);
-            const dayOfWeek = selectedDate.getDay();
-            const isBlocked = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
-            
-            if (isBlocked && !blockedDayWarningShown) {
-                setBookingError(
-                    `⚠️ This appointment is scheduled on a non-working day. Click "Save Changes" again to confirm.`
-                );
-                setBlockedDayWarningShown(true);
-                return;
-            }
-        }
-
         // Combine date and time into a full ISO timestamp
         const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
         const dateWithTime = `${editedAppointment.date}T${timeStr}`;
@@ -919,7 +895,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         setIsEditingAppointment(false);
         setEditedAppointment(null);
         setBookingError(null);
-        setBlockedDayWarningShown(false);
     };
 
     // Show "First L" in month calendar chips (e.g., "Lilly Schillaci" -> "Lilly S")
@@ -1064,7 +1039,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                             onClick={() => {
                                                 setFormData({ 
                                                     ...formData, 
-                                                    date: singleDayView || new Date().toISOString().split('T')[0],
+                                                    date: singleDayView || format(new Date(), "yyyy-MM-dd"),
                                                     fee: settings.defaultFee || 80,
                                                     currency: settings.currency || "EUR",
                                                     type: "Therapy Session" // Reset to default type
@@ -1205,12 +1180,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                     if (dayStr === '2025-11-25') {
                                         console.log(`[Calendar Render] Day: ${dayStr}, Found ${dayAppointments.length} appointments:`, dayAppointments.map(a => ({ id: a.id, client: a.clientName, time: a.time, date: a.date })));
                                     }
-                                    // Check if this day is blocked (day of week is in blockedDays)
-                                    const dayOfWeek = day.getDay();
-                                    const isBlockedDay = settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek);
-                                    
-                                    // Only apply heavy fading to blocked days WITHOUT appointments
-                                    // Days with appointments should be clearly visible
                                     const hasAppointments = dayAppointments.length > 0;
                                     
                                     return (
@@ -1219,17 +1188,11 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                             className={cn(
                                                 "border-b border-r p-2 sm:p-1.5 transition-colors relative group overflow-hidden flex flex-col min-w-[80px]",
                                                 !isSameMonth(day, currentMonth) && "bg-muted/20 text-muted-foreground",
-                                                isToday(day) && !isBlockedDay && "bg-primary/5",
-                                                hasAppointments && !isBlockedDay && "bg-muted/30",
-                                                // Blocked days WITHOUT appointments: heavy fade
-                                                isBlockedDay && !hasAppointments && "opacity-30 bg-muted/20 grayscale",
-                                                // Blocked days WITH appointments: light background but fully visible
-                                                isBlockedDay && hasAppointments && "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800",
-                                                !isBlockedDay && "hover:bg-muted/50 cursor-pointer",
-                                                "cursor-pointer" // Always allow clicking to view/delete appointments
+                                                isToday(day) && "bg-primary/5",
+                                                hasAppointments && "bg-muted/30",
+                                                "hover:bg-muted/50 cursor-pointer"
                                             )}
                                             onClick={() => {
-                                                // Allow clicking on blocked days (they can still create appointments with warning)
                                                 const dateStr = format(day, 'yyyy-MM-dd');
                                                 setSelectedDate(dateStr);
                                                 setViewRange("today"); // Ensure viewRange is set to show selected date
@@ -1811,21 +1774,17 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                 <div className="space-y-1">
                                     <Label htmlFor="date" className="text-sm">Date</Label>
                                     <DatePicker
-                                        value={formData.date ? new Date(formData.date) : undefined}
+                                        value={parseLocalDate(formData.date)}
                                         onChange={(date) => {
                                             if (date) {
-                                                const dayOfWeek = date.getDay();
-                                                const isBlocked: boolean = !!(settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek));
                                                 setFormData({
                                                     ...formData,
-                                                    date: date.toISOString().split("T")[0],
+                                                    date: format(date, "yyyy-MM-dd"),
                                                 });
                                                 setBookingError(null);
                                                 setPastDateWarningShown(false);
-                                                setBlockedDayWarningShown(isBlocked);
                                             }
                                         }}
-                                        blockedDays={settings.blockedDays}
                                     />
                                 </div>
                                 <div className="space-y-1">
@@ -1843,12 +1802,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                     />
                                 </div>
                             </div>
-                            {blockedDayWarningShown && formData.date && (
-                                <p className="text-xs text-amber-600 dark:text-amber-400">
-                                    ⚠️ This date falls on a non-working day.
-                                </p>
-                            )}
-
                             {/* Appointment Type & Venue Row */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
@@ -2072,28 +2025,18 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                     {isEditingAppointment && editedAppointment ? (
                                         <div className="space-y-1">
                                             <DatePicker
-                                                value={editedAppointment.date ? new Date(editedAppointment.date) : undefined}
+                                                value={parseLocalDate(editedAppointment.date)}
                                                 onChange={(date) => {
                                                     if (date) {
-                                                        const dayOfWeek = date.getDay();
-                                                        const isBlocked: boolean = !!(settings.blockedDays && settings.blockedDays.length > 0 && settings.blockedDays.includes(dayOfWeek));
-                                                        
                                                         setEditedAppointment({
                                                             ...editedAppointment,
-                                                            date: date.toISOString().split("T")[0]
+                                                            date: format(date, "yyyy-MM-dd")
                                                         });
                                                         setBookingError(null);
-                                                        setBlockedDayWarningShown(isBlocked);
                                                     }
                                                 }}
                                                 minDate={new Date()}
-                                                blockedDays={settings.blockedDays}
                                             />
-                                            {blockedDayWarningShown && editedAppointment.date && !bookingError && (
-                                                <p className="text-xs text-amber-600 dark:text-amber-400">
-                                                    ⚠️ This date falls on a non-working day. You can still save the appointment, but please note this is outside your usual working schedule.
-                                                </p>
-                                            )}
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-2">
