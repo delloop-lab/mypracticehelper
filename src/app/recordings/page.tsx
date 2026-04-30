@@ -145,11 +145,9 @@ function RecordingsContent() {
 
     const loadClients = async () => {
         try {
-            console.log('[Recordings] Loading clients...');
             const response = await fetch('/api/clients');
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Recordings] Loaded', data.length, 'clients');
                 setClients(data);
             } else {
                 console.error('[Recordings] Failed to load clients:', response.status);
@@ -164,17 +162,13 @@ function RecordingsContent() {
             const response = await fetch('/api/recordings', {
                 credentials: 'include', // Include cookies for authentication
             });
-            
-            console.log('[Recordings] Fetch response status:', response.status);
-            
+
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Recordings] Received data:', { count: data.length, data });
                 // Remove duplicates by ID (keep first occurrence)
                 const uniqueRecordings: Recording[] = Array.from(
                     new Map((data as Recording[]).map((r: Recording) => [r.id, r])).values()
                 );
-                console.log(`[Recordings] Loaded ${data.length} recordings, ${uniqueRecordings.length} unique`);
                 if (data.length !== uniqueRecordings.length) {
                     console.warn(`[Recordings] Found ${data.length - uniqueRecordings.length} duplicate recordings`);
                 }
@@ -210,7 +204,6 @@ function RecordingsContent() {
                 audio.onloadedmetadata = () => {
                     if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
                         const duration = Math.floor(audio.duration);
-                        console.log(`[Recordings] Calculated duration for ${recordingId}:`, duration, 'seconds');
                         setCalculatedDurations(prev => ({ ...prev, [recordingId]: duration }));
                     }
                     finish();
@@ -373,7 +366,6 @@ function RecordingsContent() {
     };
 
     const handleEditClient = async (recording: Recording, fromUnallocated = false) => {
-        console.log('[Recordings] handleEditClient called for recording:', recording.id, 'fromUnallocated:', fromUnallocated);
         setEditingRecording(recording);
         setEditingFromUnallocated(fromUnallocated);
         setEditClientName(recording.clientName || "");
@@ -391,11 +383,9 @@ function RecordingsContent() {
                 setEditClientId(client.id);
                 await loadPastSessionsForClient(client.id, recording.clientName);
             } else {
-                console.log('[Recordings] Client not found by name, cannot load sessions');
                 setEditClientId(undefined);
             }
         } else {
-            console.log('[Recordings] No client info on recording, sessions will load when client is selected');
             setEditClientId(undefined);
         }
         
@@ -404,38 +394,22 @@ function RecordingsContent() {
     };
     
     const loadPastSessionsForClient = async (clientId: string, clientName?: string) => {
-        console.log('[Recordings] ========== Loading past sessions ==========');
-        console.log('[Recordings] Client ID:', clientId);
-        console.log('[Recordings] Client Name:', clientName);
-        console.log('[Recordings] Clients available:', clients.length);
         setIsLoadingSessions(true);
         try {
             const response = await fetch('/api/appointments');
             if (response.ok) {
                 const appointments = await response.json();
-                console.log('[Recordings] Total appointments from API:', appointments.length);
                 const now = new Date();
                 
                 // Find client by ID or use the provided name
                 const client = clients.find(c => c.id === clientId);
                 const searchName = client?.name || clientName;
-                console.log('[Recordings] Found client:', client ? client.name : 'NOT IN LIST');
-                console.log('[Recordings] Searching for sessions with name:', searchName);
                 
                 if (!searchName) {
-                    console.log('[Recordings] No client name to search, clearing sessions');
                     setPastSessions([]);
                     setIsLoadingSessions(false);
                     return;
                 }
-                
-                // Log all appointments for debugging
-                console.log('[Recordings] All appointments:', appointments.map((a: any) => ({
-                    id: a.id,
-                    clientName: a.clientName,
-                    clientId: a.clientId || a.client_id,
-                    date: a.date
-                })));
                 
                 // Filter to past sessions for this client (match by client name or ID)
                 const past = appointments
@@ -448,7 +422,6 @@ function RecordingsContent() {
                             apt.clientName?.toLowerCase() === searchName?.toLowerCase() ||
                             apt.clientId === clientId || 
                             apt.client_id === clientId;
-                        console.log('[Recordings] Checking apt:', apt.id, 'clientName:', apt.clientName, 'matches:', matchesClient, 'isPast:', isPast);
                         return isPast && matchesClient;
                     })
                     .map((apt: any) => ({
@@ -459,7 +432,6 @@ function RecordingsContent() {
                     }))
                     .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Most recent first
                 setPastSessions(past);
-                console.log('[Recordings] ✅ Loaded', past.length, 'past sessions for client', searchName);
             } else {
                 console.error('[Recordings] Failed to fetch appointments:', response.status);
             }
@@ -514,7 +486,6 @@ function RecordingsContent() {
                 const userResponse = await fetch('/api/auth/me');
                 if (userResponse.ok) {
                     const userData = await userResponse.json() as { first_name?: string | null; last_name?: string | null; email?: string };
-                    console.log('[Recordings] User data for therapist name:', { first_name: userData.first_name, last_name: userData.last_name, email: userData.email });
                     
                     // Build therapist name from first_name and last_name (even if one is null)
                     const nameParts: string[] = [];
@@ -527,7 +498,6 @@ function RecordingsContent() {
                     
                     if (nameParts.length > 0) {
                         therapistName = nameParts.join(' ').trim();
-                        console.log('[Recordings] Therapist name from profile:', therapistName);
                     } else if (userData.email) {
                         // Fallback: Extract from email if first_name/last_name are not available
                         const emailParts = userData.email.split('@')[0].split('.');
@@ -538,7 +508,6 @@ function RecordingsContent() {
                         } else {
                             therapistName = emailParts[0].charAt(0).toUpperCase() + emailParts[0].slice(1);
                         }
-                        console.log('[Recordings] Therapist name from email fallback:', therapistName);
                     }
                 }
                 

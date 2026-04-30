@@ -49,6 +49,7 @@ export default function HelpPage() {
                         <ul className="space-y-2 text-sm text-muted-foreground">
                             <li>• View upcoming appointments</li>
                             <li>• Edit appointment times and types</li>
+                            <li>• Add up to 3 participants to one shared appointment</li>
                             <li>• Integrate with Calendly</li>
                             <li>• Track session history</li>
                         </ul>
@@ -174,6 +175,13 @@ export default function HelpPage() {
                             <h3 className="font-semibold mb-2">What is an Admin Note</h3>
                             <p className="text-sm text-muted-foreground">
                                 An Admin Note is an internal note used by the clinic or practice staff to record administrative details, reminders, or follow-ups related to a client or session.
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3 className="font-semibold mb-2">How do shared multi-participant sessions work?</h3>
+                            <p className="text-sm text-muted-foreground">
+                                You can create one appointment with up to 3 participants total (1 primary client and up to 2 additional participants). The same shared session appears in each participant&apos;s Sessions tab, and notes/recordings are shared across all participants. Billing and payment remain a single fee tracked under the primary client.
                             </p>
                         </div>
 

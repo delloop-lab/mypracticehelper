@@ -89,7 +89,6 @@ function SessionNotesContent() {
     useEffect(() => {
         const fetchTherapist = async () => {
             try {
-                console.log('[Session Notes] ========== Fetching therapist name ==========');
                 const response = await fetch('/api/auth/me');
                 if (response.status === 401) {
                     markUnauthorized('auth/me');
@@ -97,12 +96,6 @@ function SessionNotesContent() {
                 }
                 if (response.ok) {
                     const userData = await response.json();
-                    console.log('[Session Notes] User data from /api/auth/me:', {
-                        id: userData.id,
-                        email: userData.email,
-                        first_name: userData.first_name,
-                        last_name: userData.last_name
-                    });
                     
                     // Build therapist name from first_name and last_name
                     const nameParts: string[] = [];
@@ -115,7 +108,6 @@ function SessionNotesContent() {
                     
                     if (nameParts.length > 0) {
                         const therapist = nameParts.join(' ');
-                        console.log('[Session Notes] ✅ Therapist name from profile:', therapist);
                         setCurrentTherapist(therapist);
                     } else {
                         // Fallback to email if first_name/last_name not set
@@ -127,7 +119,6 @@ function SessionNotesContent() {
                             const name = emailParts.map((part: string) => 
                                 part.charAt(0).toUpperCase() + part.slice(1)
                             ).join(' ');
-                            console.log('[Session Notes] Using email fallback:', name);
                             setCurrentTherapist(name + ' (update profile)');
                         }
                     }
@@ -193,7 +184,6 @@ function SessionNotesContent() {
         const dateParam = searchParams.get('date');
         const createParam = searchParams.get('create');
 
-        console.log('[Session Notes] URL params:', { clientParam, clientIdParam, sessionIdParam, dateParam, createParam });
 
         // If all session info is provided, we're coming from a session card
         const isFromSessionCard = !!(clientParam && clientIdParam && sessionIdParam && dateParam && createParam === 'true');
@@ -204,14 +194,12 @@ function SessionNotesContent() {
             
             // Store original date for display
             if (dateParam) {
-                console.log('[Session Notes] Processing date param:', dateParam);
                 // Validate date before storing
                 const testDate = new Date(dateParam);
                 if (!isNaN(testDate.getTime())) {
                     setOriginalSessionDate(dateParam);
                     // Convert date to datetime-local format for input field
                     const formattedDate = convertToDatetimeLocal(dateParam);
-                    console.log('[Session Notes] Converted date:', formattedDate);
                     setFormData(prev => ({
                         ...prev,
                         clientName: clientParam,
@@ -282,7 +270,6 @@ function SessionNotesContent() {
     const loadClients = async () => {
         try {
             if (isUnauthorized) return;
-            console.log('[Session Notes] Loading clients...');
             const response = await fetch('/api/clients');
             if (response.status === 401) {
                 markUnauthorized('clients');
@@ -291,10 +278,6 @@ function SessionNotesContent() {
             }
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Session Notes] Loaded', data.length, 'clients');
-                if (data.length > 0) {
-                    console.log('[Session Notes] Sample client:', { id: data[0].id, name: data[0].name });
-                }
                 setClients(data);
             } else {
                 console.error('[Session Notes] Failed to load clients:', response.status);
@@ -307,7 +290,6 @@ function SessionNotesContent() {
     const loadNotes = async () => {
         try {
             if (isUnauthorized) return;
-            console.log('[Session Notes] Loading notes from API...');
             const response = await fetch('/api/session-notes');
             if (response.status === 401) {
                 markUnauthorized('session-notes');
@@ -316,19 +298,6 @@ function SessionNotesContent() {
             }
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Session Notes] Loaded', data?.length || 0, 'notes');
-                if (data && data.length > 0) {
-                    const sampleNote = data[0];
-                    console.log('[Session Notes] Sample note:', {
-                        id: sampleNote.id,
-                        clientName: sampleNote.clientName,
-                        hasTranscript: !!sampleNote.transcript,
-                        transcriptLength: sampleNote.transcript?.length || 0,
-                        hasAudioURL: !!sampleNote.audioURL,
-                        hasAiOverview: !!sampleNote.aiOverview,
-                        contentLength: sampleNote.content?.length || 0
-                    });
-                }
                 setNotes(data || []);
             } else {
                 console.error('[Session Notes] Failed to load notes:', response.status, response.statusText);
@@ -341,24 +310,11 @@ function SessionNotesContent() {
     };
 
     const saveNotes = async (updatedNotes: SessionNote[]) => {
-        console.log('[Session Notes] saveNotes called with notes:', updatedNotes.length);
         const noteToSave = updatedNotes.find(n => 
             (editingNote && n.id === editingNote.id) || 
             (!editingNote && n.id === updatedNotes[updatedNotes.length - 1]?.id)
         );
-        if (noteToSave) {
-            console.log('[Session Notes] Note being saved:', {
-                id: noteToSave.id,
-                clientName: noteToSave.clientName,
-                clientId: noteToSave.clientId,
-                sessionId: noteToSave.sessionId,
-                transcript: noteToSave.transcript,
-                transcriptLength: noteToSave.transcript?.length || 0,
-                audioURL: noteToSave.audioURL,
-                aiOverview: noteToSave.aiOverview,
-                content: noteToSave.content?.substring(0, 100)
-            });
-        }
+        if (noteToSave) {}
         
         setNotes(updatedNotes);
         try {
@@ -372,9 +328,7 @@ function SessionNotesContent() {
                 return;
             }
             if (response.ok) {
-                console.log('[Session Notes] Successfully saved notes');
-                const responseData = await response.json().catch(() => ({}));
-                console.log('[Session Notes] Save response:', responseData);
+                await response.json().catch(() => ({}));
             } else {
                 console.error('[Session Notes] Failed to save notes:', response.status, response.statusText);
                 const errorData = await response.json().catch(() => ({}));
@@ -504,14 +458,10 @@ function SessionNotesContent() {
         }
         
         try {
-            console.log('[Session Notes] Downloading audio for note:', note.id, 'URL:', note.audioURL);
-            
             // Convert relative URL to absolute if needed
             const audioUrl = note.audioURL.startsWith('http') 
                 ? note.audioURL 
                 : `${window.location.origin}${note.audioURL}`;
-            
-            console.log('[Session Notes] Fetching audio from:', audioUrl);
             
             // Fetch the audio file as a blob
             const response = await fetch(audioUrl);
@@ -522,7 +472,6 @@ function SessionNotesContent() {
             }
             
             const blob = await response.blob();
-            console.log('[Session Notes] Audio blob size:', blob.size, 'bytes');
             
             // Create object URL from blob
             const blobUrl = URL.createObjectURL(blob);
@@ -534,7 +483,6 @@ function SessionNotesContent() {
                 ? `${note.clientName}-${toLocalDateKey(note.sessionDate)}.webm`
                 : `recording-${note.id}.webm`;
             a.download = fileName;
-            console.log('[Session Notes] Downloading as:', fileName);
             
             document.body.appendChild(a);
             a.click();
@@ -542,8 +490,6 @@ function SessionNotesContent() {
             
             // Clean up blob URL after a short delay
             setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-            
-            console.log('[Session Notes] Download initiated successfully');
         } catch (error) {
             console.error('[Session Notes] Error downloading audio:', error);
             alert('Failed to download audio file. Please try again.');
@@ -568,10 +514,6 @@ function SessionNotesContent() {
     const loadSessionsForClient = async (clientId: string) => {
         try {
             if (isUnauthorized) return;
-            console.log('[Session Notes] ========== Loading sessions for client ==========');
-            console.log('[Session Notes] clientId:', clientId);
-            console.log('[Session Notes] clients array length:', clients.length);
-            
             const response = await fetch('/api/appointments');
             if (response.status === 401) {
                 markUnauthorized('appointments');
@@ -580,7 +522,6 @@ function SessionNotesContent() {
             }
             if (response.ok) {
                 const appointments = await response.json();
-                console.log('[Session Notes] Total appointments loaded:', appointments.length);
                 
                 // Find client either by ID or by looking up in the clients array
                 let client = clients.find(c => c.id === clientId);
@@ -589,7 +530,6 @@ function SessionNotesContent() {
                 // If client not in local array, try to find by name in appointments
                 if (!client && formData.clientName) {
                     clientName = formData.clientName;
-                    console.log('[Session Notes] Using formData.clientName:', clientName);
                 }
                 
                 if (!clientName) {
@@ -598,15 +538,10 @@ function SessionNotesContent() {
                     return;
                 }
                 
-                console.log('[Session Notes] Looking for sessions with clientName:', clientName);
-                
                 // Get all sessions for this client (past and future)
                 const sessions = appointments
                     .filter((apt: any) => {
                         const matches = apt.clientName === clientName;
-                        if (matches) {
-                            console.log('[Session Notes] MATCH:', apt.clientName, apt.date, apt.id);
-                        }
                         return matches;
                     })
                     .map((apt: any) => ({
@@ -617,10 +552,6 @@ function SessionNotesContent() {
                     }))
                     .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Most recent first
                 
-                console.log('[Session Notes] ========== Found', sessions.length, 'sessions ==========');
-                if (sessions.length > 0) {
-                    console.log('[Session Notes] First session:', sessions[0]);
-                }
                 setAvailableSessions(sessions);
             } else {
                 console.error('[Session Notes] Failed to load appointments:', response.status);
@@ -633,7 +564,6 @@ function SessionNotesContent() {
     };
 
     const handleCreate = async () => {
-        console.log('[Session Notes] handleCreate - current therapist:', currentTherapist);
         setEditingNote(null);
         const initialFormData = {
             clientName: "",
@@ -659,16 +589,6 @@ function SessionNotesContent() {
     };
 
     const handleEdit = async (note: SessionNote) => {
-        console.log('[Session Notes] handleEdit called with note:', {
-            id: note.id,
-            clientName: note.clientName,
-            clientId: note.clientId,
-            sessionId: note.sessionId,
-            transcript: note.transcript ? `[${note.transcript.length} chars]` : 'null',
-            audioURL: note.audioURL,
-            aiOverview: note.aiOverview ? `[${note.aiOverview.length} chars]` : 'null'
-        });
-        
         if (note.source === 'recording') {
             alert('Voice note recordings cannot be edited from this page. The transcript is automatically generated from the audio recording.');
             return;
@@ -694,19 +614,6 @@ function SessionNotesContent() {
     };
 
     const handleSave = () => {
-        console.log('[Session Notes] handleSave called with formData:', {
-            clientName: formData.clientName,
-            clientId: formData.clientId,
-            sessionId: formData.sessionId,
-            sessionDate: formData.sessionDate,
-            content: formData.content,
-            transcript: formData.transcript,
-            audioURL: formData.audioURL,
-            aiOverview: formData.aiOverview,
-            hasContent: !!formData.content,
-            hasTranscript: !!formData.transcript
-        });
-        
         if (!formData.clientName || !formData.sessionDate || !formData.content) {
             console.warn('[Session Notes] Validation failed:', {
                 hasClientName: !!formData.clientName,
@@ -718,7 +625,6 @@ function SessionNotesContent() {
         }
 
         if (editingNote) {
-            console.log('[Session Notes] Updating existing note:', editingNote.id);
             // Update existing note
             const updatedNote = { 
                 ...editingNote, 
@@ -728,13 +634,11 @@ function SessionNotesContent() {
                 audioURL: formData.audioURL,
                 aiOverview: formData.aiOverview
             };
-            console.log('[Session Notes] Updated note data:', updatedNote);
             const updatedNotes = notes.map(n =>
                 n.id === editingNote.id ? updatedNote : n
             );
             saveNotes(updatedNotes);
         } else {
-            console.log('[Session Notes] Creating new note');
             // Create new note
             const newNote: SessionNote = {
                 id: Date.now().toString(),
@@ -745,7 +649,6 @@ function SessionNotesContent() {
                 aiOverview: formData.aiOverview,
                 createdDate: new Date().toISOString()
             };
-            console.log('[Session Notes] New note data:', newNote);
             saveNotes([...notes, newNote]);
         }
 
@@ -775,19 +678,12 @@ function SessionNotesContent() {
 
         // Handle recording deletion
         if (deleteConfirm.note.source === 'recording' && deleteConfirm.note.recordingId) {
-            console.log('[Session Notes] Attempting to delete recording:', {
-                id: deleteConfirm.note.recordingId,
-                clientName: deleteConfirm.note.clientName,
-                sessionDate: deleteConfirm.note.sessionDate
-            });
-
             try {
                 const response = await fetch(`/api/recordings?id=${encodeURIComponent(deleteConfirm.note.recordingId)}`, {
                     method: 'DELETE',
                 });
 
                 if (response.ok) {
-                    console.log('[Session Notes] Successfully deleted recording');
                     // Remove from local state and reload notes
                     const updatedNotes = notes.filter(n => n.id !== deleteConfirm.note!.id);
                     setNotes(updatedNotes);
@@ -807,20 +703,12 @@ function SessionNotesContent() {
         }
 
         // Delete actual session notes (source === 'session_note' or undefined)
-        console.log('[Session Notes] Attempting to delete note:', {
-            id: deleteConfirm.note.id,
-            clientName: deleteConfirm.note.clientName,
-            sessionDate: deleteConfirm.note.sessionDate,
-            source: deleteConfirm.note.source
-        });
-
         try {
             const response = await fetch(`/api/session-notes?id=${encodeURIComponent(deleteConfirm.note.id)}`, {
                 method: 'DELETE',
             });
 
             if (response.ok) {
-                console.log('[Session Notes] Successfully deleted note');
                 // Remove from local state and reload notes
                 const updatedNotes = notes.filter(n => n.id !== deleteConfirm.note!.id);
                 setNotes(updatedNotes);
@@ -1565,11 +1453,8 @@ function SessionNotesContent() {
                             <Select
                                 value={formData.clientName}
                                 onValueChange={async (value) => {
-                                    console.log('[Session Notes Dialog] Client selected:', value);
                                     const selectedClient = clients.find(c => c.name === value);
-                                    console.log('[Session Notes Dialog] Selected client object:', selectedClient);
                                     const newClientId = selectedClient?.id;
-                                    console.log('[Session Notes Dialog] Setting clientId to:', newClientId);
                                     
                                     // Update form data with new client
                                     setFormData(prev => ({
@@ -1582,15 +1467,12 @@ function SessionNotesContent() {
                                     
                                     // Load sessions for this client
                                     if (newClientId) {
-                                        console.log('[Session Notes Dialog] Loading sessions for clientId:', newClientId);
                                         try {
                                             await loadSessionsForClient(newClientId);
-                                            console.log('[Session Notes Dialog] Sessions loaded, count:', availableSessions.length);
                                         } catch (err) {
                                             console.error('[Session Notes Dialog] Error loading sessions:', err);
                                         }
                                     } else {
-                                        console.log('[Session Notes Dialog] No clientId found for client:', value);
                                         setAvailableSessions([]);
                                     }
                                 }}

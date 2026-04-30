@@ -146,7 +146,7 @@ export function Navbar() {
               alt="My Practice Helper"
               width={200}
               height={64}
-              className="h-12 sm:h-14 md:h-16 w-auto"
+              className="w-[150px] sm:w-[175px] md:w-[200px] h-auto"
               priority
             />
           </Link>

@@ -104,11 +104,9 @@ function PaymentsContent() {
             // Using exchangerate-api.com - free API, no API key required
             // Alternative: exchangerate.host (but might have CORS issues)
             const response = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
-            console.log('[Exchange Rates] Fetching from exchangerate-api.com...');
             
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Exchange Rates] API Response:', data);
                 
                 if (data.rates) {
                     // Store rates for conversion TO EUR
@@ -125,8 +123,6 @@ function PaymentsContent() {
                         }
                     });
                     
-                    console.log('[Exchange Rates] Converted rates:', rates);
-                    console.log('[Exchange Rates] USD rate:', rates['USD']);
                     setExchangeRates(rates);
                 } else {
                     console.error('[Exchange Rates] No rates in response:', data);
@@ -138,7 +134,6 @@ function PaymentsContent() {
                     const fallbackResponse = await fetch('https://api.exchangerate.host/latest?base=EUR');
                     if (fallbackResponse.ok) {
                         const fallbackData = await fallbackResponse.json();
-                        console.log('[Exchange Rates] Fallback API Response:', fallbackData);
                         if (fallbackData.rates) {
                             const rates: Record<string, number> = { EUR: 1 };
                             Object.keys(fallbackData.rates).forEach(currency => {
@@ -149,7 +144,6 @@ function PaymentsContent() {
                                     rates[currency] = rate;
                                 }
                             });
-                            console.log('[Exchange Rates] Fallback converted rates:', rates);
                             setExchangeRates(rates);
                         }
                     }
@@ -175,13 +169,6 @@ function PaymentsContent() {
             const appointmentsRes = await fetch(`/api/appointments?t=${Date.now()}`);
             if (appointmentsRes.ok) {
                 const appointmentsData = await appointmentsRes.json();
-                console.log(`[Revenue] Loaded ${appointmentsData.length} appointments`);
-                // Log unpaid sessions for debugging
-                const unpaidCount = appointmentsData.filter((apt: Appointment) => {
-                    const fee = getAppointmentFee(apt);
-                    return fee > 0 && apt.paymentStatus !== "paid";
-                }).length;
-                console.log(`[Revenue] Found ${unpaidCount} unpaid sessions`);
                 setAppointments(appointmentsData);
             } else {
                 console.error('[Revenue] Failed to load appointments:', appointmentsRes.status);
@@ -336,8 +323,6 @@ function PaymentsContent() {
         const now = new Date();
         let totalRevenueSessions = allRelevantSessions;
         
-        console.log(`[Total Revenue] Selected period: ${selectedPeriod}, Total sessions before filter: ${allRelevantSessions.length}`);
-        
         // Filter by selected period - include future paid appointments for all periods
         if (selectedPeriod === "today") {
         const today = startOfDay(now);
@@ -427,32 +412,24 @@ function PaymentsContent() {
         const currency = getAppointmentCurrency(apt);
         const fee = getAppointmentFee(apt);
         revenueByCurrency[currency] = (revenueByCurrency[currency] || 0) + fee;
-        console.log(`[Revenue by Currency] Appointment: ${apt.clientName}, Date: ${apt.date}, Currency: ${currency}, Fee: ${fee}, Running total for ${currency}: ${revenueByCurrency[currency]}`);
     });
-    console.log('[Revenue by Currency] Final breakdown:', revenueByCurrency);
     
     // Calculate cumulative total in EUR
     const calculateTotalInEUR = (revenueByCurrency: Record<string, number>): number | null => {
         let totalEUR = 0;
         let hasMissingRates = false;
         
-        console.log('[Calculate Total] Revenue by currency:', revenueByCurrency);
-        console.log('[Calculate Total] Exchange rates:', exchangeRates);
-        
         Object.entries(revenueByCurrency).forEach(([currency, amount]) => {
             const currencyUpper = currency.toUpperCase();
             if (currencyUpper === 'EUR') {
                 totalEUR += amount;
-                console.log(`[Calculate Total] Added EUR ${amount}, total now: ${totalEUR}`);
             } else {
                 // Try both original and uppercase currency codes
                 const rate = exchangeRates[currency] || exchangeRates[currencyUpper];
-                console.log(`[Calculate Total] Currency: ${currency} (${currencyUpper}), Amount: ${amount}, Rate: ${rate}`);
                 if (rate !== undefined && rate !== null && !isNaN(rate) && rate > 0) {
                     // Rate is already the conversion factor TO EUR (e.g., 0.909 for USD)
                     const convertedAmount = amount * rate;
                     totalEUR += convertedAmount;
-                    console.log(`[Calculate Total] Converted ${currency} ${amount} to EUR ${convertedAmount.toFixed(2)}, total now: ${totalEUR}`);
                 } else if (Object.keys(exchangeRates).length > 0 && exchangeRates.EUR !== undefined) {
                     // Rate not available but API has loaded (some rates exist)
                     // This means we have a currency that the API doesn't support
@@ -460,18 +437,14 @@ function PaymentsContent() {
                     hasMissingRates = true;
                 } else {
                     // Exchange rates haven't loaded yet
-                    console.log(`[Calculate Total] Exchange rates not loaded yet for ${currency}`);
                     // Don't add the amount - we'll recalculate when rates load
                 }
             }
         });
         
-        console.log(`[Calculate Total] Final total: ${totalEUR}, hasMissingRates: ${hasMissingRates}`);
-        
         // If exchange rates haven't loaded yet (empty object), return null to show loading
         // This ensures we don't show incorrect totals before rates are available
         if (Object.keys(exchangeRates).length === 0) {
-            console.log('[Calculate Total] Exchange rates not loaded, returning null');
             return null; // Rates not loaded yet - show loading state
         }
         
@@ -488,14 +461,10 @@ function PaymentsContent() {
             "Multibanco": 0
         };
         
-        console.log(`[Revenue by Payment Method] Calculating for ${paidSessionsForPeriod.length} paid sessions in selected period`);
-        
         paidSessionsForPeriod.forEach(apt => {
             const paymentMethod = apt.paymentMethod || "Cash"; // Default to Cash if not specified
             const fee = getAppointmentFee(apt);
             const currency = getAppointmentCurrency(apt);
-            
-            console.log(`[Revenue by Payment Method] Processing: ${apt.clientName}, Date: ${apt.date}, PaymentMethod: ${paymentMethod}, Fee: ${fee}, Currency: ${currency}, Raw paymentMethod field: ${apt.paymentMethod}`);
             
             // Convert to EUR for consistent totals
             let feeInEUR = fee;
@@ -528,13 +497,10 @@ function PaymentsContent() {
             
             if (revenueByPaymentMethod.hasOwnProperty(normalizedPaymentMethod)) {
                 revenueByPaymentMethod[normalizedPaymentMethod] = (revenueByPaymentMethod[normalizedPaymentMethod] || 0) + feeInEUR;
-                console.log(`[Revenue by Payment Method] ${apt.clientName}: ${paymentMethod} -> ${normalizedPaymentMethod}, ${currency} ${fee} = EUR ${feeInEUR.toFixed(2)}, Total for ${normalizedPaymentMethod}: ${revenueByPaymentMethod[normalizedPaymentMethod].toFixed(2)}`);
             } else {
                 console.warn(`[Revenue by Payment Method] Payment method "${paymentMethod}" (normalized: "${normalizedPaymentMethod}") not found in revenueByPaymentMethod. Available:`, Object.keys(revenueByPaymentMethod), `Appointment:`, apt);
             }
         });
-        
-        console.log('[Revenue by Payment Method] Final totals:', revenueByPaymentMethod);
     
         const totalRevenueInEUR = calculateTotalInEUR(revenueByCurrency);
     
@@ -596,28 +562,10 @@ function PaymentsContent() {
         // Only include sessions with fee > 0 and payment status is not "paid"
         const paymentStatus = apt.paymentStatus || 'unpaid';
         const isUnpaid = fee > 0 && paymentStatus !== "paid";
-        if (isUnpaid) {
-            console.log(`[Revenue] Unpaid session found:`, {
-                id: apt.id,
-                client: apt.clientName,
-                date: apt.date,
-                time: apt.time,
-                parsedDate: aptDate.toLocaleString(),
-                isPast: isPast,
-                fee: fee,
-                paymentStatus: apt.paymentStatus,
-                status: apt.status
-            });
-        }
         return isUnpaid;
     }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     const totalUnpaidAmount = allUnpaidSessions.reduce((sum, apt) => sum + getAppointmentFee(apt), 0);
-    
-    // Log total unpaid for debugging
-    if (totalUnpaidAmount > 0) {
-        console.log(`[Revenue] Total unpaid amount: ${totalUnpaidAmount}, from ${allUnpaidSessions.length} sessions`);
-    }
     
     // Outstanding revenue = total unpaid amount (all time, not filtered by period)
     // This ensures Outstanding always shows the real total, regardless of period filter
@@ -730,8 +678,6 @@ function PaymentsContent() {
             return;
         }
 
-        console.log(`[Update Payment Method] Updating payment method for appointment ${selectedAppointment.id} to ${paymentMethod}`);
-
         setUpdatingPaymentStatus(true);
         try {
             const fee = getAppointmentFee(selectedAppointment);
@@ -760,8 +706,6 @@ function PaymentsContent() {
                 requestBody.currency = currency;
             }
 
-            console.log('[Update Payment Method] Request body:', requestBody);
-
             const response = await fetch('/api/appointments', {
                 method: 'PUT',
                 headers: {
@@ -771,8 +715,7 @@ function PaymentsContent() {
             });
 
             if (response.ok) {
-                const responseData = await response.json();
-                console.log('[Update Payment Method] API response:', responseData);
+                await response.json();
                 
                 // Small delay to ensure database update is complete
                 await new Promise(resolve => setTimeout(resolve, 300));
@@ -791,8 +734,6 @@ function PaymentsContent() {
                     // Update selected appointment
                     const updatedApt = appointmentsData.find((apt: Appointment) => apt.id === selectedAppointment.id);
                     if (updatedApt) {
-                        console.log('[Update Payment Method] Updated appointment from API:', updatedApt);
-                        console.log('[Update Payment Method] Payment method in updated appointment:', updatedApt.paymentMethod);
                         setSelectedAppointment(updatedApt);
                         setSelectedPaymentMethod(updatedApt.paymentMethod || "Cash");
                     } else {

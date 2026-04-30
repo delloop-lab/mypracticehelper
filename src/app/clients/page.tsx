@@ -928,7 +928,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         
         // Mark as processed IMMEDIATELY
         hasProcessedParamsRef.current = paramKey;
-        console.log('[Clients] ✅ Processing URL params for:', client.name);
         
         // Update state
         setEditingClient(client);
@@ -960,12 +959,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const loadSessionNotes = async (sessionId: string) => {
         setIsLoadingSessionNotes(true);
         try {
-            console.log('[Clients Page] Loading session notes for:', sessionId);
-            
             // Add timeout to prevent hanging
             const controller = new AbortController();
             const timeoutId = setTimeout(() => {
-                console.log('[Clients Page] Session notes fetch timeout after 15 seconds');
                 controller.abort();
             }, 15000);
             
@@ -979,8 +975,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             
             if (response.ok) {
                 const allNotes = await response.json();
-                console.log('[Clients Page] Loaded', allNotes.length, 'total notes');
-                
                 // Get the active session to match by client and date
                 const session = appointments.find(apt => apt.id === sessionId);
                 if (!session) {
@@ -1070,36 +1064,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     ...extraRecordingNotes,
                 ];
                 
-                console.log(`[Load Session Notes] Session ID: ${sessionId}, Client: ${session.clientName}, Client ID: ${editingClient?.id}, Date: ${sessionDate}`);
-                console.log(`[Load Session Notes] Total notes available: ${allNotes.length}`);
-                
-                // Log all recordings for debugging
-                const allRecordings = allNotes.filter((n: any) => n.source === 'recording');
-                console.log(`[Load Session Notes] Total recordings available: ${allRecordings.length}`);
-                allRecordings.forEach((rec: any) => {
-                    console.log(`[Load Session Notes] Recording:`, {
-                        id: rec.id,
-                        sessionId: rec.sessionId || rec.session_id,
-                        clientId: rec.clientId || rec.client_id,
-                        clientName: rec.clientName,
-                        date: rec.date || rec.created_at || rec.createdDate,
-                        hasTranscript: !!(rec.transcript && rec.transcript.trim())
-                    });
-                });
-                
-                console.log(`[Load Session Notes] Notes for this client:`, allNotes.filter((n: any) => {
-                    const noteClientId = n.clientId || n.client_id;
-                    return noteClientId === editingClient?.id || n.clientName?.toLowerCase() === session.clientName?.toLowerCase();
-                }));
-                console.log(`[Load Session Notes] Found ${allNotesForSession.length} notes for session ${sessionId} (client: ${session.clientName})`);
-                console.log(`[Load Session Notes] Matched notes:`, allNotesForSession.map((n: any) => ({
-                    id: n.id,
-                    source: n.source,
-                    sessionId: n.sessionId || n.session_id,
-                    hasTranscript: !!(n.transcript && n.transcript.trim()),
-                    hasContent: !!(n.content && n.content.trim())
-                })));
-                
                 // Deduplicate: by recording.id or audio_url (same recording = same audio file)
                 // Also by content+timestamp for non-recording notes
                 const seenRecordingKeys = new Set<string>(); // recordingId or normalized audio_url
@@ -1125,11 +1089,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 
                     // Must have content, transcript, or audio to display
                     if (!hasContent && !hasTranscript && !hasAudio) {
-                        if (note.source === 'recording') {
-                            console.log('[Load Session Notes] Filtering out recording with no content/transcript/audio:', note.id);
-                        } else {
-                            console.log('[Load Session Notes] Filtering out empty note:', note.id, note.source);
-                        }
                         return false;
                     }
 
@@ -1141,7 +1100,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                     const recordingKey = recordingId || (audioKey ? `audio:${audioKey}` : null);
                     if (recordingKey) {
                         if (seenRecordingKeys.has(recordingKey)) {
-                            console.log('[Load Session Notes] Dedupe by recording/audio:', note.id);
                             return false;
                         }
                         seenRecordingKeys.add(recordingKey);
@@ -1152,7 +1110,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         const transcriptNorm = (note.transcript || '').trim().substring(0, 500).toLowerCase();
                         const transcriptKey = `recording-transcript-${sessionId}-${transcriptNorm}`;
                         if (seenRecordingTranscriptKeys.has(transcriptKey)) {
-                            console.log('[Load Session Notes] Removing duplicate recording (same transcript):', note.id);
                             return false;
                         }
                         seenRecordingTranscriptKeys.add(transcriptKey);
@@ -1164,17 +1121,12 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         const dateKey = (note.createdDate || note.created_at || '') ? new Date(note.createdDate || note.created_at).toISOString().substring(0, 16) : '';
                         const key = `${content}-${dateKey}`;
                         if (seenContentKeys.has(key)) {
-                            console.log('[Load Session Notes] Removing duplicate note:', note.id);
                             return false;
                         }
                         seenContentKeys.add(key);
                     }
                     return true;
                 });
-                
-                if (deduplicatedNotes.length !== allNotesForSession.length) {
-                    console.log(`[Load Session Notes] Removed ${allNotesForSession.length - deduplicatedNotes.length} duplicate notes`);
-                }
 
                 // Ensure we include ALL recordings for this session (matches the "4 Recordings" count)
                 // session-notes API may omit some; fetch recordings directly and merge any missing
@@ -1469,7 +1421,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 
                 // Log any warnings (like unsupported features)
                 if (result.messages.length > 0) {
-                    console.log('Document conversion warnings:', result.messages);
+                    console.warn('Document conversion warnings:', result.messages);
                 }
             } catch (error: any) {
                 console.error('Error converting document:', error);
@@ -1598,7 +1550,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     };
 
     useEffect(() => {
-        console.log('[Clients Page] useEffect: About to load appointments...');
         loadAppointments();
     }, []);
 
@@ -1958,13 +1909,11 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 if (syncResponse.ok) {
                     const syncData = await syncResponse.json();
                     if (syncData.created) {
-                        console.log(`[Client Save] ✅ Automatically created session for ${savedClient.name} from nextAppointment`);
                         // Reload appointments to show the new session
                         await loadAppointments();
                         // Trigger a custom event to notify other components (like schedule) to reload
                         window.dispatchEvent(new CustomEvent('appointments-updated'));
                     } else if (syncData.message && syncData.message.includes('already exists')) {
-                        console.log(`[Client Save] ℹ️ Session already exists for ${savedClient.name}`);
                         // Still reload to sync UI state
                         await loadAppointments();
                         window.dispatchEvent(new CustomEvent('appointments-updated'));
@@ -2202,7 +2151,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         const client = clients.find(c => c.id === id);
         // If client is already archived, allow deletion. Otherwise, always archive.
         const action = client?.archived ? 'delete' : 'archive';
-        console.log(`[Client Delete] Client ${id} is archived: ${client?.archived}, action: ${action}`);
         setDeleteConfirmation({ isOpen: true, clientId: id, action });
     };
 
@@ -4632,11 +4580,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 <DeleteConfirmationDialog
                     open={deleteConfirmation.isOpen}
                     onOpenChange={(open) => {
-                        console.log('[Client Dialog] onOpenChange called:', open, 'action:', deleteConfirmation.action);
                         setDeleteConfirmation({ isOpen: open, clientId: deleteConfirmation.clientId, action: deleteConfirmation.action });
                     }}
                     onConfirm={() => {
-                        console.log('[Client Dialog] onConfirm called, action:', deleteConfirmation.action);
                         if (deleteConfirmation.action === 'archive') {
                             confirmArchive();
                         } else {
@@ -5299,7 +5245,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
 }
 
 export default function ClientsPage({ autoOpenAddDialog = false }: ClientsPageProps) {
-    console.log('[Clients Page] 🎯 Default export function called');
     return (
         <Suspense fallback={<div>Loading clients page...</div>}>
             <ClientsPageContent autoOpenAddDialog={autoOpenAddDialog} />

@@ -75,8 +75,6 @@ export function RemindersModal() {
             const remindersList: Appointment[] = [];
             const unpaidList: Appointment[] = [];
 
-            console.log('[Reminders Modal] Checking appointments for notes. Total appointments:', appointmentsData.length, 'Total notes:', notesData.length);
-
             appointmentsData.forEach((apt: Appointment) => {
                 // Parse appointment date/time properly
                 const aptDateStr = apt.date.split('T')[0];
@@ -117,19 +115,8 @@ export function RemindersModal() {
                         const hasVoiceNotes = 
                             (n.audioURL && n.audioURL.trim().length > 0) ||
                             (n.transcript && n.transcript.trim().length > 0);
-                        
-                        console.log(`[Reminders Modal] Note check for ${apt.clientName}:`, {
-                            noteClient: n.clientName,
-                            noteDate: noteDateStr,
-                            hasVoiceNotes,
-                            audioURL: n.audioURL ? 'yes' : 'no',
-                            transcript: n.transcript ? `${n.transcript.length} chars` : 'none'
-                        });
-                        
                         return hasVoiceNotes;
                     });
-                    
-                    console.log(`[Reminders Modal] Past session: ${apt.clientName} on ${aptDateStr} at ${apt.time} - hasNotes: ${hasNotes}`);
                     
                     if (!hasNotes) {
                         remindersList.push(apt);
@@ -140,8 +127,6 @@ export function RemindersModal() {
                     unpaidList.push(apt);
                 }
             });
-
-            console.log('[Reminders Modal] Sessions awaiting notes:', remindersList.length);
 
             // Get clients without signed forms
             const unsignedClients = clientsData.filter((c: Client) => !c.newClientFormSigned && !c.archived);

@@ -240,9 +240,6 @@ export default function RemindersPage() {
 
             // Calculate reminders for sessions awaiting notes
             const now = new Date();
-            console.log('[Reminders Page] Now:', now.toLocaleString());
-            console.log('[Reminders Page] Total appointments:', appointmentsData.length);
-            console.log('[Reminders Page] Total notes:', notesData.length);
             
             const pastSessions = appointmentsData.filter((a: Appointment) => {
                 // Extract date part (YYYY-MM-DD) from date string
@@ -266,13 +263,8 @@ export default function RemindersPage() {
                 const [year, month, day] = dateStr.split('-').map(Number);
                 const aptDate = new Date(year, month - 1, day, aptHours, aptMinutes, 0);
                 const isPast = aptDate < now;
-                
-                console.log(`[Reminders Page] Session: ${a.clientName} on ${dateStr} at ${a.time} (parsed: ${aptDate.toLocaleString()}) - isPast: ${isPast}`);
-                
                 return isPast;
             });
-            
-            console.log('[Reminders Page] Past sessions:', pastSessions.length);
 
             const missingNotes = pastSessions.filter((apt: Appointment) => {
                 // Extract date part for comparison
@@ -299,26 +291,10 @@ export default function RemindersPage() {
                     const hasVoiceNotes = 
                         (n.audioURL && n.audioURL.trim().length > 0) ||
                         (n.transcript && n.transcript.trim().length > 0);
-                    
-                    console.log(`[Reminders] Checking note for ${apt.clientName} on ${aptDateStr}:`, {
-                        noteClient: n.clientName,
-                        noteDate: noteDateStr,
-                        hasVoiceNotes,
-                        audioURL: n.audioURL ? 'yes' : 'no',
-                        transcript: n.transcript ? `${n.transcript.length} chars` : 'none'
-                    });
-                    
                     return hasVoiceNotes;
                 });
-                
-                if (!hasNote) {
-                    console.log(`[Reminders] Missing note for ${apt.clientName} on ${aptDateStr}`);
-                }
-                
                 return !hasNote;
             });
-            
-            console.log(`[Reminders] Total past sessions: ${pastSessions.length}, Missing notes: ${missingNotes.length}`);
 
             // Add clientId to reminders
             const remindersWithClientId = missingNotes.map((apt: Appointment) => {
@@ -374,9 +350,6 @@ export default function RemindersPage() {
                 // Only include sessions with a fee > 0 (sessions with 0 fee shouldn't show as unpaid)
                 const fee = apt.fee || 0;
                 const hasFee = fee > 0;
-                
-                console.log(`[Reminders Page] Unpaid check: ${apt.clientName} on ${dateStr} at ${apt.time} (parsed: ${aptDate.toLocaleString()}) - isPast: ${isPast}, isUnpaid: ${isUnpaid}, hasFee: ${hasFee}, fee: ${fee}`);
-                
                 return isPast && isUnpaid && hasFee;
             });
             setUnpaidSessions(pastUnpaidSessions);

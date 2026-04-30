@@ -154,14 +154,12 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
 
         // Reload when window gains focus (user switches back to tab)
         const handleFocus = () => {
-            console.log('[Scheduling] Window focused - reloading appointments');
             loadAppointments();
             loadAppointmentTypes(); // Also reload appointment types
         };
 
         // Reload when appointments are updated elsewhere (e.g., from clients page)
         const handleAppointmentsUpdated = () => {
-            console.log('[Scheduling] Appointments updated event received - reloading');
             loadAppointments();
         };
 
@@ -205,7 +203,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         if (editAppointmentId && appointments.length > 0) {
             const appointment = appointments.find(apt => apt.id === editAppointmentId);
             if (appointment) {
-                console.log('[Scheduling] Opening appointment for editing:', appointment.id);
                 setSelectedAppointment(appointment);
                 setIsDetailsOpen(true);
             }
@@ -215,17 +212,9 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
 
     const loadAppointments = async () => {
         try {
-            console.log('[Scheduling] Loading appointments...');
             const response = await fetch('/api/appointments');
-            console.log('[Scheduling] Response status:', response.status);
             if (response.ok) {
                 const data = await response.json();
-                console.log('[Scheduling] Raw appointments data:', data.length, data);
-                
-                // Log all appointments with their dates
-                data.forEach((apt: Appointment) => {
-                    console.log(`[Scheduling] Appointment: ${apt.clientName} on ${apt.date} (${apt.time})`);
-                });
                 
                 // Deduplicate appointments by ID only (ID should be unique)
                 const seenIds = new Set<string>();
@@ -238,7 +227,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     return true;
                 });
                 
-                // Log future appointments
+                // Build list of future appointments for internal checks.
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
                 const futureAppointments = uniqueAppointments.filter((apt: Appointment) => {
@@ -247,9 +236,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     aptDate.setHours(0, 0, 0, 0);
                     return aptDate >= today;
                 });
-                console.log(`[Scheduling] Found ${futureAppointments.length} future appointments:`, futureAppointments.map((a: any) => ({ client: a.clientName, date: a.date })));
-                
-                console.log(`[Load Appointments] Loaded ${data.length} appointments, ${uniqueAppointments.length} unique`);
                 setAppointments(uniqueAppointments);
             } else {
                 console.error('[Scheduling] Failed to load appointments:', response.status, response.statusText);
@@ -277,7 +263,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             if (response.ok) {
                 const data = await response.json();
                 const loadedTypes = data.appointmentTypes || [];
-                console.log('[Scheduling] Loaded appointment types:', loadedTypes.map((t: any) => ({ name: t.name, enabled: t.enabled })));
                 setAppointmentTypes(loadedTypes);
                 
                 // Validate current formData.type - if it doesn't exist or is disabled, reset to first enabled type
@@ -600,9 +585,7 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             if (viewRange === "today") {
                 // For "today" view, show ALL appointments for the selected date (both past and future)
                 const selectedDateStr = selectedDate.split('T')[0];
-                const matches = aptDateStr === selectedDateStr;
-                console.log(`[Scheduling] Today filter: ${apt.clientName} on ${aptDateStr} matches ${selectedDateStr}: ${matches}`);
-                return matches;
+                return aptDateStr === selectedDateStr;
             }
 
             // Combine date and time to get the full datetime for accurate comparison
@@ -793,26 +776,14 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
 
     const handleSaveAppointmentTime = async () => {
         if (!selectedAppointment || !editedAppointment) {
-            console.log('[Appointment Edit] Missing selectedAppointment or editedAppointment');
             return;
         }
-        
-        console.log('[Appointment Edit] Starting save process');
-        console.log('[Appointment Edit] Selected appointment:', {
-            id: selectedAppointment.id,
-            clientName: selectedAppointment.clientName,
-            currentDate: selectedAppointment.date,
-            currentTime: selectedAppointment.time,
-            currentType: selectedAppointment.type
-        });
-        console.log('[Appointment Edit] Edited values:', editedAppointment);
         
         setBookingError(null);
 
         // Combine date and time into a full ISO timestamp
         const timeStr = editedAppointment.time.length === 5 ? `${editedAppointment.time}:00` : editedAppointment.time;
         const dateWithTime = `${editedAppointment.date}T${timeStr}`;
-        console.log('[Appointment Edit] Combined date/time:', dateWithTime);
         const editedAdditionalParticipantNames = (editedAppointment.additionalParticipantNames || [])
             .map((name) => name.trim())
             .filter((name) => name.length > 0);
@@ -824,11 +795,9 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
         // Check if the edited appointment is in the past
         const appointmentDateTime = new Date(dateWithTime);
         const now = new Date();
-        console.log('[Appointment Edit] Date check - Appointment:', appointmentDateTime, 'Now:', now);
         
         // Compare dates/times (ignore milliseconds)
         if (appointmentDateTime < now) {
-            console.log('[Appointment Edit] ERROR: Cannot reschedule to past');
             setBookingError(
                 `Cannot reschedule appointments to the past. Please select a future date and time.`
             );
@@ -842,7 +811,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             // Allow if it's the same appointment (editing the same slot)
             if (conflictCheck.conflictingAppointment.id !== selectedAppointment.id) {
                 const conflict = conflictCheck.conflictingAppointment;
-                console.log('[Appointment Edit] ERROR: Time conflict detected:', conflict);
                 setBookingError(
                     `Time slot conflicts with existing appointment: ${conflict.clientName} at ${conflict.time} (${conflict.duration} min). Please choose a different time.`
                 );
@@ -867,14 +835,10 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                     paymentMethod: editedAppointment.paymentMethod || apt.paymentMethod || "Cash",
                     additionalParticipantNames: editedAdditionalParticipantNames
                 };
-                console.log('[Appointment Edit] Updated appointment:', updatedApt);
                 return updatedApt;
             }
             return apt;
         });
-
-        console.log('[Appointment Edit] Sending to API - Total appointments:', updated.length);
-        console.log('[Appointment Edit] Updated appointment array:', updated);
 
         try {
             const response = await fetch('/api/appointments', {
@@ -883,13 +847,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                 body: JSON.stringify(updated),
             });
 
-            console.log('[Appointment Edit] API Response status:', response.status);
-            console.log('[Appointment Edit] API Response ok:', response.ok);
-
             if (response.ok) {
-                const responseData = await response.json();
-                console.log('[Appointment Edit] API Response data:', responseData);
-                console.log('[Appointment Edit] Save successful, updating local state');
+                await response.json();
                 
                 setAppointments(updated);
                 setSelectedAppointment({ 
@@ -906,11 +865,8 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                 });
                 setIsEditingAppointment(false);
                 setEditedAppointment(null);
-                
-                console.log('[Appointment Edit] Reloading appointments from database...');
                 // Reload appointments to ensure sync with database
                 await loadAppointments();
-                console.log('[Appointment Edit] Reload complete');
             } else {
                 const errorData = await response.json().catch(() => ({ error: 'Failed to update appointment' }));
                 console.error('[Appointment Edit] API Error Response:', errorData);
@@ -920,9 +876,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
             }
         } catch (error) {
             console.error('[Appointment Edit] Exception caught:', error);
-            console.error('[Appointment Edit] Error type:', error instanceof Error ? error.constructor.name : typeof error);
-            console.error('[Appointment Edit] Error message:', error instanceof Error ? error.message : String(error));
-            console.error('[Appointment Edit] Error stack:', error instanceof Error ? error.stack : 'No stack');
             setBookingError(`Failed to update appointment: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     };
@@ -1228,10 +1181,6 @@ export function Scheduling({ preSelectedClient, editAppointmentId }: SchedulingP
                                         return minutesA - minutesB;
                                     });
                                     
-                                    // Debug logging for Nov 25th
-                                    if (dayStr === '2025-11-25') {
-                                        console.log(`[Calendar Render] Day: ${dayStr}, Found ${dayAppointments.length} appointments:`, dayAppointments.map(a => ({ id: a.id, client: a.clientName, time: a.time, date: a.date })));
-                                    }
                                     const hasAppointments = dayAppointments.length > 0;
                                     
                                     return (
