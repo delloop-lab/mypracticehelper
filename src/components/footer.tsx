@@ -44,13 +44,26 @@ export function Footer() {
                 </div>
                 <div className="mt-12 border-t pt-8 text-center text-sm text-muted-foreground">
                     <p>
-                        &copy; {new Date().getFullYear()} My Practice Helper. All rights reserved.{" "}
-                        <Link href="/terms" className="text-primary hover:underline">
-                            Terms and Conditions
+                        <span className="sm:hidden">© 2026 </span>
+                        <span className="hidden sm:inline">
+                            &copy; {new Date().getFullYear()} My Practice Helper. All rights reserved.{" "}
+                        </span>
+                        <Link
+                            href="/terms"
+                            className="text-primary hover:underline"
+                            aria-label="Terms and Conditions"
+                        >
+                            <span className="sm:hidden">T&C</span>
+                            <span className="hidden sm:inline">Terms and Conditions</span>
                         </Link>
                         {" | "}
-                        <Link href="/privacy" className="text-primary hover:underline">
-                            Privacy Policy
+                        <Link
+                            href="/privacy"
+                            className="text-primary hover:underline"
+                            aria-label="Privacy Policy"
+                        >
+                            <span className="sm:hidden">Privacy</span>
+                            <span className="hidden sm:inline">Privacy Policy</span>
                         </Link>
                     </p>
                 </div>
