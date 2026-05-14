@@ -282,6 +282,11 @@ export async function PATCH(request: Request) {
             updates.flagged = Boolean(body.flagged);
             updates.flagged_at = body.flagged ? new Date().toISOString() : null;
         }
+        // Allow rewriting just the transcript column (used by "Delete AI Assessment" on legacy
+        // recordings whose AI text was embedded in transcript JSON — we collapse it back to plain text).
+        if (typeof body.transcript === 'string') {
+            updates.transcript = body.transcript;
+        }
         if (Object.keys(updates).length === 0) {
             return NextResponse.json({ error: 'No valid updates provided' }, { status: 400 });
         }

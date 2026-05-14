@@ -11,6 +11,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { saveRecordingBackup, loadRecordingBackup, clearRecordingBackup, type PendingRecordingBackup } from "@/lib/recording-backup";
+import { RecordingAudioPlayer } from "@/components/recording-audio-player";
+import { prepareTranscriptWrite } from "@/lib/recordings-compat";
+
+/**
+ * Recording architecture: MediaRecorder captures audio chunks; on Stop, a single Blob is uploaded
+ * and transcribed once by Whisper on the server. There is no live (Web Speech) transcription path
+ * — the transcript only appears after Stop. An AnalyserNode-driven meter provides visual feedback
+ * during recording so the user can see the mic is working.
+ */
 
 interface NoteSection {
     title: string;
@@ -67,19 +76,19 @@ export function VoiceNotes() {
     const [isOffline, setIsOffline] = useState(false);
 
     // Refs
-    const recognitionRef = useRef<any>(null);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    const transcriptRef = useRef<string>("");
     const streamRef = useRef<MediaStream | null>(null);
-    // Plan 1+3: Use ref for restart decision - avoids stale isRecording closure in onend.
-    const isActivelyRecordingRef = useRef<boolean>(false);
-    // Plan 3: Resolve when recognition fires onend during stop flow - capture final results ASAP.
-    const onEndResolveRef = useRef<(() => void) | null>(null);
     const saveRetryContextRef = useRef<typeof saveRetryContext>(null);
     // UUID v4 generated at recording start - becomes storage filename, recording id, no overwrite risk
     const recordingIdRef = useRef<string | null>(null);
+    /** Live mic input level for the visual meter (0..1). Driven by AnalyserNode during active recording. */
+    const [audioLevel, setAudioLevel] = useState(0);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const analyserNodeRef = useRef<AnalyserNode | null>(null);
+    const analyserSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+    const audioLevelFrameRef = useRef<number | null>(null);
 
     // Keep ref in sync so retry handler always has latest context (avoids stale closure)
     useEffect(() => { saveRetryContextRef.current = saveRetryContext; }, [saveRetryContext]);
@@ -493,90 +502,6 @@ export function VoiceNotes() {
         }
     };
 
-    // Plan 1: SpeechRecognition instance created once on mount. Start/stop are imperative in startRecording/stopRecording.
-    // No [isRecording] dependency - avoids teardown/recreate on toggle and timing races with final results.
-    useEffect(() => {
-        if (typeof window !== "undefined" && "webkitSpeechRecognition" in window) {
-            const SpeechRecognition = (window as any).webkitSpeechRecognition;
-            const rec = new SpeechRecognition();
-            rec.continuous = true;
-            rec.interimResults = true;
-            rec.lang = "en-US";
-            // Plan 1A+3B: Never block onresult - final results often arrive during/after stop(). Blocking drops them.
-            rec.onresult = (ev: any) => {
-                // Build complete transcript from ALL results (not just new ones)
-                let completeFinalTranscript = "";
-                let latestInterim = "";
-
-                for (let i = 0; i < ev.results.length; i++) {
-                    const transcript = ev.results[i][0].transcript;
-                    if (ev.results[i].isFinal) {
-                        completeFinalTranscript += transcript + " ";
-                    } else {
-                        latestInterim = transcript;
-                    }
-                }
-
-                // Plan 4: transcriptRef is sole source of truth for persistence. Always update.
-                transcriptRef.current = completeFinalTranscript.trim();
-
-                // UI only - never used for saving (Plan 4)
-                const displayText = completeFinalTranscript.trim() + (latestInterim ? " " + latestInterim + "..." : "");
-                setTranscript(displayText);
-            };
-            rec.onerror = (ev: any) => {
-                if (ev.error === "no-speech") {
-                    console.warn("No speech detected - this is normal if you haven't spoken yet");
-                    return;
-                }
-                // Network/aborted errors: keep recording, show non-fatal message. User can Stop when done → Whisper fallback.
-                if (ev.error === "network" || ev.error === "aborted") {
-                    console.warn("Speech recognition error (non-fatal):", ev.error);
-                    setError("Live transcription unavailable (network issue). Audio is still recording. Click Stop when you're done — we'll transcribe it.");
-                    // Optionally retry recognition after a delay in case network recovers
-                    setTimeout(() => {
-                        if (isActivelyRecordingRef.current && recognitionRef.current) {
-                            try {
-                                recognitionRef.current.start();
-                                setError("");
-                            } catch (e) {
-                                console.warn("Could not restart recognition:", e);
-                            }
-                        }
-                    }, 3000);
-                    return;
-                }
-                // Other errors: stop recording (fatal)
-                console.error("Speech recognition error:", ev.error);
-                setError(`Recognition error: ${ev.error}`);
-                setIsRecording(false);
-                isActivelyRecordingRef.current = false;
-            };
-            // Plan 1: Use ref not state - isRecording would be stale closure. Restart only when actively recording.
-            rec.onend = () => {
-                if (isActivelyRecordingRef.current && recognitionRef.current) {
-                    try {
-                        recognitionRef.current.start();
-                    } catch (e) {
-                        console.error("Failed to restart recognition:", e);
-                    }
-                } else if (onEndResolveRef.current) {
-                    // Plan 3A: We requested stop - recognition has ended. Resolve so stopRecording can capture final transcript.
-                    onEndResolveRef.current();
-                    onEndResolveRef.current = null;
-                }
-            };
-            recognitionRef.current = rec;
-        } else {
-            console.warn("WebKit Speech Recognition not available - transcription will not work");
-        }
-        return () => {
-            if (recognitionRef.current) {
-                recognitionRef.current.stop();
-            }
-        };
-    }, []);
-
     // Cleanup MediaRecorder and stream on unmount
     useEffect(() => {
         return () => {
@@ -600,6 +525,23 @@ export function VoiceNotes() {
                 clearInterval(timerRef.current);
                 timerRef.current = null;
             }
+            // AnalyserNode + AudioContext owned by the recorder. Tear down on unmount too.
+            if (audioLevelFrameRef.current != null) {
+                try { cancelAnimationFrame(audioLevelFrameRef.current); } catch { /* ignore */ }
+                audioLevelFrameRef.current = null;
+            }
+            try { analyserSourceRef.current?.disconnect(); } catch { /* ignore */ }
+            analyserSourceRef.current = null;
+            analyserNodeRef.current = null;
+            const ctx = audioContextRef.current;
+            if (ctx) {
+                try {
+                    if (typeof ctx.close === "function" && ctx.state !== "closed") {
+                        ctx.close().catch(() => { /* ignore */ });
+                    }
+                } catch { /* ignore */ }
+            }
+            audioContextRef.current = null;
         };
     }, []);
 
@@ -634,7 +576,6 @@ export function VoiceNotes() {
 
         setError("");
         setTranscript("");
-        transcriptRef.current = "";
         setStructuredNotes([]);
         setRecordingTime(0);
         setAudioURL("");
@@ -642,8 +583,6 @@ export function VoiceNotes() {
         setIsUploadedFile(false);
         setSaveStatus("idle");
         audioChunksRef.current = [];
-        onEndResolveRef.current = null;
-        isActivelyRecordingRef.current = true; // Plan 1: Used by onend for restart vs stop flow
 
         // Check if getUserMedia is available
         if (typeof window === "undefined") {
@@ -770,89 +709,110 @@ export function VoiceNotes() {
         setIsRecording(true);
         timerRef.current = setInterval(() => setRecordingTime((p) => p + 1), 1000);
 
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.start();
-            } catch (e: any) {
-                // If it's already running, that's okay
-                if (!e.message || !e.message.includes("already started")) {
-                    console.error("Failed to start speech recognition:", e);
-                    setError("Could not start speech recognition. Audio will be recorded but not transcribed.");
+        // AnalyserNode-driven audio-level meter. Gives the user live visual feedback that the mic
+        // is capturing. Cleanly torn down in stopRecording / unmount.
+        try {
+            const stream = streamRef.current;
+            if (stream && typeof window !== "undefined") {
+                const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+                if (Ctx) {
+                    const ctx: AudioContext = new Ctx();
+                    const source = ctx.createMediaStreamSource(stream);
+                    const analyser = ctx.createAnalyser();
+                    analyser.fftSize = 1024;
+                    analyser.smoothingTimeConstant = 0.7;
+                    source.connect(analyser);
+
+                    audioContextRef.current = ctx;
+                    analyserSourceRef.current = source;
+                    analyserNodeRef.current = analyser;
+
+                    const buffer = new Uint8Array(analyser.fftSize);
+                    let lastSet = 0;
+                    const tick = () => {
+                        const a = analyserNodeRef.current;
+                        if (!a) return;
+                        a.getByteTimeDomainData(buffer);
+                        // Compute peak deviation from silence (128) — cheap proxy for input level.
+                        let peak = 0;
+                        for (let i = 0; i < buffer.length; i++) {
+                            const v = Math.abs(buffer[i] - 128);
+                            if (v > peak) peak = v;
+                        }
+                        const level = Math.min(1, peak / 128);
+                        const now = (typeof performance !== "undefined" ? performance.now() : Date.now());
+                        // Throttle React updates to ~20fps to avoid render thrash.
+                        if (now - lastSet > 50) {
+                            lastSet = now;
+                            setAudioLevel(level);
+                        }
+                        audioLevelFrameRef.current = requestAnimationFrame(tick);
+                    };
+                    audioLevelFrameRef.current = requestAnimationFrame(tick);
                 }
             }
-        } else {
-            console.warn("Speech recognition not supported – recording audio only");
-            setError("Speech recognition not available in this browser. Audio will be recorded but not transcribed.");
+        } catch (meterErr) {
+            // Meter is purely visual; never block recording on it.
+            console.warn("[Voice Notes] Audio level meter unavailable:", meterErr);
         }
     };
 
-    const stopRecording = () => {
-        // Plan 3B: Signal stop so onend won't restart. Don't block onresult - let final results arrive.
-        isActivelyRecordingRef.current = false;
+    /** Tear down the audio-level meter created in startRecording. Safe to call multiple times. */
+    const stopAudioLevelMeter = () => {
+        if (audioLevelFrameRef.current != null) {
+            try { cancelAnimationFrame(audioLevelFrameRef.current); } catch { /* ignore */ }
+            audioLevelFrameRef.current = null;
+        }
+        try { analyserSourceRef.current?.disconnect(); } catch { /* ignore */ }
+        analyserSourceRef.current = null;
+        analyserNodeRef.current = null;
+        const ctx = audioContextRef.current;
+        if (ctx) {
+            try {
+                if (typeof ctx.close === "function" && ctx.state !== "closed") {
+                    ctx.close().catch(() => { /* ignore */ });
+                }
+            } catch { /* ignore */ }
+        }
+        audioContextRef.current = null;
+        setAudioLevel(0);
+    };
 
+    const stopRecording = () => {
         if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
         }
 
+        // Tear down the visual audio-level meter immediately when Stop is pressed.
+        stopAudioLevelMeter();
+
         mediaRecorderRef.current?.stop();
-
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.stop();
-            } catch (e) {
-                console.warn("Error stopping recognition:", e);
-            }
-        }
-
         setIsRecording(false);
 
-        // Plan 3A: Wait for recognition onend (final results flushed) or 1.5s fallback. Capture ASAP, not arbitrary delay.
-        const onEndPromise = new Promise<void>((resolve) => {
-            onEndResolveRef.current = resolve;
-        });
-        const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 1500));
+        // Reuse the mime type chosen at recorder start. Falls back to "audio/webm" only if unavailable.
+        const mimeType = mediaRecorderRef.current?.mimeType || "audio/webm";
 
-        Promise.race([onEndPromise, timeoutPromise]).then(() => {
-            onEndResolveRef.current = null;
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        setAudioBlob(blob);
+        setAudioURL(url);
+        setIsUploadedFile(false);
 
-            let mimeType = "audio/webm";
-            if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-                mimeType = "audio/webm;codecs=opus";
-            } else if (MediaRecorder.isTypeSupported("audio/webm")) {
-                mimeType = "audio/webm";
-            } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
-                mimeType = "audio/mp4";
-            } else if (MediaRecorder.isTypeSupported("audio/m4a")) {
-                mimeType = "audio/m4a";
-            }
+        // Backup to IndexedDB immediately (fire-and-forget) in case tab crashes during save
+        const clientName = clients.find((c) => c.id === selectedClientId)?.name;
+        saveRecordingBackup({
+            blob,
+            transcript: "",
+            clientId: selectedClientId || undefined,
+            clientName: clientName || undefined,
+            sessionId: selectedSessionId || undefined,
+            duration: recordingTime,
+        }).catch(() => {});
 
-            const blob = new Blob(audioChunksRef.current, { type: mimeType });
-            const url = URL.createObjectURL(blob);
-            setAudioBlob(blob);
-            setAudioURL(url);
-            setIsUploadedFile(false);
-
-            // Plan 2A+4: transcriptRef is sole source of truth. No fallback to state - avoids stale closure.
-            const currentTranscript = transcriptRef.current.trim();
-
-            if (!currentTranscript && blob.size > 0) {
-                console.log("[Voice Notes] No transcript from WebKit Speech Recognition, will use OpenAI Whisper fallback");
-            }
-
-            // Backup to IndexedDB immediately (fire-and-forget) in case tab crashes during save
-            const clientName = clients.find((c) => c.id === selectedClientId)?.name;
-            saveRecordingBackup({
-                blob,
-                transcript: currentTranscript,
-                clientId: selectedClientId || undefined,
-                clientName: clientName || undefined,
-                sessionId: selectedSessionId || undefined,
-                duration: recordingTime,
-            }).catch(() => {});
-
-            processTranscript(currentTranscript, blob);
-        });
+        // Whisper is the sole transcription source. Pass "" so processTranscript routes through the
+        // server transcribe-upload endpoint for this fresh recording.
+        processTranscript("", blob);
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -959,9 +919,10 @@ export function VoiceNotes() {
             }
         }
 
-        // Pass 5: For live recordings with empty transcriptRef, run Whisper fallback. Never save empty.
+        // For new live recordings, Whisper is the SINGLE transcription source. `text` is always empty
+        // for live (passed as "" by stopRecording), so we always enter this branch and transcribe once.
         if (!baseText && text !== "__FILE_UPLOAD__") {
-            console.log("Manual recording has no transcript, falling back to OpenAI Whisper API...");
+            console.log("Live recording: transcribing with OpenAI Whisper after Stop...");
             console.log("Blob details - Type:", blob.type, "Size:", blob.size, "bytes");
             
             // Check if blob is valid
@@ -1048,7 +1009,8 @@ export function VoiceNotes() {
             setStructuredNotes(notes);
             try {
                 const durationForSave = options?.duration ?? recordingTime;
-                await saveRecording(formattedText, blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined, durationForSave, text === "__FILE_UPLOAD__" ? null : undefined);
+                // New writes are plain text only. Legacy JSON-shaped values must never originate here.
+                await saveRecording(prepareTranscriptWrite(formattedText), blob, notes, clientIdForSave, clientNameForSave, selectedSessionId || undefined, durationForSave, text === "__FILE_UPLOAD__" ? null : undefined);
                 setSaveRetryContext(null);
                 await clearRecordingBackup();
                 window.dispatchEvent(new Event("recordings-updated"));
@@ -1082,10 +1044,8 @@ export function VoiceNotes() {
             return;
         }
 
-        // First, prepare a readable raw transcript
-        // - For live mic recordings we still run `formatVoiceCommands` to turn "period"/"comma" into punctuation.
-        // - For uploaded files (already processed by OpenAI STT), we gently reflow into sentences/paragraphs
-        //   without rewriting the content, so it reads more like real-world writing.
+        // Both live recordings and uploads are now transcribed by Whisper, which produces well-punctuated
+        // output. We gently reflow into sentences/paragraphs without rewriting content for readability.
         const formatNaturalTranscript = (raw: string): string => {
             if (!raw) return raw;
 
@@ -1101,10 +1061,7 @@ export function VoiceNotes() {
             return formatted;
         };
 
-        const basicFormatted =
-            text === "__FILE_UPLOAD__"
-                ? formatNaturalTranscript(baseText)
-                : formatVoiceCommands(baseText);
+        const basicFormatted = formatNaturalTranscript(baseText);
 
         // Show the transcript in the UI (this is what the user reviews)
         setTranscript(basicFormatted);
@@ -1221,7 +1178,8 @@ export function VoiceNotes() {
 
         const sessionIdForSave = selectedSessionId || undefined;
         try {
-            await saveRecording(basicFormatted, blob, notes, clientId, clientName, sessionIdForSave, duration, text === "__FILE_UPLOAD__" ? null : undefined);
+            // New writes are plain text only (single source of truth: recordings.transcript as plain text).
+            await saveRecording(prepareTranscriptWrite(basicFormatted), blob, notes, clientId, clientName, sessionIdForSave, duration, text === "__FILE_UPLOAD__" ? null : undefined);
             setSaveRetryContext(null);
             await clearRecordingBackup();
             window.dispatchEvent(new Event("recordings-updated"));
@@ -1249,41 +1207,6 @@ export function VoiceNotes() {
                 reason: useNetworkMsg ? 'network' : isAuth ? 'auth' : undefined
             });
         }
-    };
-
-    const formatVoiceCommands = (text: string): string => {
-        let formatted = text;
-        const replacements: [RegExp, string][] = [
-            [/\s+period\s+/gi, ". "],
-            [/\s+period$/gi, "."],
-            [/\s+full stop\s+/gi, ". "],
-            [/\s+full stop$/gi, "."],
-            [/\s+comma\s+/gi, ", "],
-            [/\s+comma$/gi, ","],
-            [/\s+question mark\s+/gi, "? "],
-            [/\s+question mark$/gi, "?"],
-            [/\s+exclamation point\s+/gi, "! "],
-            [/\s+exclamation point$/gi, "!"],
-            [/\s+exclamation mark\s+/gi, "! "],
-            [/\s+exclamation mark$/gi, "!"],
-            [/\s+colon\s+/gi, ": "],
-            [/\s+colon$/gi, ":"],
-            [/\s+semicolon\s+/gi, "; "],
-            [/\s+semicolon$/gi, ";"],
-            [/\s+new line\s+/gi, "\n"],
-            [/\s+new line$/gi, "\n"],
-            [/\s+new paragraph\s+/gi, "\n\n"],
-            [/\s+new paragraph$/gi, "\n\n"],
-        ];
-        replacements.forEach(([p, r]) => {
-            formatted = formatted.replace(p, r);
-        });
-        formatted = formatted
-            .split("\n")
-            .map((line) => line.replace(/\s+/g, " ").trim())
-            .join("\n");
-        formatted = formatted.replace(/(^\w|[.!?]\s+\w)/g, (m) => m.toUpperCase());
-        return formatted;
     };
 
     const saveRecording = async (transcript: string, blob: Blob, notes: NoteSection[], clientId?: string, clientName?: string, sessionId?: string, durationOverride?: number, recordingIdParam?: string | null) => {
@@ -1821,7 +1744,22 @@ export function VoiceNotes() {
                                         <div className="absolute -inset-2 rounded-full border-4 border-red-500 opacity-50 animate-ping" />
                                     </motion.div>
                                     <p className="text-2xl font-bold text-red-500">{formatTime(recordingTime)}</p>
+                                    {/* Visual mic-level meter. Purely visual; never blocks recording. */}
+                                    <div
+                                        className="w-full max-w-xs h-2 rounded-full bg-muted overflow-hidden"
+                                        role="progressbar"
+                                        aria-label="Microphone input level"
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                        aria-valuenow={Math.round(audioLevel * 100)}
+                                    >
+                                        <div
+                                            className="h-full bg-red-500 transition-[width] duration-75"
+                                            style={{ width: `${Math.min(100, Math.round(audioLevel * 100))}%` }}
+                                        />
+                                    </div>
                                     <p className="text-sm text-muted-foreground">Recording… Click red button to stop</p>
+                                    <p className="text-xs text-muted-foreground">Transcript is generated after you Stop.</p>
                                     <Button onClick={stopRecording} size="lg" variant="destructive" className="w-full max-w-xs">
                                         <Square className="mr-2 h-5 w-5" /> STOP RECORDING
                                     </Button>
@@ -1922,7 +1860,7 @@ export function VoiceNotes() {
                     {audioURL && (
                         <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-3">
                             <h4 className="text-sm font-semibold">Audio Recording:</h4>
-                            <audio controls src={audioURL} className="w-full" />
+                            <RecordingAudioPlayer src={audioURL} />
                             <motion.div
                                 animate={{ opacity: [1, 0.5, 1] }}
                                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}

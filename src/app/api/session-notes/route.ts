@@ -224,7 +224,9 @@ export async function GET(request: Request) {
                     attachments: recording.attachments || [],
                     source: 'recording',
                     recordingId: recording.id,
-                    audioURL: recording.audio_url || recording.audioURL || `/api/audio/${recording.id}.webm`
+                    audioURL: recording.audio_url || recording.audioURL || `/api/audio/${recording.id}.webm`,
+                    // Recording truth for AI Assessment header: how long the audio actually is (seconds).
+                    duration: typeof recording.duration === 'number' ? recording.duration : undefined
                 };
             });
             
@@ -549,7 +551,9 @@ export async function GET(request: Request) {
                 source: 'recording', // Mark as recording
                 recordingId: recording.id, // Keep original recording ID
                 audioURL: recording.audio_url || recording.audioURL || `/api/audio/${recording.id}.webm`,
-                sessionId: sessionId || undefined // Include sessionId if linked
+                sessionId: sessionId || undefined, // Include sessionId if linked
+                // Recording truth for AI Assessment header: how long the audio actually is (seconds).
+                duration: typeof recording.duration === 'number' ? recording.duration : undefined
             };
         });
 

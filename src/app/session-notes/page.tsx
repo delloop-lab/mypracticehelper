@@ -28,6 +28,8 @@ import Link from "next/link";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { safeFormatDate } from "@/lib/utils";
+import { RecordingAudioPlayer } from "@/components/recording-audio-player";
+import { getAudioUrl, readTranscriptText } from "@/lib/recordings-compat";
 
 interface SessionNote {
     id: string;
@@ -62,7 +64,6 @@ function SessionNotesContent() {
     const [openAudioIds, setOpenAudioIds] = useState<string[]>([]);
     const [playingId, setPlayingId] = useState<string | null>(null);
     const [loadingAudioIds, setLoadingAudioIds] = useState<Set<string>>(new Set());
-    const [audioDurations, setAudioDurations] = useState<Record<string, number>>({});
     const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
     const [isUnauthorized, setIsUnauthorized] = useState(false);
     const [formData, setFormData] = useState({
@@ -133,8 +134,11 @@ function SessionNotesContent() {
     }, []);
 
     const getTranscriptPreview = (text: string, maxLength: number = 120) => {
-        if (!text) return '';
-        const firstLine = text.split('\n')[0].trim();
+        // Defensive: legacy rows occasionally still carry JSON in this column. Route through the
+        // compat helper so we always slice plain text rather than escaped JSON.
+        const plain = readTranscriptText(text).text || text || '';
+        if (!plain) return '';
+        const firstLine = plain.split('\n')[0].trim();
         const slice = firstLine.slice(0, maxLength).trimEnd();
         if (firstLine.length > maxLength) {
             return slice + '...';
@@ -432,13 +436,6 @@ function SessionNotesContent() {
             hour: '2-digit',
             minute: '2-digit'
         }, 'en-US', 'No date');
-    };
-
-    const formatDuration = (seconds: number): string => {
-        if (!seconds || isNaN(seconds) || !isFinite(seconds) || seconds <= 0) return '0:00';
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
     const toggleAudioPlayer = (noteId: string) => {
@@ -1063,7 +1060,7 @@ function SessionNotesContent() {
                                                                             </AccordionTrigger>
                                                                             <AccordionContent>
                                                                                 <p className="text-sm whitespace-pre-wrap leading-tight">
-                                                                                    {note.transcript}
+                                                                                    {readTranscriptText(note.transcript).text || note.transcript}
                                                                                 </p>
                                                                             </AccordionContent>
                                                                         </AccordionItem>
@@ -1092,7 +1089,7 @@ function SessionNotesContent() {
                                                                 {note.transcript && (
                                                                     <div>
                                                                         <p className="text-sm font-semibold mb-0.5">Transcript:</p>
-                                                                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded leading-tight">{note.transcript}</p>
+                                                                        <p className="text-sm whitespace-pre-wrap bg-muted/50 p-3 rounded leading-tight">{readTranscriptText(note.transcript).text || note.transcript}</p>
                                                                     </div>
                                                                 )}
                                                                 {note.audioURL && (
@@ -1116,34 +1113,12 @@ function SessionNotesContent() {
                                                                                         <span>Loading audio...</span>
                                                                                     </div>
                                                                                 )}
-                                                                                <audio
-                                                                                    ref={(el) => {
+                                                                                <RecordingAudioPlayer
+                                                                                    src={getAudioUrl(note)}
+                                                                                    className={openAudioIds.includes(note.id) ? "w-full mt-2" : "hidden pointer-events-none absolute -z-10"}
+                                                                                    audioClassName="w-full"
+                                                                                    setAudioRef={(el) => {
                                                                                         audioRefs.current[note.id] = el;
-                                                                                    }}
-                                                                                    controls
-                                                                                    onLoadedMetadata={(e) => {
-                                                                                        const audio = e.currentTarget;
-                                                                                        if (audio.duration && 
-                                                                                            !isNaN(audio.duration) && 
-                                                                                            isFinite(audio.duration) && 
-                                                                                            audio.duration > 0) {
-                                                                                            setAudioDurations(prev => ({
-                                                                                                ...prev,
-                                                                                                [note.id]: audio.duration
-                                                                                            }));
-                                                                                        }
-                                                                                    }}
-                                                                                    onDurationChange={(e) => {
-                                                                                        const audio = e.currentTarget;
-                                                                                        if (audio.duration && 
-                                                                                            !isNaN(audio.duration) && 
-                                                                                            isFinite(audio.duration) && 
-                                                                                            audio.duration > 0) {
-                                                                                            setAudioDurations(prev => ({
-                                                                                                ...prev,
-                                                                                                [note.id]: audio.duration
-                                                                                            }));
-                                                                                        }
                                                                                     }}
                                                                                     onLoadStart={() => {
                                                                                         setLoadingAudioIds(prev => new Set(prev).add(note.id));
@@ -1154,18 +1129,6 @@ function SessionNotesContent() {
                                                                                             next.delete(note.id);
                                                                                             return next;
                                                                                         });
-                                                                                        // Try to get duration if not already set
-                                                                                        const audio = audioRefs.current[note.id];
-                                                                                        if (audio && audio.duration && 
-                                                                                            !isNaN(audio.duration) && 
-                                                                                            isFinite(audio.duration) && 
-                                                                                            audio.duration > 0 &&
-                                                                                            !audioDurations[note.id]) {
-                                                                                            setAudioDurations(prev => ({
-                                                                                                ...prev,
-                                                                                                [note.id]: audio.duration
-                                                                                            }));
-                                                                                        }
                                                                                     }}
                                                                                     onWaiting={() => {
                                                                                         setLoadingAudioIds(prev => new Set(prev).add(note.id));
@@ -1176,18 +1139,6 @@ function SessionNotesContent() {
                                                                                             next.delete(note.id);
                                                                                             return next;
                                                                                         });
-                                                                                        // Try to get duration if not already set
-                                                                                        const audio = audioRefs.current[note.id];
-                                                                                        if (audio && audio.duration && 
-                                                                                            !isNaN(audio.duration) && 
-                                                                                            isFinite(audio.duration) && 
-                                                                                            audio.duration > 0 &&
-                                                                                            !audioDurations[note.id]) {
-                                                                                            setAudioDurations(prev => ({
-                                                                                                ...prev,
-                                                                                                [note.id]: audio.duration
-                                                                                            }));
-                                                                                        }
                                                                                     }}
                                                                                     onPlay={() => setPlayingId(note.id)}
                                                                                     onPause={() => {
@@ -1196,21 +1147,7 @@ function SessionNotesContent() {
                                                                                     onEnded={() => {
                                                                                         if (playingId === note.id) setPlayingId(null);
                                                                                     }}
-                                                                                    className={openAudioIds.includes(note.id) ? "w-full mt-2" : "hidden pointer-events-none absolute -z-10"}
-                                                                                >
-                                                                                    <source src={note.audioURL} type="audio/webm" />
-                                                                                    <source src={note.audioURL} type="audio/mp3" />
-                                                                                    Your browser does not support the audio element.
-                                                                                </audio>
-                                                                                {openAudioIds.includes(note.id) && 
-                                                                                 audioDurations[note.id] && 
-                                                                                 isFinite(audioDurations[note.id]) && 
-                                                                                 !isNaN(audioDurations[note.id]) && 
-                                                                                 audioDurations[note.id] > 0 && (
-                                                                                    <div className="text-xs text-muted-foreground mt-1 text-right">
-                                                                                        Duration: {formatDuration(audioDurations[note.id])}
-                                                                                    </div>
-                                                                                )}
+                                                                                />
                                                                             </>
                                                                         )}
                                                                     </div>
@@ -1252,34 +1189,12 @@ function SessionNotesContent() {
                                                                                 <span>Loading audio...</span>
                                                                             </div>
                                                                         )}
-                                                                        <audio
-                                                                            ref={(el) => {
+                                                                        <RecordingAudioPlayer
+                                                                            src={getAudioUrl(note)}
+                                                                            className={openAudioIds.includes(note.id) ? "w-full mt-2" : "hidden pointer-events-none absolute -z-10"}
+                                                                            audioClassName="w-full"
+                                                                            setAudioRef={(el) => {
                                                                                 audioRefs.current[note.id] = el;
-                                                                            }}
-                                                                            controls
-                                                                            onLoadedMetadata={(e) => {
-                                                                                const audio = e.currentTarget;
-                                                                                if (audio.duration && 
-                                                                                    !isNaN(audio.duration) && 
-                                                                                    isFinite(audio.duration) && 
-                                                                                    audio.duration > 0) {
-                                                                                    setAudioDurations(prev => ({
-                                                                                        ...prev,
-                                                                                        [note.id]: audio.duration
-                                                                                    }));
-                                                                                }
-                                                                            }}
-                                                                            onDurationChange={(e) => {
-                                                                                const audio = e.currentTarget;
-                                                                                if (audio.duration && 
-                                                                                    !isNaN(audio.duration) && 
-                                                                                    isFinite(audio.duration) && 
-                                                                                    audio.duration > 0) {
-                                                                                    setAudioDurations(prev => ({
-                                                                                        ...prev,
-                                                                                        [note.id]: audio.duration
-                                                                                    }));
-                                                                                }
                                                                             }}
                                                                             onLoadStart={() => {
                                                                                 setLoadingAudioIds(prev => new Set(prev).add(note.id));
@@ -1290,18 +1205,6 @@ function SessionNotesContent() {
                                                                                     next.delete(note.id);
                                                                                     return next;
                                                                                 });
-                                                                                // Try to get duration if not already set
-                                                                                const audio = audioRefs.current[note.id];
-                                                                                if (audio && audio.duration && 
-                                                                                    !isNaN(audio.duration) && 
-                                                                                    isFinite(audio.duration) && 
-                                                                                    audio.duration > 0 &&
-                                                                                    !audioDurations[note.id]) {
-                                                                                    setAudioDurations(prev => ({
-                                                                                        ...prev,
-                                                                                        [note.id]: audio.duration
-                                                                                    }));
-                                                                                }
                                                                             }}
                                                                             onWaiting={() => {
                                                                                 setLoadingAudioIds(prev => new Set(prev).add(note.id));
@@ -1312,18 +1215,6 @@ function SessionNotesContent() {
                                                                                     next.delete(note.id);
                                                                                     return next;
                                                                                 });
-                                                                                // Try to get duration if not already set
-                                                                                const audio = audioRefs.current[note.id];
-                                                                                if (audio && audio.duration && 
-                                                                                    !isNaN(audio.duration) && 
-                                                                                    isFinite(audio.duration) && 
-                                                                                    audio.duration > 0 &&
-                                                                                    !audioDurations[note.id]) {
-                                                                                    setAudioDurations(prev => ({
-                                                                                        ...prev,
-                                                                                        [note.id]: audio.duration
-                                                                                    }));
-                                                                                }
                                                                             }}
                                                                             onPlay={() => setPlayingId(note.id)}
                                                                             onPause={() => {
@@ -1332,21 +1223,7 @@ function SessionNotesContent() {
                                                                             onEnded={() => {
                                                                                 if (playingId === note.id) setPlayingId(null);
                                                                             }}
-                                                                            className={openAudioIds.includes(note.id) ? "w-full mt-2" : "hidden pointer-events-none absolute -z-10"}
-                                                                        >
-                                                                            <source src={note.audioURL} type="audio/webm" />
-                                                                            <source src={note.audioURL} type="audio/mp3" />
-                                                                            Your browser does not support the audio element.
-                                                                        </audio>
-                                                                        {openAudioIds.includes(note.id) && 
-                                                                         audioDurations[note.id] && 
-                                                                         isFinite(audioDurations[note.id]) && 
-                                                                         !isNaN(audioDurations[note.id]) && 
-                                                                         audioDurations[note.id] > 0 && (
-                                                                            <div className="text-xs text-muted-foreground mt-1 text-right">
-                                                                                Duration: {formatDuration(audioDurations[note.id])}
-                                                                            </div>
-                                                                        )}
+                                                                        />
                                                                     </>
                                                                 )}
                                                             </div>

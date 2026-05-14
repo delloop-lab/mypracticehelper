@@ -25,7 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle, Globe, Sparkles, Loader2, X, Play, Pause, Save, Clock, ArrowLeft } from "lucide-react";
+import { Plus, User, Mail, Phone, Calendar, FileText, Mic, Hash, Edit, Trash2, Upload, File, ExternalLink, Users, FileSpreadsheet, ChevronDown, ChevronRight, RotateCcw, Search, Filter, SortAsc, SortDesc, CheckCircle2, AlertTriangle, Globe, Sparkles, Loader2, X, Save, Clock, ArrowLeft } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { motion } from "framer-motion";
@@ -33,6 +33,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientImportExport } from "@/components/client-import-export";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { GDPRDeleteDialog } from "@/components/ui/gdpr-delete-dialog";
+import { RecordingAudioPlayer } from "@/components/recording-audio-player";
+import { getAudioUrl, readTranscriptText } from "@/lib/recordings-compat";
 
 interface Appointment {
     id: string;
@@ -716,6 +718,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [activeSession, setActiveSession] = useState<Appointment | null>(null);
     const [sessionDialogTab, setSessionDialogTab] = useState<"notes" | "attachments">("notes");
     const [sessionNotes, setSessionNotes] = useState<any[]>([]);
+    /** Lets users isolate written vs voice notes — both types share one scrollable list. */
+    const [sessionNotesListFilter, setSessionNotesListFilter] = useState<'all' | 'written' | 'recordings' | 'admin'>('all');
     const [isLoadingSessionNotes, setIsLoadingSessionNotes] = useState(false);
     const isHandlingBackRef = useRef(false);
     
@@ -740,8 +744,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [editingTranscriptId, setEditingTranscriptId] = useState<string | null>(null);
     const [deleteTranscriptConfirmation, setDeleteTranscriptConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
     const [deleteNoteConfirmation, setDeleteNoteConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
-    const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
-    const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
+    const [deleteAIAssessmentConfirmation, setDeleteAIAssessmentConfirmation] = useState<{ open: boolean; note: any | null }>({ open: false, note: null });
     const [retryingTranscriptionId, setRetryingTranscriptionId] = useState<string | null>(null);
     /** After retry transcription succeeds, hold the new transcript so loadSessionNotes can apply it to the refetched list. */
     const pendingTranscriptAfterRetryRef = useRef<{ recordingId: string; audioUrl: string | null; transcript: string } | null>(null);
@@ -751,8 +754,9 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const [isWrittenNoteDialogOpen, setIsWrittenNoteDialogOpen] = useState(false);
     const [writtenNoteContent, setWrittenNoteContent] = useState("");
     const [isSavingWrittenNote, setIsSavingWrittenNote] = useState(false);
-    const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
     const transcriptTextareaRefs = useRef<Map<string, HTMLTextAreaElement>>(new Map());
+    /** Inline `<audio controls>` per note: pause others when one starts so multiple clips do not overlap. */
+    const clientNoteAudioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
 
     // Log Past Session State
     const [isLogSessionDialogOpen, setIsLogSessionDialogOpen] = useState(false);
@@ -837,6 +841,7 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
     const sessionId = searchParams.get('session') || '';
 
     const handleOpenSession = async (session: Appointment, tab: "notes" | "attachments") => {
+        setSessionNotesListFilter('all');
         setActiveSession(session);
         setSessionDialogTab(tab);
         // Load session note counts to ensure recordings count is available for summary cards
@@ -1072,12 +1077,16 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 // Prioritize richer notes first so dedupe keeps entries with transcript/content.
                 // This avoids keeping an audio-only session_note over a transcript-rich recording note.
                 const prioritizedNotes = [...allNotesForSession].sort((a: any, b: any) => {
+                    // Score by *information content*, not by source. The previous +4 bonus for
+                    // `source === 'recording'` made an empty-content recording outrank a session_note
+                    // that explicitly carried an AI Clinical Assessment in `content`, silently dropping
+                    // the assessment on reload. Drop the bias; transcript/content/audio presence already
+                    // breaks ties correctly (transcript >> content >> audio).
                     const score = (n: any) => {
                         const hasTranscript = Boolean(n?.transcript && String(n.transcript).trim() !== '');
                         const hasContent = Boolean(n?.content && String(n.content).trim() !== '');
                         const hasAudio = Boolean((n?.audioURL || n?.audio_url) && String(n.audioURL || n.audio_url).trim() !== '');
-                        const isRecording = n?.source === 'recording';
-                        return (hasTranscript ? 8 : 0) + (isRecording ? 4 : 0) + (hasContent ? 2 : 0) + (hasAudio ? 1 : 0);
+                        return (hasTranscript ? 8 : 0) + (hasContent ? 2 : 0) + (hasAudio ? 1 : 0);
                     };
                     return score(b) - score(a);
                 });
@@ -1176,16 +1185,20 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                 content: '',
                                 audioURL: r.audioURL || r.audio_url || (r.id ? `/api/audio/${r.id}.webm` : ''),
                                 createdDate: r.date || r.created_at,
-                                sessionDate: session.date
+                                sessionDate: session.date,
+                                // Recording truth for AI Assessment header (seconds). Matches /api/session-notes shape.
+                                duration: typeof r.duration === 'number' ? r.duration : undefined
                             }));
                             const merged = [...deduplicatedNotes, ...extraNotes].sort((a: any, b: any) =>
                                 new Date(b.createdDate || 0).getTime() - new Date(a.createdDate || 0).getTime()
                             );
-                            // Dedupe again so we keep recording (with transcript) over session_note (no transcript) for same audio
+                            // Dedupe again so we keep the most informative row for the same audio. We score by
+                            // *information content* only — the previous +4 bonus for `source === 'recording'`
+                            // caused an empty-content recording to outrank a session_note carrying an AI
+                            // Clinical Assessment in `content`, silently dropping the assessment on reload.
                             const seen2 = new Set<string>();
                             const score = (n: any) =>
                                 (n?.transcript && String(n.transcript).trim() !== '' ? 8 : 0) +
-                                (n?.source === 'recording' ? 4 : 0) +
                                 (n?.content && String(n.content).trim() !== '' ? 2 : 0) +
                                 ((n?.audioURL || n?.audio_url) && String(n.audioURL || n.audio_url).trim() !== '' ? 1 : 0);
                             let mergedDeduped = [...merged].sort((a, b) => score(b) - score(a)).filter((note: any) => {
@@ -1335,6 +1348,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                             counts[effectiveSessionId].uploadedRecordings++;
                         }
                     } else if (note.source === 'written_session_note' || (note.id && note.id.startsWith('written-'))) {
+                        // Orphan rows (!client_id) are included in clientNotes for legacy reasons; do not
+                        // count written notes unless they tie to this client by id/name or session id.
+                        const wClientId = note.clientId || note.client_id;
+                        const wClientName = (note.clientName || '').trim().toLowerCase();
+                        const typedToThisClient =
+                            wClientName === normalizedClientName ||
+                            (client && wClientId === client.id);
+                        const wSid = note.sessionId || note.session_id;
+                        const sessionIsForThisClient =
+                            Boolean(wSid) && clientAppointments.some((a) => a.id === wSid);
+                        if (!typedToThisClient && !sessionIsForThisClient) return;
                         counts[effectiveSessionId].written++;
                     } else if (note.source === 'admin' || (note.id && note.id.startsWith('admin-'))) {
                         counts[effectiveSessionId].admin++;
@@ -2282,9 +2306,46 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
             });
 
             if (response.ok) {
-                // Reload session notes to show the updated content
+                // User may have "Recordings" filter on; saved AI lives on the session_note row — show all so the card appears.
+                setSessionNotesListFilter('all');
+                // Optimistic merge so the blue AI block appears immediately (refetch can lag a frame).
+                const src = currentNoteForAssessment;
+                const recordingId =
+                    src.recordingId ||
+                    (typeof src.id === 'string' && src.id.startsWith('recording-')
+                        ? src.id.replace('recording-', '')
+                        : src.source === 'recording'
+                          ? src.id
+                          : null);
+                const srcId = src.id;
+                setSessionNotes((prev) =>
+                    prev.map((n: any) => {
+                        const nid = n.id;
+                        const nRid =
+                            n.recordingId ||
+                            (typeof nid === 'string' && nid.startsWith('recording-')
+                                ? nid.replace('recording-', '')
+                                : null);
+                        const sameCard =
+                            (srcId && nid === srcId) ||
+                            (recordingId &&
+                                (nRid === recordingId ||
+                                    nid === recordingId ||
+                                    nid === `recording-${recordingId}`));
+                        if (!sameCard) return n;
+                        return {
+                            ...n,
+                            content: aiAssessmentResult,
+                            transcript: src.transcript ?? n.transcript,
+                            audioURL: src.audioURL ?? n.audioURL ?? n.audio_url,
+                        };
+                    })
+                );
                 if (activeSession) {
                     await loadSessionNotes(activeSession.id);
+                }
+                if (editingClient?.name) {
+                    await loadSessionNoteCounts(editingClient.name);
                 }
                 setAiAssessmentDialogOpen(false);
                 setAiAssessmentResult(null);
@@ -2480,6 +2541,137 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
+    // Open the "Delete AI Assessment" confirmation. Keeps transcript + audio; only removes the AI block.
+    const handleDeleteAIAssessment = (note: any) => {
+        setDeleteAIAssessmentConfirmation({ open: true, note });
+    };
+
+    const confirmDeleteAIAssessment = async () => {
+        const note = deleteAIAssessmentConfirmation.note;
+        if (!note) return;
+
+        try {
+            // Two storage shapes carry an AI Assessment today:
+            //   (A) Recording-source notes (legacy): AI is embedded in `recordings.transcript` as JSON
+            //       `{ transcript, notes: [{ title: "AI Clinical Assessment", content }] }`. We collapse
+            //       the column back to plain transcript so the JSON `notes` are gone. No session_notes
+            //       row is involved.
+            //   (B) Session_note-shadow notes (current path after Save AI on a recording): a row in
+            //       session_notes with id "recording-<uuid>" carries the AI in `content`. That row has
+            //       the SAME id as the recording's mapped id in /api/session-notes GET, which dedupes
+            //       by id and KEEPS the session_note (dropping the recording). If we only emptied
+            //       `content` on this shadow, the empty row would keep shadowing the recording on the
+            //       next load and the audio card would vanish from the client session view.
+            //       Fix: push the (possibly user-edited) plain transcript back onto the recording row,
+            //       then HARD DELETE the session_notes shadow. With the shadow gone, the recording
+            //       surfaces naturally on the next /api/session-notes GET.
+            const idLooksLikeRecording = typeof note.id === 'string' && note.id.startsWith('recording-');
+            const recordingId =
+                note.recordingId
+                || (idLooksLikeRecording ? note.id.replace('recording-', '') : null);
+            const plainTranscript = readTranscriptText(note.transcript).text || note.transcript || '';
+
+            // (A) Legacy: AI inside recordings.transcript JSON.
+            if (note.source === 'recording') {
+                if (!recordingId) {
+                    setNotificationModal({ open: true, type: 'error', message: 'Cannot delete AI Assessment: recording ID missing' });
+                    return;
+                }
+                const response = await fetch('/api/recordings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ id: recordingId, transcript: plainTranscript })
+                });
+                if (response.ok) {
+                    if (activeSession) await loadSessionNotes(activeSession.id);
+                    if (editingClient) await loadSessionNoteCounts(editingClient.name);
+                    window.dispatchEvent(new Event('recordings-updated'));
+                    setNotificationModal({ open: true, type: 'success', message: 'AI Assessment deleted' });
+                    setDeleteAIAssessmentConfirmation({ open: false, note: null });
+                } else {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    setNotificationModal({ open: true, type: 'error', message: `Failed to delete AI Assessment: ${errorData.error || 'Please try again'}` });
+                }
+                return;
+            }
+
+            if (!note.id) {
+                setNotificationModal({ open: true, type: 'error', message: 'Cannot delete AI Assessment: note ID missing' });
+                return;
+            }
+
+            // (B) Session_note shadow on a recording — push transcript back, then delete the shadow.
+            if (recordingId) {
+                // Best-effort: keep the recording in sync with whatever transcript the user was viewing.
+                // If the recording was not found (404) we treat it as a non-shadow note and fall through
+                // to the generic clear-content path below.
+                const patchResponse = await fetch('/api/recordings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ id: recordingId, transcript: plainTranscript })
+                });
+
+                if (patchResponse.ok) {
+                    const delResponse = await fetch(`/api/session-notes?id=${encodeURIComponent(note.id)}`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+                    // A 404 here means the shadow was never persisted — that's fine, the recording is
+                    // already correct.
+                    if (delResponse.ok || delResponse.status === 404) {
+                        if (activeSession) await loadSessionNotes(activeSession.id);
+                        if (editingClient) await loadSessionNoteCounts(editingClient.name);
+                        window.dispatchEvent(new Event('recordings-updated'));
+                        setNotificationModal({ open: true, type: 'success', message: 'AI Assessment deleted' });
+                        setDeleteAIAssessmentConfirmation({ open: false, note: null });
+                        return;
+                    }
+                    const errorData = await delResponse.json().catch(() => ({ error: 'Unknown error' }));
+                    setNotificationModal({ open: true, type: 'error', message: `Failed to delete AI Assessment: ${errorData.error || 'Please try again'}` });
+                    return;
+                }
+
+                if (patchResponse.status !== 404) {
+                    const errorData = await patchResponse.json().catch(() => ({ error: 'Unknown error' }));
+                    setNotificationModal({ open: true, type: 'error', message: `Failed to delete AI Assessment: ${errorData.error || 'Please try again'}` });
+                    return;
+                }
+                // 404 on the recording → no underlying recording, treat as a plain session_note below.
+            }
+
+            // (C) Plain session_note with an AI Assessment but no underlying recording. Keep the row,
+            // just clear `content`. (Rare — only hits if someone wrote an AI assessment into a manual
+            // note or if the recording was already hard-deleted.)
+            const updatedNote = {
+                ...note,
+                content: null,
+                transcript: note.transcript || null,
+                audioURL: note.audioURL || null,
+                id: note.id,
+                source: note.source || null
+            };
+            const response = await fetch('/api/session-notes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([updatedNote])
+            });
+            if (response.ok) {
+                if (activeSession) await loadSessionNotes(activeSession.id);
+                if (editingClient) await loadSessionNoteCounts(editingClient.name);
+                setNotificationModal({ open: true, type: 'success', message: 'AI Assessment deleted' });
+                setDeleteAIAssessmentConfirmation({ open: false, note: null });
+            } else {
+                const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                setNotificationModal({ open: true, type: 'error', message: `Failed to delete AI Assessment: ${errorData.error || 'Please try again'}` });
+            }
+        } catch (error) {
+            console.error('Error deleting AI Assessment:', error);
+            setNotificationModal({ open: true, type: 'error', message: 'Error deleting AI Assessment. Please try again.' });
+        }
+    };
+
     // Handle deleting admin or written session note
     const handleDeleteNote = (note: any) => {
         setDeleteNoteConfirmation({ open: true, note });
@@ -2607,6 +2799,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                 if (activeSession) {
                     await loadSessionNotes(activeSession.id);
                 }
+                if (editingClient?.name) {
+                    await loadSessionNoteCounts(editingClient.name);
+                }
+                setSessionNotesListFilter('written');
                 // Close dialog and reset
                 setIsWrittenNoteDialogOpen(false);
                 setWrittenNoteContent("");
@@ -2623,72 +2819,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
         }
     };
 
-    // Normalize audio URL for playback: bare filenames/paths (e.g. from DB) must go via /api/audio/
-    const normalizeAudioPlaybackUrl = (url: string | null | undefined): string => {
-        if (!url || typeof url !== 'string') return '';
-        const u = url.trim();
-        if (!u) return '';
-        if (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('/api/audio/')) return u;
-        return `/api/audio/${u.replace(/^\/+/, '')}`;
-    };
-
-    // Handle audio playback
-    const handlePlayAudio = (note: any) => {
-        const rawUrl = note.audioURL || note.audio_url;
-        const audioUrl = normalizeAudioPlaybackUrl(rawUrl);
-        if (!audioUrl) return;
-
-        // Stop any currently playing audio
-        if (audioElement) {
-            audioElement.pause();
-            audioElement.currentTime = 0;
-        }
-
-        if (playingAudioId === note.id) {
-            // If clicking the same note, stop playback
-            setPlayingAudioId(null);
-            setLoadingAudioId(null);
-            setAudioElement(null);
-        } else {
-            // Play new audio (supports legacy /api/audio/timestamp.webm and new /api/audio/recordings/uuid.webm)
-            const audio = new Audio(audioUrl);
-            setPlayingAudioId(note.id);
-            setLoadingAudioId(note.id);
-            setAudioElement(audio);
-
-            // Audio is ready/playing: hide spinner
-            audio.oncanplay = () => {
-                setLoadingAudioId((prev) => (prev === note.id ? null : prev));
-            };
-            audio.onplaying = () => {
-                setLoadingAudioId((prev) => (prev === note.id ? null : prev));
-            };
-            // If buffering again after initial play, show spinner
-            audio.onwaiting = () => {
-                setLoadingAudioId(note.id);
-            };
-
-            audio.onended = () => {
-                setPlayingAudioId(null);
-                setLoadingAudioId(null);
-                setAudioElement(null);
-            };
-
-            audio.onerror = () => {
-                setNotificationModal({ open: true, type: 'error', message: 'Error playing audio. Please check the audio file.' });
-                setPlayingAudioId(null);
-                setLoadingAudioId(null);
-                setAudioElement(null);
-            };
-
-            const playPromise = audio.play();
-            if (playPromise && typeof playPromise.then === 'function') {
-                playPromise.catch(() => {
-                    setNotificationModal({ open: true, type: 'error', message: 'Error playing audio. Please check the audio file.' });
-                    setPlayingAudioId(null);
-                    setLoadingAudioId(null);
-                    setAudioElement(null);
-                });
+    const pauseOtherClientNoteAudio = (currentNoteId: string) => {
+        for (const [id, el] of Object.entries(clientNoteAudioRefs.current)) {
+            if (id !== currentNoteId && el && !el.paused) {
+                el.pause();
             }
         }
     };
@@ -3895,7 +4029,24 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                     {/* Session Content Summary Cards */}
                                     {!isLoadingSessionNotes && (() => {
                                         const adminNotes = sessionNotes.filter((n: any) => n.source === 'admin' || (n.id && n.id.startsWith('admin-')));
-                                        const writtenNotes = sessionNotes.filter((n: any) => n.source === 'written_session_note' || (n.id && n.id.startsWith('written-')));
+                                        // Match the list filter below: only notes with something to show (avoids "1 Written Note" with no card).
+                                        const writtenNotes = sessionNotes.filter((n: any) => {
+                                            const isWritten =
+                                                n.source === 'written_session_note' ||
+                                                (n.id && String(n.id).startsWith('written-'));
+                                            if (!isWritten) return false;
+                                            const hasContent =
+                                                n.content && typeof n.content === 'string' && n.content.trim() !== '';
+                                            const hasTranscript =
+                                                n.transcript &&
+                                                typeof n.transcript === 'string' &&
+                                                n.transcript.trim() !== '';
+                                            const hasAudio =
+                                                (n.audioURL || n.audio_url) &&
+                                                typeof (n.audioURL || n.audio_url) === 'string' &&
+                                                String(n.audioURL || n.audio_url).trim() !== '';
+                                            return hasContent || hasTranscript || hasAudio;
+                                        });
                                         // Use sessionNoteCounts for recordings count (more reliable than filtering sessionNotes)
                                         // This matches what's shown on the session card
                                         const recordingsCount = activeSession?.id ? (sessionNoteCounts[activeSession.id]?.recordings || 0) : 0;
@@ -3904,24 +4055,36 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         const hasAttachments = activeSession?.attachments && activeSession.attachments.length > 0;
                                         
                                         return (
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                                                {/* Recorded Notes - Use count from sessionNoteCounts if available, otherwise use filtered count */}
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                                                {/* Recorded Notes - tap to show only voice/uploaded rows in the list below */}
                                                 {(recordingsCount > 0 || recordedNotes.length > 0) && (
-                                                    <div className="border-2 border-purple-300 dark:border-purple-700 rounded-lg p-3 bg-purple-50 dark:bg-purple-950/30">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setSessionNotesListFilter((f) =>
+                                                                f === 'recordings' ? 'all' : 'recordings'
+                                                            )
+                                                        }
+                                                        className={`rounded-lg border-2 border-purple-300 bg-purple-50 p-3 text-left transition-shadow hover:bg-purple-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 dark:border-purple-700 dark:bg-purple-950/30 dark:hover:bg-purple-900/40 ${
+                                                            sessionNotesListFilter === 'recordings'
+                                                                ? 'ring-2 ring-purple-600 ring-offset-2 dark:ring-offset-background'
+                                                                : ''
+                                                        }`}
+                                                    >
                                                         <div className="flex items-center gap-2">
-                                                            <Mic className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                                            <Mic className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
                                                             <div>
                                                                 <p className="text-xs font-semibold text-purple-800 dark:text-purple-200">
                                                                     {recordingsCount > 0 ? recordingsCount : recordedNotes.length} Recording{(recordingsCount > 0 ? recordingsCount : recordedNotes.length) !== 1 ? 's' : ''}
                                                                 </p>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    </button>
                                                 )}
 
                                                 {/* Uploaded Recordings - subset of recordings with AI Clinical Assessment */}
                                                 {uploadedRecordingsCount > 0 && (
-                                                    <div className="border-2 border-violet-300 dark:border-violet-700 rounded-lg p-3 bg-violet-50 dark:bg-violet-950/30">
+                                                    <div className="rounded-lg border-2 border-violet-300 bg-violet-50 p-3 dark:border-violet-700 dark:bg-violet-950/30">
                                                         <div className="flex items-center gap-2">
                                                             <Upload className="h-4 w-4 text-violet-600 dark:text-violet-400" />
                                                             <div>
@@ -3935,30 +4098,55 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 
                                                 {/* Written Session Notes */}
                                                 {writtenNotes.length > 0 && (
-                                                    <div className="border-2 border-green-300 dark:border-green-700 rounded-lg p-3 bg-green-50 dark:bg-green-950/30">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setSessionNotesListFilter((f) =>
+                                                                f === 'written' ? 'all' : 'written'
+                                                            )
+                                                        }
+                                                        className={`rounded-lg border-2 border-green-300 bg-green-50 p-3 text-left transition-shadow hover:bg-green-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 dark:border-green-700 dark:bg-green-950/30 dark:hover:bg-green-900/40 ${
+                                                            sessionNotesListFilter === 'written'
+                                                                ? 'ring-2 ring-green-600 ring-offset-2 dark:ring-offset-background'
+                                                                : ''
+                                                        }`}
+                                                    >
                                                         <div className="flex items-center gap-2">
-                                                            <FileText className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                                            <FileText className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
                                                             <div>
                                                                 <p className="text-xs font-semibold text-green-800 dark:text-green-200">
                                                                     {writtenNotes.length} Written Note{writtenNotes.length !== 1 ? 's' : ''}
                                                                 </p>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    </button>
                                                 )}
                                                 
                                                 {/* Admin Notes */}
                                                 {adminNotes.length > 0 && (
-                                                    <div className="border-2 border-amber-300 dark:border-amber-700 rounded-lg p-3 bg-amber-50 dark:bg-amber-950/30">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setSessionNotesListFilter((f) =>
+                                                                f === 'admin' ? 'all' : 'admin'
+                                                            )
+                                                        }
+                                                        className={`rounded-lg border-2 border-amber-300 bg-amber-50 p-3 text-left transition-shadow hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 dark:border-amber-700 dark:bg-amber-950/30 dark:hover:bg-amber-900/40 ${
+                                                            sessionNotesListFilter === 'admin'
+                                                                ? 'ring-2 ring-amber-600 ring-offset-2 dark:ring-offset-background'
+                                                                : ''
+                                                        }`}
+                                                    >
                                                         <div className="flex items-center gap-2">
-                                                            <User className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                                                            <User className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
                                                             <div>
                                                                 <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
                                                                     {adminNotes.length} Admin Note{adminNotes.length !== 1 ? 's' : ''}
                                                                 </p>
+                                                                <p className="text-[10px] text-amber-800/80 dark:text-amber-200/80">Show in list</p>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    </button>
                                                 )}
                                                 
                                                 {/* Attachments */}
@@ -4014,15 +4202,39 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                         <p className="text-muted-foreground text-center py-8">Loading session notes...</p>
                                     ) : sessionNotes.length > 0 ? (
                                         <div className="space-y-6 flex flex-col flex-1 min-h-0 sm:block sm:flex-none sm:min-h-0 relative">
+                                            {(() => {
+                                                const showableSessionNotes = sessionNotes.filter((note: any) => {
+                                                    const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
+                                                    const hasTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
+                                                    const hasAudio = (note.audioURL || note.audio_url) && typeof (note.audioURL || note.audio_url) === 'string' && (note.audioURL || note.audio_url).trim() !== '';
+                                                    return hasContent || hasTranscript || hasAudio;
+                                                });
+                                                const filteredForList = showableSessionNotes.filter((note: any) => {
+                                                    if (sessionNotesListFilter === 'all') return true;
+                                                    if (sessionNotesListFilter === 'written') {
+                                                        return (
+                                                            note.source === 'written_session_note' ||
+                                                            (note.id && String(note.id).startsWith('written-'))
+                                                        );
+                                                    }
+                                                    if (sessionNotesListFilter === 'recordings') {
+                                                        return note.source === 'recording';
+                                                    }
+                                                    if (sessionNotesListFilter === 'admin') {
+                                                        return note.source === 'admin' || (note.id && String(note.id).startsWith('admin-'));
+                                                    }
+                                                    return true;
+                                                });
+                                                return (
+                                                    <>
+                                                    {filteredForList.length === 0 && showableSessionNotes.length > 0 && (
+                                                        <p className="rounded-md border border-dashed border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                                                            Nothing matches this filter. Tap the same chip again to show all notes.
+                                                        </p>
+                                                    )}
+                                                    {filteredForList.length > 0 && (
                                             <TooltipProvider>
-                                            {sessionNotes.filter((note: any) => {
-                                                const hasContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
-                                                const hasTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
-                                                const hasAudio = (note.audioURL || note.audio_url) && typeof (note.audioURL || note.audio_url) === 'string' && (note.audioURL || note.audio_url).trim() !== '';
-                                                // Show if has content, transcript, or audio (recordings and session_notes with audio_url)
-                                                const shouldShow = hasContent || hasTranscript || hasAudio;
-                                                return shouldShow;
-                                            }).map((note, index) => {
+                                            {filteredForList.map((note, index) => {
                                                 const displayContent = note.content && typeof note.content === 'string' && note.content.trim() !== '';
                                                 const displayTranscript = note.transcript && typeof note.transcript === 'string' && note.transcript.trim() !== '';
                                                 const displayAudio = (note.audioURL || note.audio_url) && typeof (note.audioURL || note.audio_url) === 'string' && (note.audioURL || note.audio_url).trim() !== '';
@@ -4123,8 +4335,8 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                         </div>
                                                     </div>
                                                     
-                                                    {/* Show transcript/audio block - for recordings and session_notes with audio */}
-                                                    {(note.transcript || (note.audioURL || note.audio_url)) && (
+                                                    {/* Use displayTranscript so whitespace-only DB transcript does not open an empty shell and hide the written-note body below. */}
+                                                    {(displayTranscript || displayAudio) && (
                                                         <div
                                                             className={`flex flex-col ${
                                                                 hasAIClinicalAssessment ? "" : "sm:flex-1 sm:min-h-0"
@@ -4140,33 +4352,6 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                         : "Original Transcript (Therapist's Words):"}
                                                                 </p>
                                                                 <div className="flex items-center gap-2.5 sm:gap-2 flex-wrap min-w-0 overflow-visible">
-                                                                    {/* Play button for audio recordings and session_notes with audio */}
-                                                                    {(note.audioURL || note.audio_url) && (
-                                                                        <Tooltip>
-                                                                            <TooltipTrigger asChild>
-                                                                                <Button
-                                                                                    variant="ghost"
-                                                                                    size="sm"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handlePlayAudio(note);
-                                                                                    }}
-                                                                                    className="h-8 w-8 sm:h-7 sm:w-7 p-0 flex-shrink-0"
-                                                                                >
-                                                                                    {loadingAudioId === note.id ? (
-                                                                                        <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                                                                                    ) : playingAudioId === note.id ? (
-                                                                                        <Pause className="h-4 w-4 text-primary" />
-                                                                                    ) : (
-                                                                                        <Play className="h-4 w-4 text-primary" />
-                                                                                    )}
-                                                                                </Button>
-                                                                            </TooltipTrigger>
-                                                                            <TooltipContent>
-                                                                                <p>{loadingAudioId === note.id ? 'Loading' : playingAudioId === note.id ? 'Pause' : 'Play'} Recording</p>
-                                                                            </TooltipContent>
-                                                                        </Tooltip>
-                                                                    )}
                                                                     {/* Retry transcription button for recordings with audio or any note we can retry (ID from note or URL) */}
                                                                     {getRecordingIdFromNote(note) && (note.source === 'recording' || (note.audioURL || note.audio_url)) && (
                                                                         <Tooltip>
@@ -4284,11 +4469,21 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                             disabled={isProcessingAI}
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
+                                                                                // AI Assessment must describe the recording event, not the scheduled session.
+                                                                                // - Date: recording.created_at (surfaced as note.createdDate by /api/session-notes).
+                                                                                //   Fall back to the linked sessionDate, then activeSession.date only as a last resort
+                                                                                //   for notes that have no recording at all (purely typed session_notes).
+                                                                                // - Duration: recording.duration in seconds (surfaced as note.duration by /api/session-notes).
+                                                                                //   `undefined` means "Not recorded" in the AI header — never the session's scheduled
+                                                                                //   length (which is in minutes and would mis-render via the seconds-based formatter).
+                                                                                const recordingDate = note.createdDate || note.sessionDate || activeSession?.date;
+                                                                                const recordingDuration =
+                                                                                    typeof note.duration === 'number' ? note.duration : undefined;
                                                                                 handleGenerateAIAssessment(
                                                                                     note.transcript,
                                                                                     activeSession?.clientName || editingClient?.name || 'Unknown',
-                                                                                    activeSession?.date,
-                                                                                    activeSession?.duration,
+                                                                                    recordingDate,
+                                                                                    recordingDuration,
                                                                                     note
                                                                                 );
                                                                             }}
@@ -4309,6 +4504,30 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                                     )}
                                                                 </div>
                                                             </div>
+                                                            {/* Phase 3: native audio player gets its own full-width row so the scrub bar is always visible. */}
+                                                            {(note.audioURL || note.audio_url) && (
+                                                                <div
+                                                                    className="mb-3 w-full"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <RecordingAudioPlayer
+                                                                        src={getAudioUrl(note)}
+                                                                        audioClassName="h-10 w-full align-middle"
+                                                                        setAudioRef={(el) => {
+                                                                            clientNoteAudioRefs.current[note.id] = el;
+                                                                        }}
+                                                                        onPlay={() => pauseOtherClientNoteAudio(note.id)}
+                                                                        onError={() => {
+                                                                            setNotificationModal({
+                                                                                open: true,
+                                                                                type: 'error',
+                                                                                message:
+                                                                                    'Error loading or playing audio. Please check the audio file.',
+                                                                            });
+                                                                        }}
+                                                                    />
+                                                                </div>
+                                                            )}
                                                             {editingTranscriptId === note.id ? (
                                                                 <Textarea
                                                                     key={`transcript-${note.id}`}
@@ -4347,13 +4566,34 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     {/* Show AI Clinical Assessment AFTER transcript - for uploaded recordings or manually added assessments */}
                                                     {note.content && 
                                                      note.content.trim() !== '' && 
-                                                     note.transcript && 
+                                                     displayTranscript && 
                                                      note.content !== note.transcript && (
                                                         <div className="border-t border-border pt-4 mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
-                                                            <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                                                                <span className="text-lg">🤖</span>
-                                                                AI Clinical Assessment:
-                                                            </p>
+                                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                                                    <span className="text-lg">🤖</span>
+                                                                    AI Clinical Assessment:
+                                                                </p>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleDeleteAIAssessment(note);
+                                                                            }}
+                                                                            className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                            aria-label="Delete AI Assessment"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Delete AI Assessment</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </div>
                                                             <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
                                                                 {note.content}
                                                             </div>
@@ -4361,20 +4601,41 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                     )}
                                                     
                                                     {/* Show content with AI heading ONLY for recordings without transcript */}
-                                                    {note.content && note.content.trim() !== '' && !note.transcript && note.source === 'recording' && (
+                                                    {note.content && note.content.trim() !== '' && !displayTranscript && note.source === 'recording' && (
                                                         <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-md border border-blue-200 dark:border-blue-800">
-                                                            <p className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
-                                                                <span className="text-lg">🤖</span>
-                                                                AI Clinical Assessment:
-                                                            </p>
+                                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                                                                    <span className="text-lg">🤖</span>
+                                                                    AI Clinical Assessment:
+                                                                </p>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleDeleteAIAssessment(note);
+                                                                            }}
+                                                                            className="h-7 w-7 p-0 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                                            aria-label="Delete AI Assessment"
+                                                                        >
+                                                                            <Trash2 className="h-4 w-4" />
+                                                                        </Button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent>
+                                                                        <p>Delete AI Assessment</p>
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            </div>
                                                             <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed">
                                                                 {note.content}
                                                             </div>
                                                         </div>
                                                     )}
                                                     
-                                                    {/* Show regular content (session info) without AI heading */}
-                                                    {note.content && note.content.trim() !== '' && !note.transcript && note.source !== 'recording' && (
+                                                    {/* Show regular content (typed written/admin/session copy). Must use displayTranscript — raw transcript can be whitespace truthy and used to hide this block. */}
+                                                    {note.content && note.content.trim() !== '' && !displayTranscript && note.source !== 'recording' && (
                                                         <div className="whitespace-pre-wrap text-sm text-foreground leading-relaxed p-3 bg-muted/20 rounded-md">
                                                             {note.content}
                                                         </div>
@@ -4384,6 +4645,10 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                                                 );
                                             })}
                                             </TooltipProvider>
+                                                    )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
@@ -4621,6 +4886,17 @@ function ClientsPageContent({ autoOpenAddDialog = false }: ClientsPageProps) {
                         ? 'I understand this will permanently remove this voice note'
                         : 'I understand this will delete both the transcript and AI assessment permanently'}
                     confirmButtonText="Delete"
+                />
+
+                {/* Delete AI Assessment Confirmation Dialog. Removes only the AI block — transcript + audio remain. */}
+                <DeleteConfirmationDialog
+                    open={deleteAIAssessmentConfirmation.open}
+                    onOpenChange={(open) => setDeleteAIAssessmentConfirmation({ open, note: open ? deleteAIAssessmentConfirmation.note : null })}
+                    onConfirm={confirmDeleteAIAssessment}
+                    title="Delete AI Assessment"
+                    description="Remove the AI Clinical Assessment from this note? The transcript and audio recording will be kept. You can re-generate the assessment later. This action cannot be undone."
+                    requireConfirmation={false}
+                    confirmButtonText="Delete AI Assessment"
                 />
 
                 {/* Delete Note Confirmation Dialog */}

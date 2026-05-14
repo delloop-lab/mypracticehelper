@@ -29,6 +29,8 @@ import { VoiceNotes } from "@/components/voice-notes";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { DeleteConfirmationDialog } from "@/components/ui/delete-confirmation-dialog";
 import { safeFormatDate } from "@/lib/utils";
+import { RecordingAudioPlayer } from "@/components/recording-audio-player";
+import { getAudioUrl, readTranscriptText } from "@/lib/recordings-compat";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface NoteSection {
@@ -73,7 +75,6 @@ function RecordingsContent() {
     const [activeTab, setActiveTab] = useState("new");
 
     const [clients, setClients] = useState<{ id: string, name: string }[]>([]);
-    const [calculatedDurations, setCalculatedDurations] = useState<Record<string, number>>({});
     const [unallocatedRecordings, setUnallocatedRecordings] = useState<Recording[]>([]);
     const [editingFromUnallocated, setEditingFromUnallocated] = useState(false);
     const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -174,54 +175,14 @@ function RecordingsContent() {
                 }
                 setRecordings(uniqueRecordings);
                 setRefreshKey(prev => prev + 1);
-                
-                // Calculate durations for recordings with duration 0
-                uniqueRecordings.forEach(recording => {
-                    if (recording.duration === 0 && recording.audioURL && !calculatedDurations[recording.id]) {
-                        calculateDurationFromAudio(recording.id, recording.audioURL);
-                    }
-                });
+                // Duration is now owned by RecordingAudioPlayer (media.duration / seekable.end()).
+                // No client-side pre-calculation needed; the player renders the value when audio loads.
             } else {
                 const errorText = await response.text();
                 console.error('[Recordings] Failed to load recordings:', response.status, errorText);
             }
         } catch (error) {
             console.error('Error loading recordings:', error);
-        }
-    };
-
-    const calculateDurationFromAudio = async (recordingId: string, audioURL: string) => {
-        try {
-            const audio = new Audio(audioURL);
-            await new Promise<void>((resolve) => {
-                let resolved = false;
-                const finish = () => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve();
-                    }
-                };
-                audio.onloadedmetadata = () => {
-                    if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
-                        const duration = Math.floor(audio.duration);
-                        setCalculatedDurations(prev => ({ ...prev, [recordingId]: duration }));
-                    }
-                    finish();
-                };
-                audio.onerror = () => {
-                    console.warn(`[Recordings] Could not load audio metadata for ${recordingId}`);
-                    finish();
-                };
-                audio.load();
-                setTimeout(() => {
-                    if (!calculatedDurations[recordingId]) {
-                        console.warn(`[Recordings] Duration calculation timeout for ${recordingId}`);
-                    }
-                    finish();
-                }, 15000);
-            });
-        } catch (err) {
-            console.warn(`[Recordings] Error calculating duration for ${recordingId}:`, err);
         }
     };
 
@@ -253,10 +214,13 @@ function RecordingsContent() {
         // Filter by search query (searches in transcript and client name)
         if (searchQuery) {
             const query = searchQuery.toLowerCase();
-            filtered = filtered.filter(r =>
-                r.transcript?.toLowerCase().includes(query) ||
-                r.clientName?.toLowerCase().includes(query)
-            );
+            filtered = filtered.filter(r => {
+                // Defensive: legacy transcripts may be stored as JSON. Match against the parsed
+                // plain text so a search hits the actual words, not escaped quotes.
+                const plainTranscript = readTranscriptText(r.transcript).text || r.transcript || '';
+                return plainTranscript.toLowerCase().includes(query) ||
+                    (r.clientName?.toLowerCase().includes(query) ?? false);
+            });
         }
 
         // Filter by client (case-insensitive, trimmed)
@@ -615,8 +579,11 @@ function RecordingsContent() {
     };
 
     const getTranscriptPreview = (text: string, maxLength: number = 120) => {
-        if (!text) return '';
-        const firstLine = text.split('\n')[0].trim();
+        // Defensive: legacy rows occasionally still carry JSON in this column. Route through the
+        // compat helper so we always slice plain text rather than escaped JSON.
+        const plain = readTranscriptText(text).text || text || '';
+        if (!plain) return '';
+        const firstLine = plain.split('\n')[0].trim();
         const slice = firstLine.slice(0, maxLength).trimEnd();
         if (firstLine.length > maxLength) {
             return slice + '...';
@@ -837,11 +804,11 @@ function RecordingsContent() {
                                                                 <TooltipTrigger asChild>
                                                                     <span className="flex items-center gap-1">
                                                                         <Clock className="h-4 w-4 text-green-500" />
-                                                                        {formatDuration(calculatedDurations[recording.id] || recording.duration)}
+                                                                        {formatDuration(recording.duration)}
                                                                     </span>
                                                                 </TooltipTrigger>
                                                                 <TooltipContent>
-                                                                    <p>Duration: {formatDuration(calculatedDurations[recording.id] || recording.duration)}</p>
+                                                                    <p>Duration: {formatDuration(recording.duration)}</p>
                                                                 </TooltipContent>
                                                             </Tooltip>
                                                             {/* Show recording type badge */}
@@ -954,9 +921,10 @@ function RecordingsContent() {
                                                                 <AccordionContent>
                                                                     <div className="rounded-lg bg-muted/50 p-4">
                                                                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                                                            {searchQuery
-                                                                                ? highlightText(recording.transcript, searchQuery)
-                                                                                : recording.transcript}
+                                                                            {(() => {
+                                                                                const plain = readTranscriptText(recording.transcript).text || recording.transcript;
+                                                                                return searchQuery ? highlightText(plain, searchQuery) : plain;
+                                                                            })()}
                                                                         </p>
                                                                     </div>
                                                                 </AccordionContent>
@@ -995,10 +963,9 @@ function RecordingsContent() {
                                                         animate={{ opacity: 1, height: 'auto' }}
                                                         exit={{ opacity: 0, height: 0 }}
                                                     >
-                                                        <audio
-                                                            controls
-                                                            src={recording.audioURL}
-                                                            className="w-full"
+                                                        <RecordingAudioPlayer
+                                                            src={getAudioUrl(recording)}
+                                                            audioClassName="w-full"
                                                             autoPlay
                                                         />
                                                     </motion.div>
@@ -1076,7 +1043,7 @@ function RecordingsContent() {
                                                             </span>
                                                             <span className="flex items-center gap-1">
                                                                 <Clock className="h-4 w-4 text-green-500" />
-                                                                {formatDuration(calculatedDurations[recording.id] || recording.duration)}
+                                                                {formatDuration(recording.duration)}
                                                             </span>
                                                         </CardDescription>
                                                     </div>
@@ -1163,7 +1130,7 @@ function RecordingsContent() {
                                                 {recording.transcript && (
                                                     <div className="rounded-lg bg-muted/50 p-3">
                                                         <p className="text-sm text-muted-foreground whitespace-pre-wrap line-clamp-3">
-                                                            {recording.transcript}
+                                                            {readTranscriptText(recording.transcript).text || recording.transcript}
                                                         </p>
                                                     </div>
                                                 )}
@@ -1173,7 +1140,11 @@ function RecordingsContent() {
                                                         animate={{ opacity: 1, height: 'auto' }}
                                                         exit={{ opacity: 0, height: 0 }}
                                                     >
-                                                        <audio controls src={recording.audioURL} className="w-full" autoPlay />
+                                                        <RecordingAudioPlayer
+                                                            src={getAudioUrl(recording)}
+                                                            audioClassName="w-full"
+                                                            autoPlay
+                                                        />
                                                     </motion.div>
                                                 )}
                                             </CardContent>
